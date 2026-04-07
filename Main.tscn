@@ -1,0 +1,67 @@
+[gd_scene load_steps=2 format=3 uid="uid://djeb0cuoeaeet"]
+
+[ext_resource type="Script" path="res://Main.cs" id="1"]
+
+[node name="MainMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.113725, 0.141176, 0.207843, 1)
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MenuPanel" type="PanelContainer" parent="CenterContainer"]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="VBox" type="VBoxContainer" parent="CenterContainer/MenuPanel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="CenterContainer/MenuPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "My First Game"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="CenterContainer/MenuPanel/VBox"]
+layout_mode = 2
+text = "Godot 4 + C# main menu"
+horizontal_alignment = 1
+
+[node name="StartButton" type="Button" parent="CenterContainer/MenuPanel/VBox"]
+layout_mode = 2
+text = "Start Game"
+
+[node name="OptionsButton" type="Button" parent="CenterContainer/MenuPanel/VBox"]
+layout_mode = 2
+text = "Options"
+
+[node name="QuitButton" type="Button" parent="CenterContainer/MenuPanel/VBox"]
+layout_mode = 2
+text = "Quit"
+
+[connection signal="pressed" from="CenterContainer/MenuPanel/VBox/StartButton" to="." method="OnStartPressed"]
+[connection signal="pressed" from="CenterContainer/MenuPanel/VBox/OptionsButton" to="." method="OnOptionsPressed"]
+[connection signal="pressed" from="CenterContainer/MenuPanel/VBox/QuitButton" to="." method="OnQuitPressed"]
