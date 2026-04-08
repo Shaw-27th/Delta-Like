@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Auto Battle Demo"
-run/main_scene="res://ExtractionDemo.tscn"
+run/main_scene="res://NodeRaidDemo.tscn"
 config/features=PackedStringArray("4.6", "C#", "Mobile")
 config/icon="res://icon.svg"
 
