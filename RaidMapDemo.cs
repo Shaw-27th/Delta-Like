@@ -220,6 +220,7 @@ public partial class RaidMapDemo : Node2D
 	private int _moveTargetNodeId = -1;
 	private float _moveProgress;
 	private Vector2 _playerMarkerPosition;
+	private int _selectedMapTemplate;
 	private string _status = "点击相邻节点移动。";
 
 	public override void _Ready()
@@ -320,6 +321,14 @@ public partial class RaidMapDemo : Node2D
 			_runSoldiers.Add(new SoldierRecord { Name = soldier.Name });
 		}
 		_playerStrength = 3 + _runSoldiers.Count;
+
+		if (_selectedMapTemplate == 1)
+		{
+			BuildBorderKeepMap();
+			LogEvent("行动开始，其他小队已经进入边境堡寨。");
+			RefreshStatus();
+			return;
+		}
 
 		AddNode(0, "入口前庭", NodeType.Room, new Vector2(105f, 360f), 0);
 		AddNode(1, "墓园", NodeType.Search, new Vector2(135f, 235f), 1);
@@ -430,6 +439,58 @@ public partial class RaidMapDemo : Node2D
 		for (int i = 0; i < visibleCount; i++) container.VisibleItems.Add(RollVisibleEquipment());
 		for (int i = 0; i < hiddenCount; i++) container.HiddenItems.Add(RollLootItem());
 		_nodes[nodeId].Containers.Add(container);
+	}
+
+	private void BuildBorderKeepMap()
+	{
+		AddNode(0, "南侧营门", NodeType.Room, new Vector2(110f, 565f), 0);
+		AddNode(1, "外壕", NodeType.Battle, new Vector2(200f, 505f), 3);
+		AddNode(2, "军需棚", NodeType.Search, new Vector2(185f, 370f), 1);
+		AddNode(3, "西侧城墙", NodeType.Battle, new Vector2(230f, 220f), 4);
+		AddNode(4, "操练场", NodeType.Room, new Vector2(365f, 470f), 2);
+		AddNode(5, "主庭", NodeType.Room, new Vector2(390f, 315f), 2);
+		AddNode(6, "兵营", NodeType.Search, new Vector2(355f, 165f), 1);
+		AddNode(7, "军械库", NodeType.Search, new Vector2(525f, 180f), 3);
+		AddNode(8, "指挥厅", NodeType.Battle, new Vector2(560f, 315f), 5);
+		AddNode(9, "东侧塔楼", NodeType.Battle, new Vector2(670f, 215f), 4);
+		AddNode(10, "辎重院", NodeType.Search, new Vector2(640f, 460f), 2);
+		AddNode(11, "地牢", NodeType.Battle, new Vector2(500f, 565f), 5);
+		AddNode(12, "北门撤离点", NodeType.Extract, new Vector2(720f, 95f), 0);
+		AddNode(13, "河道撤离点", NodeType.Extract, new Vector2(735f, 565f), 0);
+
+		LinkNodes(0, 1); LinkNodes(0, 2);
+		LinkNodes(1, 2); LinkNodes(1, 4);
+		LinkNodes(2, 3); LinkNodes(2, 5);
+		LinkNodes(3, 6);
+		LinkNodes(4, 5); LinkNodes(4, 10); LinkNodes(4, 11);
+		LinkNodes(5, 6); LinkNodes(5, 7); LinkNodes(5, 8);
+		LinkNodes(6, 7);
+		LinkNodes(7, 8); LinkNodes(7, 9);
+		LinkNodes(8, 9); LinkNodes(8, 10); LinkNodes(8, 11);
+		LinkNodes(9, 12);
+		LinkNodes(10, 11); LinkNodes(10, 13);
+		LinkNodes(11, 13);
+
+		_nodes[0].Visited = true;
+		_playerNodeId = 0;
+		_playerMarkerPosition = _nodes[0].Position;
+		_isPlayerMoving = false;
+		_moveTargetNodeId = -1;
+		_moveProgress = 0f;
+		UpdateVision(_playerNodeId);
+
+		AddRoomContainer(2, "军需木箱", 4, 1);
+		AddRoomContainer(4, "操练场杂物架", 2, 0);
+		AddRoomContainer(6, "兵营储物柜", 4, 1);
+		AddRoomContainer(7, "军械架", 5, 2);
+		AddRoomContainer(8, "指挥文书柜", 4, 1);
+		AddRoomContainer(10, "辎重车", 5, 1);
+		AddRoomContainer(11, "地牢锁箱", 5, 1);
+
+		_aiSquads.Add(new AiSquad { Name = "赤狼小队", NodeId = 9, Strength = 9, Supplies = 3, Intent = AiIntent.Idle });
+		_aiSquads.Add(new AiSquad { Name = "蓝鸦小队", NodeId = 6, Strength = 8, Supplies = 2, Intent = AiIntent.Idle });
+		_aiSquads.Add(new AiSquad { Name = "金狮小队", NodeId = 2, Strength = 7, Supplies = 3, Intent = AiIntent.Idle });
+		_aiSquads.Add(new AiSquad { Name = "灰烬小队", NodeId = 11, Strength = 10, Supplies = 2, Intent = AiIntent.Idle });
 	}
 
 	private void UpdateVision(int centerNodeId)
@@ -1266,6 +1327,13 @@ public partial class RaidMapDemo : Node2D
 				case "recruit_soldier":
 					RecruitSoldier();
 					return;
+				case "select_map_prev":
+					_selectedMapTemplate = (_selectedMapTemplate + 1) % 2;
+					_selectedMapTemplate = (_selectedMapTemplate + 1) % 2;
+					return;
+				case "select_map_next":
+					_selectedMapTemplate = (_selectedMapTemplate + 1) % 2;
+					return;
 			}
 		}
 
@@ -1513,6 +1581,12 @@ public partial class RaidMapDemo : Node2D
 		return 5;
 	}
 
+	private string GetSelectedMapName() => _selectedMapTemplate switch
+	{
+		1 => "边境堡寨",
+		_ => "沦陷修道院",
+	};
+
 	private void SellStashItem(int index)
 	{
 		if (index < 0 || index >= _stash.Count)
@@ -1686,6 +1760,18 @@ public partial class RaidMapDemo : Node2D
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"资金：{_money}", HorizontalAlignment.Left, -1f, 18, new Color(0.95f, 0.86f, 0.48f));
 		y += 26f;
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"可用士兵：{_soldierRoster.Count}", HorizontalAlignment.Left, -1f, 16, new Color(0.76f, 0.9f, 0.82f));
+		y += 28f;
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "行动地图", HorizontalAlignment.Left, -1f, 16, Colors.White);
+		Rect2 mapPrevRect = new(new Vector2(x + 110f, y - 18f), new Vector2(28f, 24f));
+		Rect2 mapNextRect = new(new Vector2(x + 400f, y - 18f), new Vector2(28f, 24f));
+		Rect2 mapNameRect = new(new Vector2(x + 148f, y - 18f), new Vector2(242f, 24f));
+		DrawButton(mapPrevRect, "<", new Color(0.22f, 0.24f, 0.29f));
+		DrawRect(mapNameRect, new Color(0.11f, 0.12f, 0.15f), true);
+		DrawRect(mapNameRect, new Color(0.34f, 0.37f, 0.42f), false, 1f);
+		DrawString(ThemeDB.FallbackFont, mapNameRect.Position + new Vector2(10f, 17f), GetSelectedMapName(), HorizontalAlignment.Left, -1f, 13, new Color(0.88f, 0.9f, 0.95f));
+		DrawButton(mapNextRect, ">", new Color(0.22f, 0.24f, 0.29f));
+		_buttons.Add(new ButtonDef(mapPrevRect, "select_map_prev"));
+		_buttons.Add(new ButtonDef(mapNextRect, "select_map_next"));
 
 		Rect2 startRect = new(new Vector2(panel.End.X - 170f, panel.Position.Y + 24f), new Vector2(140f, 34f));
 		DrawButton(startRect, "入局", new Color(0.24f, 0.62f, 0.36f));
@@ -1698,8 +1784,8 @@ public partial class RaidMapDemo : Node2D
 			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
 		}
 
-		Rect2 stashRect = new(new Vector2(panel.Position.X + 18f, panel.Position.Y + 88f), new Vector2(474f, 420f));
-		Rect2 shopRect = new(new Vector2(panel.Position.X + 548f, panel.Position.Y + 88f), new Vector2(474f, 420f));
+		Rect2 stashRect = new(new Vector2(panel.Position.X + 18f, panel.Position.Y + 122f), new Vector2(474f, 386f));
+		Rect2 shopRect = new(new Vector2(panel.Position.X + 548f, panel.Position.Y + 122f), new Vector2(474f, 386f));
 		DrawRect(stashRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(shopRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(stashRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
@@ -1766,7 +1852,14 @@ public partial class RaidMapDemo : Node2D
 	{
 		DrawRect(_mapRect, new Color(0.07f, 0.07f, 0.08f), true);
 		DrawRect(_mapRect, new Color(0.34f, 0.32f, 0.28f), false, 2f);
-		DrawMonasteryBackdrop();
+		if (_selectedMapTemplate == 1)
+		{
+			DrawBorderKeepBackdrop();
+		}
+		else
+		{
+			DrawMonasteryBackdrop();
+		}
 
 		foreach (MapNode node in _nodes)
 		{
@@ -1869,6 +1962,37 @@ public partial class RaidMapDemo : Node2D
 		DrawLine(new Vector2(520f, 360f), new Vector2(620f, 360f), new Color(0.46f, 0.4f, 0.31f, 0.8f), 12f);
 		DrawLine(new Vector2(620f, 255f), new Vector2(620f, 455f), new Color(0.46f, 0.4f, 0.31f, 0.8f), 12f);
 		DrawLine(new Vector2(280f, 505f), new Vector2(550f, 505f), new Color(0.46f, 0.4f, 0.31f, 0.8f), 10f);
+	}
+
+	private void DrawBorderKeepBackdrop()
+	{
+		DrawRect(new Rect2(_mapRect.Position + new Vector2(18f, 18f), _mapRect.Size - new Vector2(36f, 36f)), new Color(0.16f, 0.15f, 0.13f), true);
+		DrawRect(new Rect2(_mapRect.Position + new Vector2(34f, 34f), _mapRect.Size - new Vector2(68f, 68f)), new Color(0.22f, 0.2f, 0.18f), false, 2f);
+
+		Rect2 outerYard = new(new Vector2(70f, 430f), new Vector2(230f, 160f));
+		Rect2 ditch = new(new Vector2(130f, 330f), new Vector2(165f, 80f));
+		Rect2 westWall = new(new Vector2(205f, 120f), new Vector2(180f, 120f));
+		Rect2 mainYard = new(new Vector2(280f, 240f), new Vector2(350f, 290f));
+		Rect2 armory = new(new Vector2(470f, 120f), new Vector2(120f, 105f));
+		Rect2 command = new(new Vector2(515f, 255f), new Vector2(170f, 125f));
+		Rect2 eastTower = new(new Vector2(650f, 135f), new Vector2(78f, 125f));
+		Rect2 supplyYard = new(new Vector2(575f, 405f), new Vector2(130f, 110f));
+		Rect2 dungeon = new(new Vector2(435f, 515f), new Vector2(150f, 75f));
+
+		DrawDistrictBlock(outerYard, new Color(0.2f, 0.17f, 0.14f), "", Vector2.Zero);
+		DrawDistrictBlock(ditch, new Color(0.15f, 0.16f, 0.17f), "", Vector2.Zero);
+		DrawDistrictBlock(westWall, new Color(0.19f, 0.18f, 0.17f), "", Vector2.Zero);
+		DrawDistrictBlock(mainYard, new Color(0.18f, 0.18f, 0.15f), "", Vector2.Zero);
+		DrawDistrictBlock(armory, new Color(0.21f, 0.18f, 0.15f), "", Vector2.Zero);
+		DrawDistrictBlock(command, new Color(0.23f, 0.19f, 0.16f), "", Vector2.Zero);
+		DrawDistrictBlock(eastTower, new Color(0.19f, 0.17f, 0.17f), "", Vector2.Zero);
+		DrawDistrictBlock(supplyYard, new Color(0.2f, 0.18f, 0.14f), "", Vector2.Zero);
+		DrawDistrictBlock(dungeon, new Color(0.15f, 0.14f, 0.17f), "", Vector2.Zero);
+
+		DrawLine(new Vector2(235f, 510f), new Vector2(650f, 510f), new Color(0.44f, 0.39f, 0.31f, 0.8f), 10f);
+		DrawLine(new Vector2(390f, 170f), new Vector2(650f, 170f), new Color(0.44f, 0.39f, 0.31f, 0.8f), 10f);
+		DrawLine(new Vector2(390f, 170f), new Vector2(390f, 510f), new Color(0.44f, 0.39f, 0.31f, 0.8f), 10f);
+		DrawLine(new Vector2(650f, 170f), new Vector2(650f, 510f), new Color(0.44f, 0.39f, 0.31f, 0.8f), 10f);
 	}
 
 	private void DrawDistrictBlock(Rect2 rect, Color fill, string label, Vector2 labelOffset)

@@ -32,10 +32,36 @@ public partial class RoomBattleSim : Node2D
 		public int DamageMax;
 		public float Cooldown;
 		public Color Color;
+		public Vector2 Facing = Vector2.Right;
+		public float HitFlash;
+		public Vector2 KnockbackVelocity;
+		public float KnockbackTime;
 		public bool IsAlive => Hp > 0;
 	}
 
+	private sealed class TrailEffect
+	{
+		public Vector2 From;
+		public Vector2 To;
+		public Color Color;
+		public float TimeLeft;
+		public float Duration;
+	}
+
+	private sealed class ArcEffect
+	{
+		public Vector2 Center;
+		public float Radius;
+		public float StartAngle;
+		public float EndAngle;
+		public Color Color;
+		public float TimeLeft;
+		public float Duration;
+	}
+
 	private readonly List<BattleUnit> _units = new();
+	private readonly List<TrailEffect> _trailEffects = new();
+	private readonly List<ArcEffect> _arcEffects = new();
 	private readonly List<string> _log = new();
 	private readonly List<Rect2> _controlRects = new();
 	private readonly RandomNumberGenerator _rng = new();
@@ -56,6 +82,8 @@ public partial class RoomBattleSim : Node2D
 	{
 		_title = title;
 		_units.Clear();
+		_trailEffects.Clear();
+		_arcEffects.Clear();
 		_log.Clear();
 		_finished = false;
 		_paused = false;
@@ -85,6 +113,8 @@ public partial class RoomBattleSim : Node2D
 		PushLog($"在 {_title} 发生战斗。");
 		PushLog("双方进入房间自动交战。");
 		_units.Clear();
+		_trailEffects.Clear();
+		_arcEffects.Clear();
 		_log.Clear();
 
 		this.AddUnit("英雄", true, true, true, BattleRow.Back, 0, 1, this.GetFormationPoint(true, BattleRow.Back, 0, 1), Mathf.Clamp(playerHp, 10, 24), 46f, 118f, 3, 6, new Color(0.3f, 0.82f, 1f));
@@ -116,6 +146,7 @@ public partial class RoomBattleSim : Node2D
 		}
 
 		float dt = (float)delta * _speedScale;
+		UpdateEffects(dt);
 		for (int i = 0; i < _units.Count; i++)
 		{
 			BattleUnit unit = _units[i];
@@ -124,7 +155,16 @@ public partial class RoomBattleSim : Node2D
 				continue;
 			}
 
+			unit.HitFlash = Mathf.Max(0f, unit.HitFlash - dt);
 			unit.Cooldown = Mathf.Max(0f, unit.Cooldown - dt);
+			if (unit.KnockbackTime > 0f)
+			{
+				unit.Position += unit.KnockbackVelocity * dt;
+				unit.Position = ClampToArena(unit.Position);
+				unit.KnockbackVelocity *= 0.88f;
+				unit.KnockbackTime = Mathf.Max(0f, unit.KnockbackTime - dt);
+				continue;
+			}
 			BattleUnit target = FindTarget(unit);
 			if (target == null)
 			{
@@ -142,11 +182,13 @@ public partial class RoomBattleSim : Node2D
 					moveTarget = target.Position - desiredOffset;
 				}
 				Vector2 dir = (moveTarget - unit.Position).Normalized();
-				unit.Position += dir * unit.Speed * dt;
+				UpdateFacing(unit, dir, dt);
+				unit.Position += dir * unit.Speed * GetFacingMoveScale(unit, dir) * dt;
 				unit.Position = ClampToArena(unit.Position);
 				continue;
 			}
 
+			UpdateFacing(unit, toTarget.Normalized(), dt);
 			if (unit.Cooldown > 0f)
 			{
 				continue;
@@ -154,7 +196,9 @@ public partial class RoomBattleSim : Node2D
 
 			int damage = _rng.RandiRange(unit.DamageMin, unit.DamageMax) + (unit.IsHero ? 1 : 0);
 			target.Hp = Mathf.Max(0, target.Hp - damage);
-			unit.Cooldown = unit.IsHero ? 0.52f : 0.7f;
+			unit.Cooldown = unit.IsHero ? 0.48f : (unit.IsRanged ? 0.62f : 0.74f);
+			SpawnAttackEffect(unit, target);
+			ApplyHitResponse(unit, target);
 			PushLog($"{unit.Name} 对 {target.Name} 造成 {damage} 点伤害。");
 			if (!target.IsAlive)
 			{
@@ -185,6 +229,7 @@ public partial class RoomBattleSim : Node2D
 		DrawString(ThemeDB.FallbackFont, new Vector2(_arenaRect.End.X - 160f, _arenaRect.Position.Y + 24f), "敌方前排", HorizontalAlignment.Left, -1f, 12, new Color(1f, 0.8f, 0.8f, 0.72f));
 		DrawString(ThemeDB.FallbackFont, new Vector2(_arenaRect.End.X - 74f, _arenaRect.Position.Y + 24f), "敌方后排", HorizontalAlignment.Left, -1f, 12, new Color(1f, 0.76f, 0.7f, 0.72f));
 
+		DrawCombatEffects();
 		foreach (BattleUnit unit in _units)
 		{
 			if (!unit.IsAlive)
@@ -193,7 +238,12 @@ public partial class RoomBattleSim : Node2D
 			}
 
 			DrawCircle(unit.Position, unit.IsHero ? 16f : 12f, unit.Color);
+			if (unit.HitFlash > 0f)
+			{
+				DrawCircle(unit.Position, unit.IsHero ? 17f : 13f, new Color(1f, 1f, 1f, Mathf.Clamp(unit.HitFlash * 4f, 0f, 0.9f)));
+			}
 			DrawArc(unit.Position, unit.IsHero ? 21f : 17f, 0f, Mathf.Tau, 24, Colors.White, 1.5f);
+			DrawFacingMarker(unit);
 			DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-26f, -18f), unit.Name, HorizontalAlignment.Left, -1f, 11, Colors.White);
 			if (unit.IsRanged)
 			{
@@ -272,6 +322,7 @@ public partial class RoomBattleSim : Node2D
 			FormationCount = formationCount,
 			Position = position,
 			AnchorPosition = position,
+			Facing = isPlayerSide ? Vector2.Right : Vector2.Left,
 			Hp = hp,
 			MaxHp = hp,
 			Speed = speed,
@@ -366,6 +417,132 @@ public partial class RoomBattleSim : Node2D
 		}
 
 		return false;
+	}
+
+	private void UpdateEffects(float dt)
+	{
+		for (int i = _trailEffects.Count - 1; i >= 0; i--)
+		{
+			_trailEffects[i].TimeLeft -= dt;
+			if (_trailEffects[i].TimeLeft <= 0f)
+			{
+				_trailEffects.RemoveAt(i);
+			}
+		}
+
+		for (int i = _arcEffects.Count - 1; i >= 0; i--)
+		{
+			_arcEffects[i].TimeLeft -= dt;
+			if (_arcEffects[i].TimeLeft <= 0f)
+			{
+				_arcEffects.RemoveAt(i);
+			}
+		}
+	}
+
+	private void UpdateFacing(BattleUnit unit, Vector2 desiredDirection, float dt)
+	{
+		if (desiredDirection == Vector2.Zero)
+		{
+			return;
+		}
+
+		Vector2 blended = unit.Facing.Lerp(desiredDirection.Normalized(), Mathf.Clamp(dt * 6f, 0f, 1f));
+		unit.Facing = blended == Vector2.Zero ? desiredDirection.Normalized() : blended.Normalized();
+	}
+
+	private float GetFacingMoveScale(BattleUnit unit, Vector2 moveDirection)
+	{
+		if (moveDirection == Vector2.Zero)
+		{
+			return 1f;
+		}
+
+		float dot = Mathf.Clamp(unit.Facing.Dot(moveDirection.Normalized()), -1f, 1f);
+		float reverseFactor = (1f - dot) * 0.5f;
+		return Mathf.Lerp(1f, 0.45f, reverseFactor);
+	}
+
+	private void SpawnAttackEffect(BattleUnit attacker, BattleUnit target)
+	{
+		if (attacker.IsRanged)
+		{
+			_trailEffects.Add(new TrailEffect
+			{
+				From = attacker.Position,
+				To = target.Position,
+				Color = attacker.IsPlayerSide ? new Color(0.62f, 0.88f, 1f, 0.95f) : new Color(1f, 0.72f, 0.62f, 0.95f),
+				TimeLeft = 0.12f,
+				Duration = 0.12f,
+			});
+			return;
+		}
+
+		float facingAngle = attacker.Facing.Angle();
+		_arcEffects.Add(new ArcEffect
+		{
+			Center = attacker.Position,
+			Radius = attacker.IsHero ? 28f : 22f,
+			StartAngle = facingAngle - 0.72f,
+			EndAngle = facingAngle + 0.72f,
+			Color = attacker.IsPlayerSide ? new Color(0.82f, 1f, 0.9f, 0.9f) : new Color(1f, 0.8f, 0.78f, 0.9f),
+			TimeLeft = 0.14f,
+			Duration = 0.14f,
+		});
+	}
+
+	private void ApplyHitResponse(BattleUnit attacker, BattleUnit target)
+	{
+		Vector2 pushDir = (target.Position - attacker.Position).Normalized();
+		if (pushDir == Vector2.Zero)
+		{
+			pushDir = target.IsPlayerSide ? Vector2.Right : Vector2.Left;
+		}
+
+		float force = attacker.IsRanged ? 120f : 220f;
+		float control = attacker.IsRanged ? 0.09f : 0.18f;
+		target.HitFlash = 0.12f;
+		target.KnockbackVelocity = pushDir * force;
+		target.KnockbackTime = control;
+	}
+
+	private void DrawCombatEffects()
+	{
+		foreach (TrailEffect effect in _trailEffects)
+		{
+			float alpha = effect.Duration <= 0f ? 0f : effect.TimeLeft / effect.Duration;
+			Color color = new(effect.Color.R, effect.Color.G, effect.Color.B, effect.Color.A * alpha);
+			DrawLine(effect.From, effect.To, color, 2.2f);
+			Vector2 dir = (effect.To - effect.From).Normalized();
+			if (dir != Vector2.Zero)
+			{
+				Vector2 normal = new(-dir.Y, dir.X);
+				DrawLine(effect.To, effect.To - dir * 8f + normal * 4f, color, 1.8f);
+				DrawLine(effect.To, effect.To - dir * 8f - normal * 4f, color, 1.8f);
+			}
+		}
+
+		foreach (ArcEffect effect in _arcEffects)
+		{
+			float alpha = effect.Duration <= 0f ? 0f : effect.TimeLeft / effect.Duration;
+			Color color = new(effect.Color.R, effect.Color.G, effect.Color.B, effect.Color.A * alpha);
+			DrawArc(effect.Center, effect.Radius, effect.StartAngle, effect.EndAngle, 14, color, 3f);
+		}
+	}
+
+	private void DrawFacingMarker(BattleUnit unit)
+	{
+		if (unit.Facing == Vector2.Zero)
+		{
+			return;
+		}
+
+		Vector2 tip = unit.Position + unit.Facing * (unit.IsHero ? 13f : 10f);
+		Vector2 normal = new(-unit.Facing.Y, unit.Facing.X);
+		Color color = new(1f, 1f, 1f, 0.82f);
+		DrawLine(unit.Position, tip, color, 1.4f);
+		DrawLine(tip, tip - unit.Facing * 4f + normal * 3f, color, 1.2f);
+		DrawLine(tip, tip - unit.Facing * 4f - normal * 3f, color, 1.2f);
 	}
 
 	private Vector2 ClampToArena(Vector2 position)
