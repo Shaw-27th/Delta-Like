@@ -198,6 +198,7 @@ public partial class RaidMapDemo : Node2D
 	private int _playerHp;
 	private int _playerMaxHp;
 	private int _playerStrength;
+	private int _timeSlotProgress;
 	private int _searchActions;
 	private int _lootValue;
 	private int _money;
@@ -245,7 +246,7 @@ public partial class RaidMapDemo : Node2D
 			}
 		}
 
-		if (_inHideout || _runEnded || _battleSim != null || _showSearchConfirm || _selectedContainerIndex >= 0)
+		if (_inHideout || _runEnded || _battleSim != null || _selectedContainerIndex >= 0)
 		{
 			return;
 		}
@@ -275,10 +276,6 @@ public partial class RaidMapDemo : Node2D
 		{
 			DrawContainerPopup();
 		}
-		if (_showSearchConfirm)
-		{
-			DrawSearchConfirmDialog();
-		}
 		if (_runEnded)
 		{
 			DrawEndOverlay();
@@ -296,17 +293,13 @@ public partial class RaidMapDemo : Node2D
 		_playerMaxHp = 24;
 		_playerHp = 24;
 		_playerStrength = 11;
-		_searchActions = 0;
+		_timeSlotProgress = 0;
 		_lootValue = 0;
 		_turn = 0;
 		_runEnded = false;
 		_runFailed = false;
 		_autoSearchEnabled = false;
-		_skipSearchConfirm = false;
-		_showSearchConfirm = false;
-		_confirmSkipChecked = false;
 		_selectedContainerIndex = -1;
-		_pendingRevealContainerIndex = -1;
 		_encounter = null;
 		_runSoldiers.Clear();
 		foreach (SoldierRecord soldier in _soldierRoster)
@@ -352,8 +345,6 @@ public partial class RaidMapDemo : Node2D
 		_runEnded = false;
 		_runFailed = false;
 		_selectedContainerIndex = -1;
-		_showSearchConfirm = false;
-		_pendingRevealContainerIndex = -1;
 		_battleSim = null;
 		_eventLog.Clear();
 		if (_shopStock.Count == 0)
@@ -412,7 +403,6 @@ public partial class RaidMapDemo : Node2D
 
 		_playerNodeId = nodeId;
 		_nodes[nodeId].Visited = true;
-		_searchActions = 0;
 		AdvanceTurn($"移动至 {_nodes[nodeId].Name}。");
 		HandleArrival(_nodes[nodeId]);
 	}
@@ -490,7 +480,6 @@ public partial class RaidMapDemo : Node2D
 		_playerStrength = Mathf.Max(3 + _runSoldiers.Count, remainingStrength);
 		node.Threat = 0;
 		GenerateBattleLoot(node, squad);
-		_searchActions = 0;
 		if (!heroAlive)
 		{
 			LogEvent("英雄在战斗中倒下，但幸存士兵赢得了战斗。英雄以 1 点生命值继续探索。");
@@ -643,6 +632,16 @@ public partial class RaidMapDemo : Node2D
 		_ => 1f,
 	};
 
+	private int GetTimeSlotCost(ItemRarity rarity) => rarity switch
+	{
+		ItemRarity.White => 10,
+		ItemRarity.Green => 20,
+		ItemRarity.Blue => 30,
+		ItemRarity.Purple => 40,
+		ItemRarity.Gold => 50,
+		_ => 10,
+	};
+
 	private bool TryPlaceGridItem(LootContainer container, GridLootItem item)
 	{
 		for (int y = 0; y <= container.GridSize.Y - item.Size.Y; y++)
@@ -680,7 +679,7 @@ public partial class RaidMapDemo : Node2D
 
 	private void UpdateContainerSearch(float delta)
 	{
-		if (_battleSim != null || _showSearchConfirm || _selectedContainerIndex < 0)
+		if (_battleSim != null || _selectedContainerIndex < 0)
 		{
 			return;
 		}
@@ -707,6 +706,7 @@ public partial class RaidMapDemo : Node2D
 		item.Revealed = true;
 		item.SearchProgress = item.SearchTime;
 		container.ActiveSearchItemIndex = -1;
+		AddTimeSlotProgress(GetTimeSlotCost(item.Rarity), item.Label);
 		LogEvent($"搜索完成，发现了 {item.Label}。");
 		if (_autoSearchEnabled)
 		{
@@ -740,6 +740,21 @@ public partial class RaidMapDemo : Node2D
 			TrySearch(containerIndex * 100 + i);
 			return;
 		}
+	}
+
+	private void AddTimeSlotProgress(int amount, string itemLabel)
+	{
+		_timeSlotProgress += Mathf.Max(0, amount);
+		if (_timeSlotProgress < 100)
+		{
+			RefreshStatus();
+			return;
+		}
+
+		int extraTurns = _timeSlotProgress / 100;
+		_timeSlotProgress %= 100;
+		AdvanceTurn($"搜索 {itemLabel} 耗费了额外时间。", extraTurns, false);
+		RefreshStatus();
 	}
 
 	private void AdvanceTurn(string reason, int amount = 1, bool refreshStatus = true)
@@ -1105,13 +1120,8 @@ public partial class RaidMapDemo : Node2D
 				_status = _autoSearchEnabled ? "已开启自动搜索。打开容器时会自动揭示物品。" : "已关闭自动搜索。";
 				break;
 			case "confirm_search_yes":
-				ConfirmSearchExchange(true);
-				break;
 			case "confirm_search_no":
-				ConfirmSearchExchange(false);
-				break;
 			case "toggle_confirm_skip":
-				_confirmSkipChecked = !_confirmSkipChecked;
 				break;
 		}
 	}
@@ -1146,22 +1156,8 @@ public partial class RaidMapDemo : Node2D
 			return;
 		}
 
-		if (_searchActions <= 0)
-		{
-			_pendingRevealContainerIndex = encodedIndex;
-			if (_skipSearchConfirm)
-			{
-				ConfirmSearchExchange(true);
-				return;
-			}
-			_confirmSkipChecked = false;
-			_showSearchConfirm = true;
-			return;
-		}
-
 		item.SearchProgress = 0f;
 		container.ActiveSearchItemIndex = itemIndex;
-		_searchActions--;
 		LogEvent($"开始搜索 {container.Label} 中的物品。");
 		RefreshStatus();
 	}
@@ -1481,7 +1477,7 @@ public partial class RaidMapDemo : Node2D
 			_status = "这里是撤离点。";
 			return;
 		}
-		_status = $"{node.Name} 当前安全，剩余搜索机会：{_searchActions}。";
+		_status = $"{node.Name} 当前安全，时隙 {_timeSlotProgress}/100。";
 	}
 
 	private void LogEvent(string text)
@@ -1637,8 +1633,13 @@ public partial class RaidMapDemo : Node2D
 		y += 24f;
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u751f\u547d {_playerHp}/{_playerMaxHp}   \u6218\u529b {_playerStrength}", HorizontalAlignment.Left, -1f, 15, Colors.White);
 		y += 22f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u641c\u7d22 {_searchActions}   \u6218\u5229\u54c1\u4ef7\u503c {_lootValue}", HorizontalAlignment.Left, -1f, 15, Colors.White);
-		y += 26f;
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u65f6\u9699 {_timeSlotProgress}/100   \u6218\u5229\u54c1\u4ef7\u503c {_lootValue}", HorizontalAlignment.Left, -1f, 15, Colors.White);
+		y += 20f;
+		Rect2 timeBar = new(new Vector2(x, y), new Vector2(312f, 10f));
+		DrawRect(timeBar, new Color(0.12f, 0.13f, 0.16f), true);
+		DrawRect(timeBar, new Color(0.34f, 0.37f, 0.42f), false, 1f);
+		DrawRect(new Rect2(timeBar.Position, new Vector2(timeBar.Size.X * (_timeSlotProgress / 100f), timeBar.Size.Y)), new Color(0.84f, 0.66f, 0.26f), true);
+		y += 32f;
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), _status, HorizontalAlignment.Left, 320f, 14, new Color(0.86f, 0.9f, 0.95f));
 		y += 54f;
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u5f53\u524d\u8282\u70b9\uff1a{node.Name}", HorizontalAlignment.Left, -1f, 16, Colors.White);
