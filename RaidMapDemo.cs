@@ -960,7 +960,7 @@ public partial class RaidMapDemo : Node2D
 
 	private void CheckPlayerNodeEncounterAfterTimeAdvance()
 	{
-		if (_runEnded || _battleSim != null || _pendingEncounter != null || _inHideout)
+		if (_runEnded || _battleSim != null || _encounter != null || _pendingEncounter != null || _inHideout)
 		{
 			return;
 		}
