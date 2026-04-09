@@ -177,7 +177,7 @@ public partial class RaidMapDemo : Node2D
 			}
 		}
 
-		if (_runEnded || _battleSim != null)
+		if (_runEnded || _battleSim != null || _showSearchConfirm || _selectedContainerIndex >= 0)
 		{
 			return;
 		}
@@ -198,6 +198,14 @@ public partial class RaidMapDemo : Node2D
 		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0.06f, 0.07f, 0.09f), true);
 		DrawMap();
 		DrawSidePanel();
+		if (_selectedContainerIndex >= 0)
+		{
+			DrawContainerPopup();
+		}
+		if (_showSearchConfirm)
+		{
+			DrawSearchConfirmDialog();
+		}
 		if (_runEnded)
 		{
 			DrawEndOverlay();
@@ -770,6 +778,10 @@ public partial class RaidMapDemo : Node2D
 			case "open_container":
 				OpenContainer(button.Index);
 				break;
+			case "close_container":
+				_selectedContainerIndex = -1;
+				RefreshStatus();
+				break;
 			case "extract":
 				TryExtract();
 				break;
@@ -794,31 +806,36 @@ public partial class RaidMapDemo : Node2D
 		MapNode node = _nodes[_playerNodeId];
 		if (!CanSearch(node))
 		{
-			_status = "当前房间不够安全，无法搜索。";
-			return;
-		}
-		if (_searchActions <= 0)
-		{
-			_status = "搜索机会不足，可花费 1 回合补充。";
+			_status = "??????????????";
 			return;
 		}
 		if (containerIndex < 0 || containerIndex >= node.Containers.Count)
 		{
 			return;
 		}
-
 		LootContainer container = node.Containers[containerIndex];
 		if (container.HiddenRemaining <= 0)
 		{
-			_status = "这个容器里没有未检视物品了。";
+			_status = "??????????????";
 			return;
 		}
-
+		if (_searchActions <= 0)
+		{
+			_pendingRevealContainerIndex = containerIndex;
+			if (_skipSearchConfirm)
+			{
+				ConfirmSearchExchange(true);
+				return;
+			}
+			_confirmSkipChecked = false;
+			_showSearchConfirm = true;
+			return;
+		}
 		string item = container.HiddenItems[container.HiddenIndex];
 		container.HiddenIndex++;
+		container.VisibleItems.Add(item);
 		_searchActions--;
-		AddLoot(item);
-		LogEvent($"搜索 {container.Label}，发现了 {item}。");
+		LogEvent($"?? {container.Label}???? {item}?");
 		RefreshStatus();
 	}
 
@@ -1073,78 +1090,66 @@ public partial class RaidMapDemo : Node2D
 	{
 		DrawRect(_sideRect, new Color(0.05f, 0.05f, 0.06f, 0.96f), true);
 		DrawRect(_sideRect, Colors.White, false, 2f);
-
 		float x = _sideRect.Position.X + 18f;
 		float y = _sideRect.Position.Y + 28f;
 		float panelBottom = _sideRect.End.Y - 18f;
-		float contentBottom = panelBottom - 170f;
-		bool clipped = false;
 		MapNode node = _nodes[_playerNodeId];
-
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "节点突袭 Demo", HorizontalAlignment.Left, -1f, 20, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "\u8282\u70b9\u7a81\u88ad Demo", HorizontalAlignment.Left, -1f, 20, Colors.White);
 		y += 28f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"回合 {_turn}", HorizontalAlignment.Left, -1f, 16, new Color(0.76f, 0.84f, 0.95f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u56de\u5408 {_turn}", HorizontalAlignment.Left, -1f, 16, new Color(0.76f, 0.84f, 0.95f));
 		y += 24f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"生命 {_playerHp}/{_playerMaxHp}   战力 {_playerStrength}", HorizontalAlignment.Left, -1f, 15, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u751f\u547d {_playerHp}/{_playerMaxHp}   \u6218\u529b {_playerStrength}", HorizontalAlignment.Left, -1f, 15, Colors.White);
 		y += 22f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"搜索 {_searchActions}   战利品价值 {_lootValue}", HorizontalAlignment.Left, -1f, 15, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u641c\u7d22 {_searchActions}   \u6218\u5229\u54c1\u4ef7\u503c {_lootValue}", HorizontalAlignment.Left, -1f, 15, Colors.White);
 		y += 26f;
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), _status, HorizontalAlignment.Left, 320f, 14, new Color(0.86f, 0.9f, 0.95f));
 		y += 54f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"当前节点：{node.Name}", HorizontalAlignment.Left, -1f, 16, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u5f53\u524d\u8282\u70b9\uff1a{node.Name}", HorizontalAlignment.Left, -1f, 16, Colors.White);
 		y += 24f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"类型：{GetNodeTypeLabel(node.Type)}", HorizontalAlignment.Left, -1f, 13, new Color(0.75f, 0.78f, 0.82f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u7c7b\u578b\uff1a{GetNodeTypeLabel(node.Type)}", HorizontalAlignment.Left, -1f, 13, new Color(0.75f, 0.78f, 0.82f));
 		y += 18f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"威胁：{node.Threat}   战利品：{CountNodeLoot(node)}", HorizontalAlignment.Left, -1f, 13, new Color(0.75f, 0.78f, 0.82f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u5a01\u80c1\uff1a{node.Threat}   \u6218\u5229\u54c1\uff1a{CountNodeLoot(node)}", HorizontalAlignment.Left, -1f, 13, new Color(0.75f, 0.78f, 0.82f));
 		y += 28f;
-
-		if (node.Type == NodeType.Extract && _battleSim == null && !_runEnded && y + 34f <= contentBottom)
+		Rect2 autoRect = new(new Vector2(x, y), new Vector2(148f, 28f));
+		DrawButton(autoRect, _autoSearchEnabled ? "\u81ea\u52a8\u641c\u7d22\uff1a\u5f00" : "\u81ea\u52a8\u641c\u7d22\uff1a\u5173", _autoSearchEnabled ? new Color(0.24f, 0.56f, 0.32f) : new Color(0.18f, 0.2f, 0.24f));
+		_buttons.Add(new ButtonDef(autoRect, "toggle_auto_search"));
+		if (node.Type == NodeType.Extract && _battleSim == null && !_runEnded)
 		{
-			Rect2 rect = new(new Vector2(x, y), new Vector2(140f, 30f));
-			DrawButton(rect, "执行撤离", new Color(0.24f, 0.62f, 0.36f));
+			Rect2 rect = new(new Vector2(x + 170f, y), new Vector2(124f, 28f));
+			DrawButton(rect, "\u6267\u884c\u64a4\u79bb", new Color(0.24f, 0.62f, 0.36f));
 			_buttons.Add(new ButtonDef(rect, "extract"));
-			y += 42f;
 		}
-
-		if (CanSearch(node) && CountNodeLoot(node) > 0 && y + 24f <= contentBottom)
+		y += 42f;
+		if (CanSearch(node) && CountNodeLoot(node) > 0)
 		{
-			DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "容器", HorizontalAlignment.Left, -1f, 16, Colors.White);
+			DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "\u5bb9\u5668", HorizontalAlignment.Left, -1f, 16, Colors.White);
 			y += 22f;
-			for (int i = 0; i < node.Containers.Count && !clipped; i++)
+			for (int i = 0; i < node.Containers.Count && i < 6; i++)
 			{
 				LootContainer container = node.Containers[i];
 				if (container.IsEmpty) continue;
-				float cardHeight = GetContainerCardHeight(container);
-				if (y + cardHeight > contentBottom) { clipped = true; break; }
-				DrawContainerCard(container, i, x, ref y);
-				y += 10f;
-			}
-
-			if (!clipped && _searchActions <= 0 && y + 30f <= contentBottom)
-			{
-				Rect2 rect = new(new Vector2(x, y), new Vector2(220f, 28f));
-				DrawButton(rect, "花费 1 回合换取 4 次搜索", new Color(0.46f, 0.25f, 0.19f));
-				_buttons.Add(new ButtonDef(rect, "buy_search"));
-				y += 38f;
+				Rect2 rowRect = new(new Vector2(x, y), new Vector2(320f, 24f));
+				Color fill = i == _selectedContainerIndex ? new Color(0.26f, 0.3f, 0.38f) : new Color(0.12f, 0.13f, 0.16f);
+				DrawRect(rowRect, fill, true);
+				DrawRect(rowRect, new Color(0.34f, 0.37f, 0.42f), false, 1f);
+				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(10f, 17f), container.Label, HorizontalAlignment.Left, 170f, 12, Colors.White);
+				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(182f, 17f), $"\u660e\u9762 {container.VisibleItems.Count + CountAvailableEquipped(container)}", HorizontalAlignment.Left, 60f, 11, new Color(0.78f, 0.87f, 0.98f));
+				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(238f, 17f), $"\u672a\u63ed {container.HiddenRemaining}", HorizontalAlignment.Left, 56f, 11, new Color(0.92f, 0.84f, 0.6f));
+				Rect2 openRect = new(new Vector2(rowRect.End.X - 68f, rowRect.Position.Y + 2f), new Vector2(56f, 20f));
+				DrawButton(openRect, "\u6253\u5f00", new Color(0.23f, 0.4f, 0.58f));
+				_buttons.Add(new ButtonDef(openRect, "open_container", i));
+				y += 30f;
 			}
 		}
-
-		if (clipped)
-		{
-			DrawString(ThemeDB.FallbackFont, new Vector2(x, contentBottom - 6f), "下方内容已折叠，后续再做滚动列表。", HorizontalAlignment.Left, 320f, 12, new Color(0.95f, 0.76f, 0.52f));
-		}
-
-		float logY = Mathf.Max(y + 12f, contentBottom + 8f);
-		DrawLine(new Vector2(x, logY - 10f), new Vector2(_sideRect.End.X - 18f, logY - 10f), new Color(0.24f, 0.27f, 0.31f), 1f);
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, logY), "世界动态", HorizontalAlignment.Left, -1f, 16, Colors.White);
-		logY += 20f;
-		int maxLogLines = Mathf.Max(2, (int)((panelBottom - logY) / 18f));
-		int startIndex = Mathf.Max(0, _eventLog.Count - maxLogLines);
+		float logTop = panelBottom - 120f;
+		DrawLine(new Vector2(x, logTop - 10f), new Vector2(_sideRect.End.X - 18f, logTop - 10f), new Color(0.24f, 0.27f, 0.31f), 1f);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, logTop), "\u4e16\u754c\u52a8\u6001", HorizontalAlignment.Left, -1f, 16, Colors.White);
+		float logY = logTop + 20f;
+		int startIndex = Mathf.Max(0, _eventLog.Count - 5);
 		for (int i = startIndex; i < _eventLog.Count; i++)
 		{
 			DrawString(ThemeDB.FallbackFont, new Vector2(x, logY), _eventLog[i], HorizontalAlignment.Left, 320f, 12, new Color(0.8f, 0.84f, 0.9f));
 			logY += 18f;
-			if (logY > panelBottom) break;
 		}
 	}
 
@@ -1229,6 +1234,113 @@ public partial class RaidMapDemo : Node2D
 		y += height;
 	}
 
+	private int CountAvailableEquipped(LootContainer container)
+	{
+		int count = 0;
+		foreach (EquippedLoot equipped in container.EquippedItems)
+		{
+			if (!equipped.Taken && !string.IsNullOrEmpty(equipped.Label))
+			{
+				count++;
+			}
+		}
+		return count;
+	}
+	private void DrawContainerPopup()
+	{
+		MapNode node = _nodes[_playerNodeId];
+		if (_selectedContainerIndex < 0 || _selectedContainerIndex >= node.Containers.Count)
+		{
+			return;
+		}
+		LootContainer container = node.Containers[_selectedContainerIndex];
+		float equipmentHeight = container.Kind == ContainerKind.EliteCorpse ? 118f : 0f;
+		int visibleRows = Mathf.Max(1, container.VisibleItems.Count + (container.HiddenRemaining > 0 ? 1 : 0));
+		float bodyHeight = visibleRows * 34f + 56f + equipmentHeight;
+		Vector2 panelSize = new(360f, bodyHeight);
+		Rect2 panel = new((GetViewportRect().Size - panelSize) / 2f, panelSize);
+		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0f, 0f, 0f, 0.38f), true);
+		DrawRect(panel, new Color(0.08f, 0.09f, 0.11f), true);
+		DrawRect(panel, Colors.White, false, 2f);
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(14f, 22f), container.Label, HorizontalAlignment.Left, 220f, 14, Colors.White);
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(220f, 22f), GetContainerKindLabel(container.Kind), HorizontalAlignment.Left, 100f, 12, new Color(0.93f, 0.84f, 0.58f));
+		Rect2 closeRect = new(new Vector2(panel.End.X - 30f, panel.Position.Y + 8f), new Vector2(20f, 20f));
+		DrawRect(closeRect, new Color(0.26f, 0.14f, 0.14f), true);
+		DrawRect(closeRect, Colors.White, false, 1.2f);
+		DrawString(ThemeDB.FallbackFont, closeRect.Position + new Vector2(6f, 15f), "X", HorizontalAlignment.Left, -1f, 12, Colors.White);
+		_buttons.Add(new ButtonDef(closeRect, "close_container"));
+		float rowY = panel.Position.Y + 36f;
+		if (container.Kind == ContainerKind.EliteCorpse)
+		{
+			DrawString(ThemeDB.FallbackFont, new Vector2(panel.Position.X + 14f, rowY), "\u88c5\u5907\u680f", HorizontalAlignment.Left, -1f, 13, new Color(0.9f, 0.92f, 0.96f));
+			rowY += 12f;
+			for (int equipIndex = 0; equipIndex < container.EquippedItems.Count; equipIndex++)
+			{
+				EquippedLoot equipped = container.EquippedItems[equipIndex];
+				Rect2 slot = new(new Vector2(panel.Position.X + 14f, rowY), new Vector2(332f, 28f));
+				DrawRect(slot, new Color(0.14f, 0.16f, 0.2f), true);
+				DrawRect(slot, new Color(0.5f, 0.66f, 0.86f), false, 1f);
+				string label = string.IsNullOrEmpty(equipped.Label) || equipped.Taken ? $"{GetEquipmentSlotLabel(equipped.Slot)}\uff1a\u7a7a" : $"{GetEquipmentSlotLabel(equipped.Slot)}\uff1a{equipped.Label}";
+				DrawString(ThemeDB.FallbackFont, slot.Position + new Vector2(10f, 19f), label, HorizontalAlignment.Left, 190f, 12, Colors.White);
+				if (!equipped.Taken && !string.IsNullOrEmpty(equipped.Label))
+				{
+					Rect2 takeRect = new(new Vector2(slot.End.X - 70f, slot.Position.Y + 2f), new Vector2(58f, 24f));
+					DrawButton(takeRect, "\u62ff\u53d6", new Color(0.26f, 0.42f, 0.58f));
+					_buttons.Add(new ButtonDef(takeRect, "take", _selectedContainerIndex * 100 + 50 + equipIndex));
+				}
+				rowY += 34f;
+			}
+			rowY += 6f;
+		}
+		foreach (string item in container.VisibleItems)
+		{
+			int itemIndex = container.VisibleItems.IndexOf(item);
+			Rect2 slot = new(new Vector2(panel.Position.X + 14f, rowY), new Vector2(332f, 28f));
+			DrawRect(slot, new Color(0.12f, 0.17f, 0.23f), true);
+			DrawRect(slot, new Color(0.5f, 0.66f, 0.86f), false, 1f);
+			DrawString(ThemeDB.FallbackFont, slot.Position + new Vector2(10f, 19f), item, HorizontalAlignment.Left, 180f, 12, Colors.White);
+			Rect2 takeRect = new(new Vector2(slot.End.X - 70f, slot.Position.Y + 2f), new Vector2(58f, 24f));
+			DrawButton(takeRect, "\u62ff\u53d6", new Color(0.26f, 0.42f, 0.58f));
+			_buttons.Add(new ButtonDef(takeRect, "take", _selectedContainerIndex * 100 + itemIndex));
+			rowY += 34f;
+		}
+		if (container.HiddenRemaining > 0)
+		{
+			Rect2 slot = new(new Vector2(panel.Position.X + 14f, rowY), new Vector2(332f, 32f));
+			DrawRect(slot, new Color(0.24f, 0.2f, 0.12f), true);
+			DrawRect(slot, new Color(0.76f, 0.63f, 0.28f), false, 1f);
+			DrawString(ThemeDB.FallbackFont, slot.Position + new Vector2(10f, 21f), $"\u672a\u660e\u7269\u54c1 x{container.HiddenRemaining}", HorizontalAlignment.Left, 160f, 12, Colors.White);
+			Rect2 searchRect = new(new Vector2(slot.End.X - 94f, slot.Position.Y + 4f), new Vector2(82f, 24f));
+			DrawButton(searchRect, "\u68c0\u89c6", new Color(0.54f, 0.42f, 0.18f));
+			_buttons.Add(new ButtonDef(searchRect, "search", _selectedContainerIndex));
+		}
+	}
+	private void DrawSearchConfirmDialog()
+	{
+		Rect2 panel = new(new Vector2(360f, 240f), new Vector2(480f, 210f));
+		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0f, 0f, 0f, 0.45f), true);
+		DrawRect(panel, new Color(0.05f, 0.05f, 0.06f, 0.98f), true);
+		DrawRect(panel, Colors.White, false, 2f);
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(22f, 32f), "\u5151\u6362\u641c\u7d22\u6b21\u6570", HorizontalAlignment.Left, -1f, 20, Colors.White);
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(22f, 68f), "\u5f53\u524d\u641c\u7d22\u6b21\u6570\u4e0d\u8db3\u3002\u662f\u5426\u82b1\u8d39 1 \u56de\u5408\u6362\u53d6 4 \u6b21\u641c\u7d22\uff0c", HorizontalAlignment.Left, 430f, 14, new Color(0.84f, 0.88f, 0.94f));
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(22f, 90f), "\u5e76\u7acb\u5373\u63ed\u793a\u8fd9\u4e2a\u5bb9\u5668\u7684\u4e0b\u4e00\u4ef6\u7269\u54c1\uff1f", HorizontalAlignment.Left, 430f, 14, new Color(0.84f, 0.88f, 0.94f));
+		Rect2 checkRect = new(new Vector2(panel.Position.X + 24f, panel.Position.Y + 126f), new Vector2(18f, 18f));
+		DrawRect(checkRect, new Color(0.08f, 0.08f, 0.1f), true);
+		DrawRect(checkRect, Colors.White, false, 1.2f);
+		if (_confirmSkipChecked)
+		{
+			DrawLine(checkRect.Position + new Vector2(3f, 9f), checkRect.Position + new Vector2(7f, 14f), new Color(0.56f, 0.95f, 0.62f), 2f);
+			DrawLine(checkRect.Position + new Vector2(7f, 14f), checkRect.Position + new Vector2(15f, 3f), new Color(0.56f, 0.95f, 0.62f), 2f);
+		}
+		_buttons.Add(new ButtonDef(checkRect, "toggle_confirm_skip"));
+		DrawString(ThemeDB.FallbackFont, checkRect.Position + new Vector2(28f, 14f), "\u672c\u6b21\u63a2\u7d22\u540e\u7eed\u4e0d\u518d\u63d0\u793a", HorizontalAlignment.Left, -1f, 13, Colors.White);
+		Rect2 yesRect = new(new Vector2(panel.Position.X + 24f, panel.End.Y - 46f), new Vector2(90f, 28f));
+		Rect2 noRect = new(new Vector2(panel.Position.X + 126f, panel.End.Y - 46f), new Vector2(90f, 28f));
+		DrawButton(yesRect, "\u786e\u8ba4", new Color(0.24f, 0.56f, 0.34f));
+		DrawButton(noRect, "\u53d6\u6d88", new Color(0.38f, 0.22f, 0.22f));
+		_buttons.Add(new ButtonDef(yesRect, "confirm_search_yes"));
+		_buttons.Add(new ButtonDef(noRect, "confirm_search_no"));
+	}
 	private void DrawEndOverlay()
 	{
 		Rect2 panel = new(new Vector2(250f, 170f), new Vector2(720f, 330f));
