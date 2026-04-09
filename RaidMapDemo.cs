@@ -38,6 +38,15 @@ public partial class RaidMapDemo : Node2D
 		Trinket,
 	}
 
+	private enum ItemRarity
+	{
+		White,
+		Green,
+		Blue,
+		Purple,
+		Gold,
+	}
+
 	private sealed class MapNode
 	{
 		public int Id;
@@ -55,11 +64,14 @@ public partial class RaidMapDemo : Node2D
 	{
 		public string Label = "";
 		public ContainerKind Kind;
+		public Vector2I GridSize = new(5, 4);
 		public readonly List<string> VisibleItems = new();
 		public readonly List<string> HiddenItems = new();
 		public readonly List<EquippedLoot> EquippedItems = new();
+		public readonly List<GridLootItem> GridItems = new();
+		public int ActiveSearchItemIndex = -1;
 		public int HiddenIndex;
-		public bool IsEmpty => VisibleItems.Count == 0 && HiddenIndex >= HiddenItems.Count && CountUntakenEquippedItems() == 0;
+		public bool IsEmpty => CountAvailableGridItems() == 0 && CountUntakenEquippedItems() == 0;
 		public int HiddenRemaining => HiddenItems.Count - HiddenIndex;
 
 		private int CountUntakenEquippedItems()
@@ -75,6 +87,25 @@ public partial class RaidMapDemo : Node2D
 
 			return count;
 		}
+
+		private int CountAvailableGridItems()
+		{
+			if (GridItems.Count == 0)
+			{
+				return VisibleItems.Count + Mathf.Max(0, HiddenItems.Count - HiddenIndex);
+			}
+
+			int count = 0;
+			foreach (GridLootItem item in GridItems)
+			{
+				if (!item.Taken)
+				{
+					count++;
+				}
+			}
+
+			return count;
+		}
 	}
 
 	private sealed class EquippedLoot
@@ -82,6 +113,18 @@ public partial class RaidMapDemo : Node2D
 		public EquipmentSlot Slot;
 		public string Label = "";
 		public bool Taken;
+	}
+
+	private sealed class GridLootItem
+	{
+		public string Label = "";
+		public ItemRarity Rarity;
+		public Vector2I Size;
+		public Vector2I Cell;
+		public bool Revealed;
+		public bool Taken;
+		public float SearchTime;
+		public float SearchProgress;
 	}
 
 	private sealed class AiSquad
@@ -157,6 +200,7 @@ public partial class RaidMapDemo : Node2D
 
 	public override void _Process(double delta)
 	{
+		UpdateContainerSearch((float)delta);
 		QueueRedraw();
 	}
 
@@ -444,6 +488,187 @@ public partial class RaidMapDemo : Node2D
 		}
 
 		elite.VisibleItems.Clear();
+	}
+
+	private void EnsureContainerGrid(LootContainer container)
+	{
+		if (container.GridItems.Count > 0)
+		{
+			return;
+		}
+
+		container.GridSize = GetContainerGridSize(container);
+		foreach (string item in container.VisibleItems)
+		{
+			AddGridItem(container, item, true);
+		}
+
+		for (int i = container.HiddenIndex; i < container.HiddenItems.Count; i++)
+		{
+			AddGridItem(container, container.HiddenItems[i], false);
+		}
+
+		container.VisibleItems.Clear();
+		container.HiddenItems.Clear();
+		container.HiddenIndex = 0;
+	}
+
+	private Vector2I GetContainerGridSize(LootContainer container) => container.Kind switch
+	{
+		ContainerKind.Room => new Vector2I(5, 4),
+		ContainerKind.CorpsePile => new Vector2I(6, 5),
+		ContainerKind.EliteCorpse => new Vector2I(5, 4),
+		_ => new Vector2I(5, 4),
+	};
+
+	private void AddGridItem(LootContainer container, string label, bool revealed)
+	{
+		GridLootItem item = CreateGridLootItem(label, revealed);
+		if (TryPlaceGridItem(container, item))
+		{
+			container.GridItems.Add(item);
+		}
+	}
+
+	private GridLootItem CreateGridLootItem(string label, bool revealed)
+	{
+		ItemRarity rarity = RollGridRarity(label);
+		Vector2I size = rarity switch
+		{
+			ItemRarity.White => _rng.Randf() < 0.6f ? new Vector2I(1, 1) : new Vector2I(1, 2),
+			ItemRarity.Green => _rng.Randf() < 0.5f ? new Vector2I(1, 2) : new Vector2I(2, 1),
+			ItemRarity.Blue => _rng.Randf() < 0.5f ? new Vector2I(2, 2) : new Vector2I(1, 3),
+			ItemRarity.Purple => new Vector2I(2, 2),
+			ItemRarity.Gold => new Vector2I(2, 3),
+			_ => Vector2I.One,
+		};
+
+		return new GridLootItem
+		{
+			Label = label,
+			Rarity = rarity,
+			Size = size,
+			Revealed = revealed,
+			SearchTime = GetGridSearchTime(rarity),
+		};
+	}
+
+	private ItemRarity RollGridRarity(string label)
+	{
+		if (label.Contains("遗物") || label.Contains("宝石")) return ItemRarity.Gold;
+		if (label.Contains("军刀") || label.Contains("锁甲") || label.Contains("长枪")) return ItemRarity.Blue;
+		if (label.Contains("坠饰") || label.Contains("徽记")) return ItemRarity.Purple;
+		if (label.Contains("口粮") || label.Contains("药")) return ItemRarity.Green;
+		return ItemRarity.White;
+	}
+
+	private float GetGridSearchTime(ItemRarity rarity) => rarity switch
+	{
+		ItemRarity.White => 0.8f,
+		ItemRarity.Green => 1.15f,
+		ItemRarity.Blue => 1.6f,
+		ItemRarity.Purple => 2.15f,
+		ItemRarity.Gold => 2.9f,
+		_ => 1f,
+	};
+
+	private bool TryPlaceGridItem(LootContainer container, GridLootItem item)
+	{
+		for (int y = 0; y <= container.GridSize.Y - item.Size.Y; y++)
+		{
+			for (int x = 0; x <= container.GridSize.X - item.Size.X; x++)
+			{
+				Vector2I cell = new(x, y);
+				if (!IsGridAreaFree(container, cell, item.Size))
+				{
+					continue;
+				}
+
+				item.Cell = cell;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool IsGridAreaFree(LootContainer container, Vector2I cell, Vector2I size)
+	{
+		foreach (GridLootItem existing in container.GridItems)
+		{
+			bool overlapX = cell.X < existing.Cell.X + existing.Size.X && cell.X + size.X > existing.Cell.X;
+			bool overlapY = cell.Y < existing.Cell.Y + existing.Size.Y && cell.Y + size.Y > existing.Cell.Y;
+			if (overlapX && overlapY)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private void UpdateContainerSearch(float delta)
+	{
+		if (_battleSim != null || _showSearchConfirm || _selectedContainerIndex < 0)
+		{
+			return;
+		}
+
+		MapNode node = _nodes[_playerNodeId];
+		if (_selectedContainerIndex < 0 || _selectedContainerIndex >= node.Containers.Count)
+		{
+			return;
+		}
+
+		LootContainer container = node.Containers[_selectedContainerIndex];
+		if (container.ActiveSearchItemIndex < 0 || container.ActiveSearchItemIndex >= container.GridItems.Count)
+		{
+			return;
+		}
+
+		GridLootItem item = container.GridItems[container.ActiveSearchItemIndex];
+		item.SearchProgress += delta;
+		if (item.SearchProgress < item.SearchTime)
+		{
+			return;
+		}
+
+		item.Revealed = true;
+		item.SearchProgress = item.SearchTime;
+		container.ActiveSearchItemIndex = -1;
+		LogEvent($"搜索完成，发现了 {item.Label}。");
+		if (_autoSearchEnabled)
+		{
+			StartSearchOnNextHiddenItem(_selectedContainerIndex);
+		}
+	}
+
+	private void StartSearchOnNextHiddenItem(int containerIndex)
+	{
+		MapNode node = _nodes[_playerNodeId];
+		if (containerIndex < 0 || containerIndex >= node.Containers.Count)
+		{
+			return;
+		}
+
+		LootContainer container = node.Containers[containerIndex];
+		EnsureContainerGrid(container);
+		if (container.ActiveSearchItemIndex >= 0)
+		{
+			return;
+		}
+
+		for (int i = 0; i < container.GridItems.Count; i++)
+		{
+			GridLootItem item = container.GridItems[i];
+			if (item.Revealed || item.Taken)
+			{
+				continue;
+			}
+
+			TrySearch(containerIndex * 100 + i);
+			return;
+		}
 	}
 
 	private void AdvanceTurn(string reason, int amount = 1, bool refreshStatus = true)
@@ -801,27 +1026,39 @@ public partial class RaidMapDemo : Node2D
 		}
 	}
 
-	private void TrySearch(int containerIndex)
+	private void TrySearch(int encodedIndex)
 	{
 		MapNode node = _nodes[_playerNodeId];
 		if (!CanSearch(node))
 		{
-			_status = "??????????????";
+			_status = "当前房间不够安全，无法搜索。";
 			return;
 		}
+
+		int containerIndex = encodedIndex / 100;
+		int itemIndex = encodedIndex % 100;
 		if (containerIndex < 0 || containerIndex >= node.Containers.Count)
 		{
 			return;
 		}
+
 		LootContainer container = node.Containers[containerIndex];
-		if (container.HiddenRemaining <= 0)
+		EnsureContainerGrid(container);
+		if (itemIndex < 0 || itemIndex >= container.GridItems.Count)
 		{
-			_status = "??????????????";
 			return;
 		}
+
+		GridLootItem item = container.GridItems[itemIndex];
+		if (item.Revealed || item.Taken)
+		{
+			_status = "这个容器里没有未检视物品了。";
+			return;
+		}
+
 		if (_searchActions <= 0)
 		{
-			_pendingRevealContainerIndex = containerIndex;
+			_pendingRevealContainerIndex = encodedIndex;
 			if (_skipSearchConfirm)
 			{
 				ConfirmSearchExchange(true);
@@ -831,11 +1068,11 @@ public partial class RaidMapDemo : Node2D
 			_showSearchConfirm = true;
 			return;
 		}
-		string item = container.HiddenItems[container.HiddenIndex];
-		container.HiddenIndex++;
-		container.VisibleItems.Add(item);
+
+		item.SearchProgress = 0f;
+		container.ActiveSearchItemIndex = itemIndex;
 		_searchActions--;
-		LogEvent($"?? {container.Label}???? {item}?");
+		LogEvent($"开始搜索 {container.Label} 中的物品。");
 		RefreshStatus();
 	}
 
@@ -848,9 +1085,10 @@ public partial class RaidMapDemo : Node2D
 		}
 
 		_selectedContainerIndex = containerIndex;
-		if (_autoSearchEnabled && CanSearch(node) && node.Containers[containerIndex].HiddenRemaining > 0)
+		EnsureContainerGrid(node.Containers[containerIndex]);
+		if (_autoSearchEnabled && CanSearch(node))
 		{
-			TrySearch(containerIndex);
+			StartSearchOnNextHiddenItem(containerIndex);
 			return;
 		}
 
@@ -918,6 +1156,26 @@ public partial class RaidMapDemo : Node2D
 			equipped.Taken = true;
 			AddLoot(equipped.Label);
 			LogEvent($"从 {container.Label} 取走了 {equipped.Label}。");
+			RefreshStatus();
+			return;
+		}
+
+		if (container.GridItems.Count > 0)
+		{
+			if (itemIndex < 0 || itemIndex >= container.GridItems.Count)
+			{
+				return;
+			}
+
+			GridLootItem gridItem = container.GridItems[itemIndex];
+			if (!gridItem.Revealed || gridItem.Taken)
+			{
+				return;
+			}
+
+			gridItem.Taken = true;
+			AddLoot(gridItem.Label);
+			LogEvent($"从 {container.Label} 取走了 {gridItem.Label}。");
 			RefreshStatus();
 			return;
 		}
@@ -1009,7 +1267,20 @@ public partial class RaidMapDemo : Node2D
 				}
 			}
 
-			count += container.VisibleItems.Count + container.HiddenRemaining;
+			if (container.GridItems.Count > 0)
+			{
+				foreach (GridLootItem item in container.GridItems)
+				{
+					if (!item.Taken)
+					{
+						count++;
+					}
+				}
+			}
+			else
+			{
+				count += container.VisibleItems.Count + container.HiddenRemaining;
+			}
 		}
 		return count;
 	}
@@ -1133,8 +1404,8 @@ public partial class RaidMapDemo : Node2D
 				DrawRect(rowRect, fill, true);
 				DrawRect(rowRect, new Color(0.34f, 0.37f, 0.42f), false, 1f);
 				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(10f, 17f), container.Label, HorizontalAlignment.Left, 170f, 12, Colors.White);
-				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(182f, 17f), $"\u660e\u9762 {container.VisibleItems.Count + CountAvailableEquipped(container)}", HorizontalAlignment.Left, 60f, 11, new Color(0.78f, 0.87f, 0.98f));
-				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(238f, 17f), $"\u672a\u63ed {container.HiddenRemaining}", HorizontalAlignment.Left, 56f, 11, new Color(0.92f, 0.84f, 0.6f));
+				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(182f, 17f), $"\u660e\u9762 {CountRevealedGridItems(container) + CountAvailableEquipped(container)}", HorizontalAlignment.Left, 60f, 11, new Color(0.78f, 0.87f, 0.98f));
+				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(238f, 17f), $"\u672a\u63ed {CountHiddenGridItems(container)}", HorizontalAlignment.Left, 56f, 11, new Color(0.92f, 0.84f, 0.6f));
 				Rect2 openRect = new(new Vector2(rowRect.End.X - 68f, rowRect.Position.Y + 2f), new Vector2(56f, 20f));
 				DrawButton(openRect, "\u6253\u5f00", new Color(0.23f, 0.4f, 0.58f));
 				_buttons.Add(new ButtonDef(openRect, "open_container", i));
@@ -1246,6 +1517,42 @@ public partial class RaidMapDemo : Node2D
 		}
 		return count;
 	}
+
+	private int CountRevealedGridItems(LootContainer container)
+	{
+		if (container.GridItems.Count == 0)
+		{
+			return container.VisibleItems.Count;
+		}
+
+		int count = 0;
+		foreach (GridLootItem item in container.GridItems)
+		{
+			if (item.Revealed && !item.Taken)
+			{
+				count++;
+			}
+		}
+		return count;
+	}
+
+	private int CountHiddenGridItems(LootContainer container)
+	{
+		if (container.GridItems.Count == 0)
+		{
+			return container.HiddenRemaining;
+		}
+
+		int count = 0;
+		foreach (GridLootItem item in container.GridItems)
+		{
+			if (!item.Revealed && !item.Taken)
+			{
+				count++;
+			}
+		}
+		return count;
+	}
 	private void DrawContainerPopup()
 	{
 		MapNode node = _nodes[_playerNodeId];
@@ -1254,10 +1561,11 @@ public partial class RaidMapDemo : Node2D
 			return;
 		}
 		LootContainer container = node.Containers[_selectedContainerIndex];
+		EnsureContainerGrid(container);
+		Vector2 cellSize = new(26f, 26f);
 		float equipmentHeight = container.Kind == ContainerKind.EliteCorpse ? 118f : 0f;
-		int visibleRows = Mathf.Max(1, container.VisibleItems.Count + (container.HiddenRemaining > 0 ? 1 : 0));
-		float bodyHeight = visibleRows * 34f + 56f + equipmentHeight;
-		Vector2 panelSize = new(360f, bodyHeight);
+		Vector2 panelSize = new(container.GridSize.X * cellSize.X + 40f, container.GridSize.Y * cellSize.Y + 78f + equipmentHeight);
+		panelSize.X = Mathf.Max(panelSize.X, 320f);
 		Rect2 panel = new((GetViewportRect().Size - panelSize) / 2f, panelSize);
 		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0f, 0f, 0f, 0.38f), true);
 		DrawRect(panel, new Color(0.08f, 0.09f, 0.11f), true);
@@ -1292,29 +1600,107 @@ public partial class RaidMapDemo : Node2D
 			}
 			rowY += 6f;
 		}
-		foreach (string item in container.VisibleItems)
+
+		Vector2 gridOrigin = new(panel.Position.X + 14f, rowY);
+		for (int y = 0; y < container.GridSize.Y; y++)
 		{
-			int itemIndex = container.VisibleItems.IndexOf(item);
-			Rect2 slot = new(new Vector2(panel.Position.X + 14f, rowY), new Vector2(332f, 28f));
-			DrawRect(slot, new Color(0.12f, 0.17f, 0.23f), true);
-			DrawRect(slot, new Color(0.5f, 0.66f, 0.86f), false, 1f);
-			DrawString(ThemeDB.FallbackFont, slot.Position + new Vector2(10f, 19f), item, HorizontalAlignment.Left, 180f, 12, Colors.White);
-			Rect2 takeRect = new(new Vector2(slot.End.X - 70f, slot.Position.Y + 2f), new Vector2(58f, 24f));
-			DrawButton(takeRect, "\u62ff\u53d6", new Color(0.26f, 0.42f, 0.58f));
-			_buttons.Add(new ButtonDef(takeRect, "take", _selectedContainerIndex * 100 + itemIndex));
-			rowY += 34f;
+			for (int x = 0; x < container.GridSize.X; x++)
+			{
+				Rect2 cellRect = new(gridOrigin + new Vector2(x * cellSize.X, y * cellSize.Y), cellSize - new Vector2(2f, 2f));
+				DrawRect(cellRect, new Color(0.09f, 0.1f, 0.12f), true);
+				DrawRect(cellRect, new Color(0.24f, 0.26f, 0.3f), false, 1f);
+			}
 		}
-		if (container.HiddenRemaining > 0)
+
+		for (int itemIndex = 0; itemIndex < container.GridItems.Count; itemIndex++)
 		{
-			Rect2 slot = new(new Vector2(panel.Position.X + 14f, rowY), new Vector2(332f, 32f));
-			DrawRect(slot, new Color(0.24f, 0.2f, 0.12f), true);
-			DrawRect(slot, new Color(0.76f, 0.63f, 0.28f), false, 1f);
-			DrawString(ThemeDB.FallbackFont, slot.Position + new Vector2(10f, 21f), $"\u672a\u660e\u7269\u54c1 x{container.HiddenRemaining}", HorizontalAlignment.Left, 160f, 12, Colors.White);
-			Rect2 searchRect = new(new Vector2(slot.End.X - 94f, slot.Position.Y + 4f), new Vector2(82f, 24f));
-			DrawButton(searchRect, "\u68c0\u89c6", new Color(0.54f, 0.42f, 0.18f));
-			_buttons.Add(new ButtonDef(searchRect, "search", _selectedContainerIndex));
+			GridLootItem item = container.GridItems[itemIndex];
+			if (item.Taken)
+			{
+				continue;
+			}
+
+			Rect2 itemRect = new(
+				gridOrigin + new Vector2(item.Cell.X * cellSize.X, item.Cell.Y * cellSize.Y),
+				new Vector2(item.Size.X * cellSize.X - 2f, item.Size.Y * cellSize.Y - 2f));
+
+			if (!item.Revealed)
+			{
+				DrawRect(itemRect, new Color(0.3f, 0.32f, 0.35f), true);
+				DrawRect(itemRect, new Color(0.62f, 0.64f, 0.67f), false, 1.2f);
+				DrawHiddenItemPattern(itemRect, new Color(0.55f, 0.57f, 0.6f, 0.65f));
+				if (container.ActiveSearchItemIndex < 0 || container.ActiveSearchItemIndex == itemIndex)
+				{
+					_buttons.Add(new ButtonDef(itemRect, "search", _selectedContainerIndex * 100 + itemIndex));
+				}
+			}
+			else
+			{
+				DrawRect(itemRect, GetGridRarityColor(item.Rarity), true);
+				DrawRect(itemRect, Colors.White, false, 1.2f);
+				DrawString(ThemeDB.FallbackFont, itemRect.Position + new Vector2(4f, 16f), item.Label, HorizontalAlignment.Left, itemRect.Size.X - 6f, 10, Colors.Black);
+				_buttons.Add(new ButtonDef(itemRect, "take", _selectedContainerIndex * 100 + itemIndex));
+			}
+
+			if (container.ActiveSearchItemIndex == itemIndex && !item.Revealed)
+			{
+				Vector2 center = itemRect.GetCenter();
+				float ratio = Mathf.Clamp(item.SearchProgress / item.SearchTime, 0f, 0.98f);
+				float endAngle = -Mathf.Pi / 2f + Mathf.Tau * ratio;
+				DrawArc(center, 10f, -Mathf.Pi / 2f, endAngle, 24, GetGridRarityColor(item.Rarity), 3f);
+			}
 		}
 	}
+
+	private void DrawHiddenItemPattern(Rect2 rect, Color color)
+	{
+		float left = rect.Position.X;
+		float right = rect.End.X;
+		float top = rect.Position.Y;
+		float bottom = rect.End.Y;
+		for (float offset = -rect.Size.Y; offset < rect.Size.X; offset += 8f)
+		{
+			float c = left + offset + bottom;
+			List<Vector2> intersections = new(4);
+
+			float xOnBottom = c - bottom;
+			if (xOnBottom >= left && xOnBottom <= right) intersections.Add(new Vector2(xOnBottom, bottom));
+			float xOnTop = c - top;
+			if (xOnTop >= left && xOnTop <= right) intersections.Add(new Vector2(xOnTop, top));
+			float yOnLeft = c - left;
+			if (yOnLeft >= top && yOnLeft <= bottom) AddUniquePoint(intersections, new Vector2(left, yOnLeft));
+			float yOnRight = c - right;
+			if (yOnRight >= top && yOnRight <= bottom) AddUniquePoint(intersections, new Vector2(right, yOnRight));
+
+			if (intersections.Count >= 2)
+			{
+				DrawLine(intersections[0], intersections[1], color, 1f);
+			}
+		}
+	}
+
+	private static void AddUniquePoint(List<Vector2> points, Vector2 point)
+	{
+		foreach (Vector2 existing in points)
+		{
+			if (existing.DistanceSquaredTo(point) < 0.25f)
+			{
+				return;
+			}
+		}
+
+		points.Add(point);
+	}
+
+	private static Color GetGridRarityColor(ItemRarity rarity) => rarity switch
+	{
+		ItemRarity.White => new Color(0.82f, 0.84f, 0.87f),
+		ItemRarity.Green => new Color(0.48f, 0.85f, 0.45f),
+		ItemRarity.Blue => new Color(0.36f, 0.7f, 1f),
+		ItemRarity.Purple => new Color(0.72f, 0.48f, 0.92f),
+		_ => new Color(1f, 0.82f, 0.32f),
+	};
+
 	private void DrawSearchConfirmDialog()
 	{
 		Rect2 panel = new(new Vector2(360f, 240f), new Vector2(480f, 210f));
