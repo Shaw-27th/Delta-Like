@@ -1564,32 +1564,34 @@ public partial class RaidMapDemo : Node2D
 		EnsureContainerGrid(container);
 		Vector2 cellSize = new(26f, 26f);
 		float equipmentHeight = container.Kind == ContainerKind.EliteCorpse ? 118f : 0f;
-		Vector2 panelSize = new(container.GridSize.X * cellSize.X + 40f, container.GridSize.Y * cellSize.Y + 78f + equipmentHeight);
-		panelSize.X = Mathf.Max(panelSize.X, 320f);
+		float gridWidth = container.GridSize.X * cellSize.X + 26f;
+		Vector2 panelSize = new(Mathf.Max(gridWidth + 28f, 356f), container.GridSize.Y * cellSize.Y + 96f + equipmentHeight);
 		Rect2 panel = new((GetViewportRect().Size - panelSize) / 2f, panelSize);
 		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0f, 0f, 0f, 0.38f), true);
 		DrawRect(panel, new Color(0.08f, 0.09f, 0.11f), true);
 		DrawRect(panel, Colors.White, false, 2f);
-		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(14f, 22f), container.Label, HorizontalAlignment.Left, 220f, 14, Colors.White);
-		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(220f, 22f), GetContainerKindLabel(container.Kind), HorizontalAlignment.Left, 100f, 12, new Color(0.93f, 0.84f, 0.58f));
-		Rect2 closeRect = new(new Vector2(panel.End.X - 30f, panel.Position.Y + 8f), new Vector2(20f, 20f));
+		Rect2 titleBar = new(panel.Position + new Vector2(1f, 1f), new Vector2(panel.Size.X - 2f, 30f));
+		DrawRect(titleBar, new Color(0.12f, 0.13f, 0.16f), true);
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(14f, 21f), container.Label, HorizontalAlignment.Left, 190f, 14, Colors.White);
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(panel.Size.X - 102f, 21f), GetContainerKindLabel(container.Kind), HorizontalAlignment.Left, 68f, 12, new Color(0.93f, 0.84f, 0.58f));
+		Rect2 closeRect = new(new Vector2(panel.End.X - 28f, panel.Position.Y + 5f), new Vector2(20f, 20f));
 		DrawRect(closeRect, new Color(0.26f, 0.14f, 0.14f), true);
 		DrawRect(closeRect, Colors.White, false, 1.2f);
 		DrawString(ThemeDB.FallbackFont, closeRect.Position + new Vector2(6f, 15f), "X", HorizontalAlignment.Left, -1f, 12, Colors.White);
 		_buttons.Add(new ButtonDef(closeRect, "close_container"));
-		float rowY = panel.Position.Y + 36f;
+		float rowY = panel.Position.Y + 42f;
 		if (container.Kind == ContainerKind.EliteCorpse)
 		{
-			DrawString(ThemeDB.FallbackFont, new Vector2(panel.Position.X + 14f, rowY), "\u88c5\u5907\u680f", HorizontalAlignment.Left, -1f, 13, new Color(0.9f, 0.92f, 0.96f));
-			rowY += 12f;
+			DrawString(ThemeDB.FallbackFont, new Vector2(panel.Position.X + 14f, rowY), "装备栏", HorizontalAlignment.Left, -1f, 13, new Color(0.9f, 0.92f, 0.96f));
+			rowY += 16f;
 			for (int equipIndex = 0; equipIndex < container.EquippedItems.Count; equipIndex++)
 			{
 				EquippedLoot equipped = container.EquippedItems[equipIndex];
-				Rect2 slot = new(new Vector2(panel.Position.X + 14f, rowY), new Vector2(332f, 28f));
+				Rect2 slot = new(new Vector2(panel.Position.X + 14f, rowY), new Vector2(panel.Size.X - 28f, 28f));
 				DrawRect(slot, new Color(0.14f, 0.16f, 0.2f), true);
 				DrawRect(slot, new Color(0.5f, 0.66f, 0.86f), false, 1f);
 				string label = string.IsNullOrEmpty(equipped.Label) || equipped.Taken ? $"{GetEquipmentSlotLabel(equipped.Slot)}\uff1a\u7a7a" : $"{GetEquipmentSlotLabel(equipped.Slot)}\uff1a{equipped.Label}";
-				DrawString(ThemeDB.FallbackFont, slot.Position + new Vector2(10f, 19f), label, HorizontalAlignment.Left, 190f, 12, Colors.White);
+				DrawString(ThemeDB.FallbackFont, slot.Position + new Vector2(10f, 19f), label, HorizontalAlignment.Left, slot.Size.X - 86f, 12, Colors.White);
 				if (!equipped.Taken && !string.IsNullOrEmpty(equipped.Label))
 				{
 					Rect2 takeRect = new(new Vector2(slot.End.X - 70f, slot.Position.Y + 2f), new Vector2(58f, 24f));
@@ -1598,10 +1600,12 @@ public partial class RaidMapDemo : Node2D
 				}
 				rowY += 34f;
 			}
-			rowY += 6f;
+			rowY += 8f;
 		}
 
-		Vector2 gridOrigin = new(panel.Position.X + 14f, rowY);
+		DrawString(ThemeDB.FallbackFont, new Vector2(panel.Position.X + 14f, rowY), "背包", HorizontalAlignment.Left, -1f, 13, new Color(0.9f, 0.92f, 0.96f));
+		rowY += 16f;
+		Vector2 gridOrigin = new(panel.Position.X + (panel.Size.X - gridWidth) * 0.5f, rowY);
 		for (int y = 0; y < container.GridSize.Y; y++)
 		{
 			for (int x = 0; x < container.GridSize.X; x++)
