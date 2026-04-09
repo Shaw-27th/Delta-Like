@@ -161,6 +161,7 @@ public partial class RaidMapDemo : Node2D
 		public bool EnemyHasElite;
 		public MapNode Node;
 		public AiSquad Squad;
+		public string PromptText = "";
 	}
 
 	private readonly struct ButtonDef
@@ -192,6 +193,7 @@ public partial class RaidMapDemo : Node2D
 	private readonly Rect2 _sideRect = new(new Vector2(810f, 30f), new Vector2(360f, 660f));
 
 	private Encounter _encounter;
+	private Encounter _pendingEncounter;
 	private RoomBattleSim _battleSim;
 	private int _playerNodeId;
 	private int _turn;
@@ -246,7 +248,7 @@ public partial class RaidMapDemo : Node2D
 			}
 		}
 
-		if (_inHideout || _runEnded || _battleSim != null || _selectedContainerIndex >= 0)
+		if (_inHideout || _runEnded || _battleSim != null || _pendingEncounter != null || _selectedContainerIndex >= 0)
 		{
 			return;
 		}
@@ -275,6 +277,10 @@ public partial class RaidMapDemo : Node2D
 		if (_selectedContainerIndex >= 0)
 		{
 			DrawContainerPopup();
+		}
+		if (_pendingEncounter != null)
+		{
+			DrawEncounterPrompt();
 		}
 		if (_runEnded)
 		{
@@ -409,6 +415,19 @@ public partial class RaidMapDemo : Node2D
 
 	private void HandleArrival(MapNode node)
 	{
+		AiSquad encounteredSquad = GetSquadAtNode(node.Id);
+		if (encounteredSquad != null)
+		{
+			QueueEncounter(node, encounteredSquad.Name, encounteredSquad.Strength + 8, encounteredSquad, true, $"你在 {node.Name} 遭遇了 {encounteredSquad.Name}。");
+			return;
+		}
+
+		if (node.Threat > 0)
+		{
+			QueueEncounter(node, $"{node.Name}守军", node.Threat * 4 + 6, null, node.Type == NodeType.Battle, $"你进入了 {node.Name}，守军拦住了去路。");
+			return;
+		}
+
 		AiSquad squad = GetSquadAtNode(node.Id);
 		if (squad != null)
 		{
@@ -443,6 +462,38 @@ public partial class RaidMapDemo : Node2D
 		AddChild(_battleSim);
 		_battleSim.BattleFinished += OnBattleFinished;
 		_battleSim.Setup(node.Name, _playerHp, _playerStrength, _runSoldiers.Count, enemyPower, hasElite, enemyName);
+	}
+
+	private void QueueEncounter(MapNode node, string enemyName, int enemyPower, AiSquad squad, bool hasElite, string promptText)
+	{
+		if (_selectedContainerIndex >= 0)
+		{
+			_selectedContainerIndex = -1;
+		}
+
+		_pendingEncounter = new Encounter
+		{
+			EnemyName = enemyName,
+			TurnCost = 1,
+			EnemyPower = enemyPower,
+			EnemyHasElite = hasElite,
+			Node = node,
+			Squad = squad,
+			PromptText = promptText,
+		};
+		_status = promptText;
+	}
+
+	private void StartPendingEncounter()
+	{
+		if (_pendingEncounter == null)
+		{
+			return;
+		}
+
+		Encounter pending = _pendingEncounter;
+		_pendingEncounter = null;
+		StartEncounter(pending.Node, pending.EnemyName, pending.EnemyPower, pending.Squad, pending.EnemyHasElite);
 	}
 
 	private void OnBattleFinished(bool victory, bool heroAlive, int remainingHp, int remainingSoldiers, int remainingStrength)
@@ -763,6 +814,7 @@ public partial class RaidMapDemo : Node2D
 		{
 			_turn++;
 			SimulateAiTurn();
+			CheckPlayerNodeEncounterAfterTimeAdvance();
 		}
 
 		LogEvent($"第 {_turn} 回合：{reason}");
@@ -881,6 +933,27 @@ public partial class RaidMapDemo : Node2D
 				b.RivalId = i;
 				LogEvent($"{a.Name} 与 {b.Name} 在 {_nodes[a.NodeId].Name} 交战。");
 			}
+		}
+	}
+
+	private void CheckPlayerNodeEncounterAfterTimeAdvance()
+	{
+		if (_runEnded || _battleSim != null || _pendingEncounter != null || _inHideout)
+		{
+			return;
+		}
+
+		MapNode node = _nodes[_playerNodeId];
+		AiSquad squad = GetSquadAtNode(node.Id);
+		if (squad != null)
+		{
+			QueueEncounter(node, squad.Name, squad.Strength + 8, squad, true, $"{squad.Name} 在时间推进中杀到了 {node.Name}。");
+			return;
+		}
+
+		if (node.Threat > 0)
+		{
+			QueueEncounter(node, $"{node.Name}守军", node.Threat * 4 + 6, null, node.Type == NodeType.Battle, $"{node.Name} 的敌人重新控制了局面。");
 		}
 	}
 
@@ -1118,6 +1191,9 @@ public partial class RaidMapDemo : Node2D
 			case "toggle_auto_search":
 				_autoSearchEnabled = !_autoSearchEnabled;
 				_status = _autoSearchEnabled ? "已开启自动搜索。打开容器时会自动揭示物品。" : "已关闭自动搜索。";
+				break;
+			case "encounter_fight":
+				StartPendingEncounter();
 				break;
 			case "confirm_search_yes":
 			case "confirm_search_no":
@@ -1971,6 +2047,26 @@ public partial class RaidMapDemo : Node2D
 		ItemRarity.Purple => new Color(0.72f, 0.48f, 0.92f),
 		_ => new Color(1f, 0.82f, 0.32f),
 	};
+
+	private void DrawEncounterPrompt()
+	{
+		if (_pendingEncounter == null)
+		{
+			return;
+		}
+
+		Rect2 panel = new(new Vector2(360f, 250f), new Vector2(420f, 170f));
+		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0f, 0f, 0f, 0.45f), true);
+		DrawRect(panel, new Color(0.05f, 0.05f, 0.06f, 0.98f), true);
+		DrawRect(panel, Colors.White, false, 2f);
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(20f, 30f), "遭遇敌人", HorizontalAlignment.Left, -1f, 20, Colors.White);
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(20f, 66f), _pendingEncounter.PromptText, HorizontalAlignment.Left, 380f, 14, new Color(0.84f, 0.88f, 0.94f));
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(20f, 96f), $"敌方：{_pendingEncounter.EnemyName}", HorizontalAlignment.Left, 380f, 13, new Color(0.95f, 0.78f, 0.78f));
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(20f, 118f), "当前仅可选择战斗。", HorizontalAlignment.Left, 380f, 13, new Color(0.86f, 0.9f, 0.95f));
+		Rect2 fightRect = new(new Vector2(panel.Position.X + 20f, panel.End.Y - 42f), new Vector2(92f, 28f));
+		DrawButton(fightRect, "战斗", new Color(0.54f, 0.26f, 0.22f));
+		_buttons.Add(new ButtonDef(fightRect, "encounter_fight"));
+	}
 
 	private void DrawSearchConfirmDialog()
 	{
