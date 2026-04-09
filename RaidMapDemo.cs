@@ -148,6 +148,7 @@ public partial class RaidMapDemo : Node2D
 		public int Strength;
 		public int Supplies;
 		public AiIntent Intent;
+		public int IntentTargetNodeId = -1;
 		public int BusyTurns;
 		public int RivalId = -1;
 		public readonly List<string> Loot = new();
@@ -945,6 +946,7 @@ public partial class RaidMapDemo : Node2D
 				if (squad.NodeId == extractId)
 				{
 					squad.Intent = AiIntent.Extracted;
+					squad.IntentTargetNodeId = extractId;
 					LogEvent($"{squad.Name} 已撤离，带走了 {squad.Loot.Count} 件战利品。");
 				}
 				else
@@ -958,6 +960,7 @@ public partial class RaidMapDemo : Node2D
 			if (node.Threat > 0)
 			{
 				squad.Intent = AiIntent.Clearing;
+				squad.IntentTargetNodeId = node.Id;
 				squad.BusyTurns = _rng.RandiRange(1, 2);
 				LogEvent($"{squad.Name} 开始清理 {node.Name}。");
 				continue;
@@ -966,6 +969,7 @@ public partial class RaidMapDemo : Node2D
 			if (CanAiLootNode(node))
 			{
 				squad.Intent = AiIntent.Looting;
+				squad.IntentTargetNodeId = node.Id;
 				squad.BusyTurns = 1;
 				LogEvent($"{squad.Name} 开始搜刮 {node.Name}。");
 				continue;
@@ -1000,6 +1004,7 @@ public partial class RaidMapDemo : Node2D
 		}
 
 		squad.Intent = AiIntent.Idle;
+		squad.IntentTargetNodeId = -1;
 	}
 
 	private void ResolveAiMeetings()
@@ -1022,6 +1027,8 @@ public partial class RaidMapDemo : Node2D
 
 				a.Intent = AiIntent.Fighting;
 				b.Intent = AiIntent.Fighting;
+				a.IntentTargetNodeId = a.NodeId;
+				b.IntentTargetNodeId = b.NodeId;
 				a.BusyTurns = _rng.RandiRange(3, 5);
 				b.BusyTurns = a.BusyTurns;
 				a.RivalId = j;
@@ -1057,6 +1064,7 @@ public partial class RaidMapDemo : Node2D
 		if (squad.RivalId < 0 || squad.RivalId >= _aiSquads.Count)
 		{
 			squad.Intent = AiIntent.Idle;
+			squad.IntentTargetNodeId = -1;
 			return;
 		}
 
@@ -1064,6 +1072,7 @@ public partial class RaidMapDemo : Node2D
 		if (!rival.IsAlive)
 		{
 			squad.Intent = AiIntent.Idle;
+			squad.IntentTargetNodeId = -1;
 			squad.RivalId = -1;
 			return;
 		}
@@ -1077,10 +1086,12 @@ public partial class RaidMapDemo : Node2D
 		AiSquad loser = winner == squad ? rival : squad;
 		winner.Strength = Mathf.Max(1, winner.Strength - _rng.RandiRange(1, 3));
 		winner.Intent = AiIntent.Idle;
+		winner.IntentTargetNodeId = -1;
 		winner.BusyTurns = 0;
 		winner.RivalId = -1;
 		loser.Strength = 0;
 		loser.Intent = AiIntent.Defeated;
+		loser.IntentTargetNodeId = -1;
 		loser.BusyTurns = 0;
 		loser.RivalId = -1;
 		MapNode node = _nodes[winner.NodeId];
@@ -1182,10 +1193,12 @@ public partial class RaidMapDemo : Node2D
 		int nextId = FindNextStep(squad.NodeId, targetId);
 		if (nextId == squad.NodeId)
 		{
+			squad.IntentTargetNodeId = targetId;
 			return;
 		}
 		squad.NodeId = nextId;
 		squad.Intent = intent;
+		squad.IntentTargetNodeId = targetId;
 		squad.Supplies = Mathf.Max(0, squad.Supplies - 1);
 		LogEvent($"{squad.Name} 移动到了 {_nodes[nextId].Name}。");
 	}
@@ -1806,6 +1819,7 @@ public partial class RaidMapDemo : Node2D
 				DrawCircle(badge, 9f, new Color(0.42f, 0.08f, 0.08f, 0.95f));
 				DrawCircle(badge, 7f, new Color(0.92f, 0.34f, 0.3f));
 				DrawString(ThemeDB.FallbackFont, node.Position + GetSquadLabelOffset(node.Id), squad.Name, HorizontalAlignment.Left, -1f, 10, new Color(1f, 0.84f, 0.8f));
+				DrawString(ThemeDB.FallbackFont, node.Position + GetSquadIntentOffset(node.Id), GetAiIntentSummary(squad), HorizontalAlignment.Left, -1f, 9, new Color(0.92f, 0.92f, 0.84f));
 			}
 		}
 
@@ -1916,6 +1930,15 @@ public partial class RaidMapDemo : Node2D
 		10 => new Vector2(10f, 30f),
 		12 => new Vector2(6f, 30f),
 		_ => new Vector2(14f, 42f),
+	};
+
+	private Vector2 GetSquadIntentOffset(int nodeId) => nodeId switch
+	{
+		3 => new Vector2(-6f, 42f),
+		9 => new Vector2(10f, 42f),
+		10 => new Vector2(10f, 42f),
+		12 => new Vector2(6f, 42f),
+		_ => new Vector2(14f, 54f),
 	};
 
 	private Color GetNodeColor(MapNode node, bool clearVision)
@@ -2395,4 +2418,35 @@ public partial class RaidMapDemo : Node2D
 		AiIntent.Defeated => "已被击败",
 		_ => "未知",
 	};
+	private string GetAiIntentSummary(AiSquad squad) => squad.Intent switch
+	{
+		AiIntent.Moving => $"前往：{this.GetNodeShortName(squad.IntentTargetNodeId)}",
+		AiIntent.Clearing => $"清理：{this.GetNodeShortName(squad.IntentTargetNodeId)}",
+		AiIntent.Looting => $"搜刮：{this.GetNodeShortName(squad.IntentTargetNodeId)}",
+		AiIntent.Fighting => $"交战：{this.GetRivalName(squad)}",
+		AiIntent.Extracting => $"撤离：{this.GetNodeShortName(squad.IntentTargetNodeId)}",
+		AiIntent.Extracted => "已撤离",
+		AiIntent.Defeated => "已败退",
+		_ => "待机",
+	};
+
+	private string GetNodeShortName(int nodeId)
+	{
+		if (nodeId < 0 || nodeId >= _nodes.Count)
+		{
+			return "未知";
+		}
+
+		return _nodes[nodeId].Name;
+	}
+
+	private string GetRivalName(AiSquad squad)
+	{
+		if (squad.RivalId < 0 || squad.RivalId >= _aiSquads.Count)
+		{
+			return "未知";
+		}
+
+		return _aiSquads[squad.RivalId].Name;
+	}
 }
