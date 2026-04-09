@@ -1821,7 +1821,14 @@ public partial class RaidMapDemo : Node2D
 				DrawString(ThemeDB.FallbackFont, node.Position + GetSquadLabelOffset(node.Id), squad.Name, HorizontalAlignment.Left, -1f, 10, new Color(1f, 0.84f, 0.8f));
 				Vector2 intentPos = node.Position + GetSquadIntentOffset(node.Id);
 				DrawAiIntentIcon(intentPos + new Vector2(6f, -3f), squad.Intent);
-				DrawString(ThemeDB.FallbackFont, intentPos + new Vector2(18f, 0f), GetAiIntentSummary(squad), HorizontalAlignment.Left, -1f, 9, new Color(0.92f, 0.92f, 0.84f));
+				DrawString(ThemeDB.FallbackFont, intentPos + new Vector2(18f, 0f), $"现：{GetAiIntentSummary(squad)}", HorizontalAlignment.Left, -1f, 9, new Color(0.92f, 0.92f, 0.84f));
+				DrawString(ThemeDB.FallbackFont, intentPos + new Vector2(18f, 12f), $"后：{GetAiNextActionSummary(squad)}", HorizontalAlignment.Left, -1f, 9, new Color(0.72f, 0.86f, 0.98f, 0.95f));
+
+				int nextNodeId = GetAiPredictedNextNodeId(squad);
+				if (nextNodeId >= 0 && nextNodeId < _nodes.Count && nextNodeId != squad.NodeId)
+				{
+					DrawPredictedMoveArrow(node.Position, _nodes[nextNodeId].Position);
+				}
 			}
 		}
 
@@ -1986,6 +1993,24 @@ public partial class RaidMapDemo : Node2D
 				DrawCircle(center, 2f, fg);
 				break;
 		}
+	}
+
+	private void DrawPredictedMoveArrow(Vector2 from, Vector2 to)
+	{
+		Vector2 direction = (to - from).Normalized();
+		if (direction == Vector2.Zero)
+		{
+			return;
+		}
+
+		Vector2 start = from + direction * 30f;
+		Vector2 end = from + direction * 54f;
+		Color color = new(0.62f, 0.88f, 0.96f, 0.8f);
+		DrawLine(start, end, color, 1.8f);
+
+		Vector2 normal = new(-direction.Y, direction.X);
+		DrawLine(end, end - direction * 7f + normal * 4f, color, 1.8f);
+		DrawLine(end, end - direction * 7f - normal * 4f, color, 1.8f);
 	}
 
 	private Color GetNodeColor(MapNode node, bool clearVision)
@@ -2476,6 +2501,85 @@ public partial class RaidMapDemo : Node2D
 		AiIntent.Defeated => "已败退",
 		_ => "待机",
 	};
+
+	private string GetAiNextActionSummary(AiSquad squad)
+	{
+		if (!squad.IsAlive)
+		{
+			return squad.Intent == AiIntent.Extracted ? "已撤离" : "已败退";
+		}
+
+		if (squad.BusyTurns > 1)
+		{
+			return squad.Intent switch
+			{
+				AiIntent.Clearing => $"继续清图：{this.GetNodeShortName(squad.NodeId)}",
+				AiIntent.Looting => $"继续搜刮：{this.GetNodeShortName(squad.NodeId)}",
+				AiIntent.Fighting => $"继续交战：{this.GetRivalName(squad)}",
+				_ => "继续当前行动",
+			};
+		}
+
+		if (squad.BusyTurns == 1)
+		{
+			return squad.Intent switch
+			{
+				AiIntent.Clearing => "完成清图",
+				AiIntent.Looting => "完成搜刮",
+				AiIntent.Fighting => "分出胜负",
+				_ => "完成当前行动",
+			};
+		}
+
+		int nextNodeId = this.GetAiPredictedNextNodeId(squad);
+		if (nextNodeId >= 0 && nextNodeId != squad.NodeId)
+		{
+			return $"移动：{this.GetNodeShortName(nextNodeId)}";
+		}
+
+		if (squad.Strength <= 3 || squad.Supplies <= 0 || squad.Loot.Count >= 4)
+		{
+			int extractId = this.FindExtractNode();
+			return squad.NodeId == extractId ? "撤离完成" : $"撤离：{this.GetNodeShortName(extractId)}";
+		}
+
+		MapNode node = _nodes[squad.NodeId];
+		if (node.Threat > 0)
+		{
+			return $"清图：{this.GetNodeShortName(node.Id)}";
+		}
+
+		if (this.CanAiLootNode(node))
+		{
+			return $"搜刮：{this.GetNodeShortName(node.Id)}";
+		}
+
+		return "待机";
+	}
+
+	private int GetAiPredictedNextNodeId(AiSquad squad)
+	{
+		if (!squad.IsAlive || squad.BusyTurns > 0)
+		{
+			return -1;
+		}
+
+		if (squad.Strength <= 3 || squad.Supplies <= 0 || squad.Loot.Count >= 4)
+		{
+			int extractId = this.FindExtractNode();
+			return squad.NodeId == extractId ? -1 : this.FindNextStep(squad.NodeId, extractId);
+		}
+
+		MapNode node = _nodes[squad.NodeId];
+		if (node.Threat > 0 || this.CanAiLootNode(node))
+		{
+			return -1;
+		}
+
+		int targetId = this.PickAiTargetNode(squad);
+		int nextId = this.FindNextStep(squad.NodeId, targetId);
+		return nextId == squad.NodeId ? -1 : nextId;
+	}
 
 	private string GetNodeShortName(int nodeId)
 	{
