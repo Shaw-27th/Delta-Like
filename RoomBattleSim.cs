@@ -7,12 +7,23 @@ public partial class RoomBattleSim : Node2D
 	[Signal]
 	public delegate void BattleFinishedEventHandler(bool victory, bool heroAlive, int remainingHp, int remainingSoldiers, int remainingStrength);
 
+	private enum BattleRow
+	{
+		Front,
+		Back,
+	}
+
 	private sealed class BattleUnit
 	{
 		public string Name = "";
 		public bool IsPlayerSide;
 		public bool IsHero;
+		public bool IsRanged;
+		public BattleRow Row;
+		public int FormationSlot;
+		public int FormationCount;
 		public Vector2 Position;
+		public Vector2 AnchorPosition;
 		public int Hp;
 		public int MaxHp;
 		public float Speed;
@@ -73,6 +84,27 @@ public partial class RoomBattleSim : Node2D
 
 		PushLog($"在 {_title} 发生战斗。");
 		PushLog("双方进入房间自动交战。");
+		_units.Clear();
+		_log.Clear();
+
+		this.AddUnit("英雄", true, true, true, BattleRow.Back, 0, 1, this.GetFormationPoint(true, BattleRow.Back, 0, 1), Mathf.Clamp(playerHp, 10, 24), 46f, 118f, 3, 6, new Color(0.3f, 0.82f, 1f));
+		for (int i = 0; i < allyCount; i++)
+		{
+			this.AddUnit($"士兵{i + 1}", true, false, false, BattleRow.Front, i, allyCount, this.GetFormationPoint(true, BattleRow.Front, i, allyCount), 10, 62f, 24f, 1, 3, new Color(0.42f, 0.9f, 0.65f));
+		}
+
+		if (enemyHasElite)
+		{
+			this.AddUnit(enemyName, false, true, true, BattleRow.Back, 0, 1, this.GetFormationPoint(false, BattleRow.Back, 0, 1), Mathf.Clamp(enemyPower + 6, 12, 28), 44f, 112f, 3, 6, new Color(0.95f, 0.48f, 0.42f));
+		}
+
+		for (int i = 0; i < enemyCount; i++)
+		{
+			this.AddUnit($"敌兵{i + 1}", false, false, false, BattleRow.Front, i, enemyCount, this.GetFormationPoint(false, BattleRow.Front, i, enemyCount), 8, 58f, 22f, 1, 3, new Color(0.92f, 0.34f, 0.34f));
+		}
+
+		this.PushLog($"在 {_title} 发生战斗。");
+		this.PushLog("前排会优先接敌，后排在掩护下输出。");
 		QueueRedraw();
 	}
 
@@ -93,7 +125,7 @@ public partial class RoomBattleSim : Node2D
 			}
 
 			unit.Cooldown = Mathf.Max(0f, unit.Cooldown - dt);
-			BattleUnit target = FindNearestEnemy(unit);
+			BattleUnit target = FindTarget(unit);
 			if (target == null)
 			{
 				continue;
@@ -103,7 +135,13 @@ public partial class RoomBattleSim : Node2D
 			float distance = toTarget.Length();
 			if (distance > unit.Range)
 			{
-				Vector2 dir = toTarget.Normalized();
+				Vector2 moveTarget = target.Position;
+				if (unit.IsRanged && HasLivingFrontliner(unit.IsPlayerSide))
+				{
+					Vector2 desiredOffset = toTarget.Normalized() * (unit.Range * 0.78f);
+					moveTarget = target.Position - desiredOffset;
+				}
+				Vector2 dir = (moveTarget - unit.Position).Normalized();
 				unit.Position += dir * unit.Speed * dt;
 				unit.Position = ClampToArena(unit.Position);
 				continue;
@@ -140,6 +178,12 @@ public partial class RoomBattleSim : Node2D
 		DrawRect(_arenaRect, new Color(0.1f, 0.11f, 0.13f), true);
 		DrawRect(_arenaRect, new Color(0.28f, 0.31f, 0.35f), false, 2f);
 		DrawLine(new Vector2(_arenaRect.GetCenter().X, _arenaRect.Position.Y), new Vector2(_arenaRect.GetCenter().X, _arenaRect.End.Y), new Color(0.2f, 0.22f, 0.26f), 2f);
+		DrawLine(new Vector2(_arenaRect.Position.X + 180f, _arenaRect.Position.Y + 20f), new Vector2(_arenaRect.Position.X + 180f, _arenaRect.End.Y - 20f), new Color(0.2f, 0.32f, 0.26f, 0.55f), 1.5f);
+		DrawLine(new Vector2(_arenaRect.End.X - 180f, _arenaRect.Position.Y + 20f), new Vector2(_arenaRect.End.X - 180f, _arenaRect.End.Y - 20f), new Color(0.32f, 0.2f, 0.22f, 0.55f), 1.5f);
+		DrawString(ThemeDB.FallbackFont, _arenaRect.Position + new Vector2(20f, 24f), "我方后排", HorizontalAlignment.Left, -1f, 12, new Color(0.7f, 0.9f, 1f, 0.72f));
+		DrawString(ThemeDB.FallbackFont, _arenaRect.Position + new Vector2(104f, 24f), "我方前排", HorizontalAlignment.Left, -1f, 12, new Color(0.72f, 1f, 0.82f, 0.72f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(_arenaRect.End.X - 160f, _arenaRect.Position.Y + 24f), "敌方前排", HorizontalAlignment.Left, -1f, 12, new Color(1f, 0.8f, 0.8f, 0.72f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(_arenaRect.End.X - 74f, _arenaRect.Position.Y + 24f), "敌方后排", HorizontalAlignment.Left, -1f, 12, new Color(1f, 0.76f, 0.7f, 0.72f));
 
 		foreach (BattleUnit unit in _units)
 		{
@@ -151,6 +195,14 @@ public partial class RoomBattleSim : Node2D
 			DrawCircle(unit.Position, unit.IsHero ? 16f : 12f, unit.Color);
 			DrawArc(unit.Position, unit.IsHero ? 21f : 17f, 0f, Mathf.Tau, 24, Colors.White, 1.5f);
 			DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-26f, -18f), unit.Name, HorizontalAlignment.Left, -1f, 11, Colors.White);
+			if (unit.IsRanged)
+			{
+				DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-12f, -28f), "后", HorizontalAlignment.Left, -1f, 10, new Color(0.86f, 0.94f, 1f));
+			}
+			else if (unit.Row == BattleRow.Front)
+			{
+				DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-12f, -28f), "前", HorizontalAlignment.Left, -1f, 10, new Color(0.9f, 1f, 0.86f));
+			}
 			DrawRect(new Rect2(unit.Position + new Vector2(-20f, 18f), new Vector2(40f, 5f)), new Color(0.15f, 0.15f, 0.16f), true);
 			DrawRect(new Rect2(unit.Position + new Vector2(-20f, 18f), new Vector2(40f * ((float)unit.Hp / unit.MaxHp), 5f)), unit.IsPlayerSide ? new Color(0.42f, 0.94f, 0.58f) : new Color(0.95f, 0.45f, 0.45f), true);
 		}
@@ -207,14 +259,19 @@ public partial class RoomBattleSim : Node2D
 		}
 	}
 
-	private void AddUnit(string name, bool isPlayerSide, bool isHero, Vector2 position, int hp, float speed, float range, int damageMin, int damageMax, Color color)
+	private void AddUnit(string name, bool isPlayerSide, bool isHero, bool isRanged, BattleRow row, int formationSlot, int formationCount, Vector2 position, int hp, float speed, float range, int damageMin, int damageMax, Color color)
 	{
 		_units.Add(new BattleUnit
 		{
 			Name = name,
 			IsPlayerSide = isPlayerSide,
 			IsHero = isHero,
+			IsRanged = isRanged,
+			Row = row,
+			FormationSlot = formationSlot,
+			FormationCount = formationCount,
 			Position = position,
+			AnchorPosition = position,
 			Hp = hp,
 			MaxHp = hp,
 			Speed = speed,
@@ -223,6 +280,23 @@ public partial class RoomBattleSim : Node2D
 			DamageMax = damageMax,
 			Color = color,
 		});
+	}
+
+	private void AddUnit(string name, bool isPlayerSide, bool isHero, Vector2 position, int hp, float speed, float range, int damageMin, int damageMax, Color color)
+	{
+		BattleRow row = isHero ? BattleRow.Back : BattleRow.Front;
+		this.AddUnit(name, isPlayerSide, isHero, isHero, row, 0, 1, position, hp, speed, range, damageMin, damageMax, color);
+	}
+
+	private Vector2 GetFormationPoint(bool isPlayerSide, BattleRow row, int slot, int count)
+	{
+		float rowX = isPlayerSide
+			? (row == BattleRow.Front ? _arenaRect.Position.X + 180f : _arenaRect.Position.X + 92f)
+			: (row == BattleRow.Front ? _arenaRect.End.X - 180f : _arenaRect.End.X - 92f);
+		float centerY = _arenaRect.GetCenter().Y;
+		float spacing = row == BattleRow.Front ? 58f : 72f;
+		float startY = centerY - ((count - 1) * spacing * 0.5f);
+		return new Vector2(rowX, startY + slot * spacing);
 	}
 
 	private BattleUnit FindNearestEnemy(BattleUnit from)
@@ -245,6 +319,53 @@ public partial class RoomBattleSim : Node2D
 		}
 
 		return best;
+	}
+
+	private BattleUnit FindTarget(BattleUnit from)
+	{
+		BattleUnit best = null;
+		float bestDistance = float.MaxValue;
+		bool enemyFrontAlive = HasLivingRow(!from.IsPlayerSide, BattleRow.Front);
+
+		foreach (BattleUnit unit in _units)
+		{
+			if (!unit.IsAlive || unit.IsPlayerSide == from.IsPlayerSide)
+			{
+				continue;
+			}
+
+			if (enemyFrontAlive && unit.Row == BattleRow.Back)
+			{
+				continue;
+			}
+
+			float distance = from.Position.DistanceTo(unit.Position);
+			if (distance < bestDistance)
+			{
+				bestDistance = distance;
+				best = unit;
+			}
+		}
+
+		return best ?? FindNearestEnemy(from);
+	}
+
+	private bool HasLivingFrontliner(bool isPlayerSide)
+	{
+		return HasLivingRow(isPlayerSide, BattleRow.Front);
+	}
+
+	private bool HasLivingRow(bool isPlayerSide, BattleRow row)
+	{
+		foreach (BattleUnit unit in _units)
+		{
+			if (unit.IsAlive && unit.IsPlayerSide == isPlayerSide && unit.Row == row)
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private Vector2 ClampToArena(Vector2 position)
