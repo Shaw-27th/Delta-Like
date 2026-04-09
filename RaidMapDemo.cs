@@ -225,6 +225,8 @@ public partial class RaidMapDemo : Node2D
 	private bool _confirmSkipChecked;
 	private int _selectedContainerIndex = -1;
 	private int _pendingRevealContainerIndex = -1;
+	private bool _showMapOverlay;
+	private int _plannedExitNodeId = -1;
 	private bool _isPlayerMoving;
 	private int _moveTargetNodeId = -1;
 	private float _moveProgress;
@@ -251,6 +253,12 @@ public partial class RaidMapDemo : Node2D
 
 	public override void _UnhandledInput(InputEvent @event)
 	{
+		if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo && keyEvent.Keycode == Key.M)
+		{
+			ToggleMapOverlay();
+			return;
+		}
+
 		if (@event is not InputEventMouseButton mouse || !mouse.Pressed || mouse.ButtonIndex != MouseButton.Left)
 		{
 			return;
@@ -266,7 +274,7 @@ public partial class RaidMapDemo : Node2D
 			}
 		}
 
-		if (_inHideout || _runEnded || _battleSim != null || _pendingEncounter != null || _isPlayerMoving || _selectedContainerIndex >= 0)
+		if (_inHideout || _runEnded || _battleSim != null || _pendingEncounter != null || _isPlayerMoving || _selectedContainerIndex >= 0 || !_showMapOverlay)
 		{
 			return;
 		}
@@ -275,7 +283,7 @@ public partial class RaidMapDemo : Node2D
 		{
 			if (node.Position.DistanceTo(click) <= 24f)
 			{
-				TryMoveToNode(node.Id);
+				TryPlanExitToNode(node.Id);
 				return;
 			}
 		}
@@ -290,7 +298,11 @@ public partial class RaidMapDemo : Node2D
 			DrawHideout();
 			return;
 		}
-		DrawMap();
+		DrawRoomView();
+		if (_showMapOverlay)
+		{
+			DrawMapOverlay();
+		}
 		DrawSidePanel();
 		if (_selectedContainerIndex >= 0)
 		{
@@ -323,6 +335,8 @@ public partial class RaidMapDemo : Node2D
 		_runEnded = false;
 		_runFailed = false;
 		_autoSearchEnabled = false;
+		_showMapOverlay = false;
+		_plannedExitNodeId = -1;
 		_selectedContainerIndex = -1;
 		_encounter = null;
 		_runSoldiers.Clear();
@@ -619,11 +633,35 @@ public partial class RaidMapDemo : Node2D
 		}
 
 		_isPlayerMoving = true;
+		_plannedExitNodeId = nodeId;
 		_moveTargetNodeId = nodeId;
 		_moveProgress = 0f;
 		_playerMarkerPosition = _nodes[_playerNodeId].Position;
 		AdvanceTurn($"移动至 {_nodes[nodeId].Name}。");
 		_status = $"正在前往 {_nodes[nodeId].Name}。";
+	}
+
+	private void TryPlanExitToNode(int nodeId)
+	{
+		MapNode current = _nodes[_playerNodeId];
+		if (!current.Links.Contains(nodeId))
+		{
+			_status = "战略地图只能标记相邻节点。";
+			return;
+		}
+
+		_plannedExitNodeId = nodeId;
+		_status = $"已标记出口目标：{_nodes[nodeId].Name}。返回房间后可通过对应出口转场。";
+	}
+
+	private void TryUseExit(int nodeId)
+	{
+		if (_selectedContainerIndex >= 0 || _pendingEncounter != null || _battleSim != null || _isPlayerMoving)
+		{
+			return;
+		}
+
+		TryMoveToNode(nodeId);
 	}
 
 	private void HandleArrival(MapNode node)
@@ -1411,6 +1449,12 @@ public partial class RaidMapDemo : Node2D
 
 		switch (button.Action)
 		{
+			case "toggle_map":
+				ToggleMapOverlay();
+				break;
+			case "use_exit":
+				TryUseExit(button.Index);
+				break;
 			case "search":
 				TrySearch(button.Index);
 				break;
@@ -1877,6 +1921,24 @@ public partial class RaidMapDemo : Node2D
 		_status = $"{node.Name} 当前安全，时隙 {_timeSlotProgress}/100。";
 	}
 
+	private void ToggleMapOverlay()
+	{
+		if (_inHideout || _battleSim != null || _runEnded)
+		{
+			return;
+		}
+
+		_showMapOverlay = !_showMapOverlay;
+		if (_showMapOverlay)
+		{
+			_status = "战略地图已展开。点击相邻节点规划出口，移动在房间内执行。";
+		}
+		else
+		{
+			RefreshStatus();
+		}
+	}
+
 	private void LogEvent(string text)
 	{
 		_eventLog.Add(text);
@@ -2083,6 +2145,131 @@ public partial class RaidMapDemo : Node2D
 		DrawArc(_playerMarkerPosition, 34f, 0f, Mathf.Tau, 32, new Color(0.58f, 0.95f, 0.98f, 0.9f), 3f);
 		DrawCircle(_playerMarkerPosition, 7f, new Color(0.58f, 0.95f, 0.98f));
 	}
+
+	private void DrawRoomView()
+	{
+		DrawRect(_mapRect, new Color(0.07f, 0.07f, 0.08f), true);
+		DrawRect(_mapRect, new Color(0.34f, 0.32f, 0.28f), false, 2f);
+		if (_selectedMapTemplate == 1)
+		{
+			DrawBorderKeepBackdrop();
+		}
+		else
+		{
+			DrawMonasteryBackdrop();
+		}
+
+		MapNode node = _nodes[_playerNodeId];
+		Rect2 banner = new(_mapRect.Position + new Vector2(18f, 18f), new Vector2(_mapRect.Size.X - 36f, 74f));
+		DrawRect(banner, new Color(0.05f, 0.05f, 0.06f, 0.78f), true);
+		DrawRect(banner, new Color(0.38f, 0.41f, 0.46f, 0.92f), false, 1.5f);
+		DrawString(ThemeDB.FallbackFont, banner.Position + new Vector2(16f, 24f), $"战术房间: {node.Name}", HorizontalAlignment.Left, -1f, 18, Colors.White);
+		DrawString(ThemeDB.FallbackFont, banner.Position + new Vector2(16f, 46f), $"类型 {GetNodeTypeLabel(node.Type)}  威胁 {node.Threat}  搜刮 {CountNodeLoot(node)}", HorizontalAlignment.Left, -1f, 13, new Color(0.76f, 0.82f, 0.9f));
+		DrawString(ThemeDB.FallbackFont, banner.Position + new Vector2(16f, 64f), "按 M 打开战略地图，默认操作留在房间层。", HorizontalAlignment.Left, -1f, 12, new Color(0.94f, 0.84f, 0.62f));
+
+		Rect2 roomCore = new(_mapRect.Position + new Vector2(120f, 136f), _mapRect.Size - new Vector2(240f, 250f));
+		DrawRect(roomCore, new Color(0.08f, 0.09f, 0.11f, 0.7f), true);
+		DrawRect(roomCore, new Color(0.42f, 0.45f, 0.5f, 0.95f), false, 2f);
+		DrawString(ThemeDB.FallbackFont, roomCore.Position + new Vector2(18f, 26f), "房间内部", HorizontalAlignment.Left, -1f, 18, Colors.White);
+		DrawString(ThemeDB.FallbackFont, roomCore.Position + new Vector2(18f, 48f), "这里承接搜索、战斗和转场决策。", HorizontalAlignment.Left, -1f, 12, new Color(0.82f, 0.86f, 0.92f));
+		DrawString(ThemeDB.FallbackFont, roomCore.Position + new Vector2(18f, 68f), _plannedExitNodeId >= 0 ? $"已规划出口：{_nodes[_plannedExitNodeId].Name}" : "尚未规划出口，可直接在房间内选出口。", HorizontalAlignment.Left, -1f, 12, new Color(0.94f, 0.84f, 0.62f));
+		DrawRect(new Rect2(roomCore.Position + new Vector2(28f, 96f), new Vector2(roomCore.Size.X - 56f, roomCore.Size.Y - 132f)), new Color(0.16f, 0.18f, 0.2f, 0.45f), false, 2f);
+
+		float exitY = _mapRect.End.Y - 110f;
+		DrawString(ThemeDB.FallbackFont, new Vector2(_mapRect.Position.X + 24f, exitY), "房间出口", HorizontalAlignment.Left, -1f, 16, Colors.White);
+		exitY += 24f;
+		if (node.Links.Count == 0)
+		{
+			DrawString(ThemeDB.FallbackFont, new Vector2(_mapRect.Position.X + 24f, exitY), "当前房间没有可用出口。", HorizontalAlignment.Left, -1f, 13, new Color(0.76f, 0.8f, 0.86f));
+			return;
+		}
+
+		for (int i = 0; i < node.Links.Count && i < 4; i++)
+		{
+			MapNode linkedNode = _nodes[node.Links[i]];
+			string exitLabel = $"{GetExitDirectionLabel(i, node.Links.Count)} -> {linkedNode.Name}";
+			DrawString(ThemeDB.FallbackFont, new Vector2(_mapRect.Position.X + 24f, exitY), exitLabel, HorizontalAlignment.Left, -1f, 13, new Color(0.76f, 0.8f, 0.86f));
+			exitY += 18f;
+		}
+
+		DrawRoomExits(node);
+	}
+
+	private void DrawMapOverlay()
+	{
+		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0f, 0f, 0f, 0.34f), true);
+		DrawMap();
+
+		Rect2 titleBar = new(_mapRect.Position + new Vector2(18f, 18f), new Vector2(_mapRect.Size.X - 36f, 64f));
+		DrawRect(titleBar, new Color(0.04f, 0.05f, 0.06f, 0.9f), true);
+		DrawRect(titleBar, new Color(0.46f, 0.5f, 0.55f, 0.95f), false, 1.5f);
+		DrawString(ThemeDB.FallbackFont, titleBar.Position + new Vector2(16f, 24f), "战略地图", HorizontalAlignment.Left, -1f, 18, Colors.White);
+		DrawString(ThemeDB.FallbackFont, titleBar.Position + new Vector2(16f, 46f), "点击相邻节点执行转场，再按 M 返回房间视图。", HorizontalAlignment.Left, -1f, 12, new Color(0.86f, 0.9f, 0.95f));
+	}
+
+	private void DrawRoomExits(MapNode node)
+	{
+		for (int i = 0; i < node.Links.Count && i < 4; i++)
+		{
+			int linkedNodeId = node.Links[i];
+			MapNode linkedNode = _nodes[linkedNodeId];
+			Rect2 exitRect = GetRoomExitRect(i, node.Links.Count);
+			bool planned = linkedNodeId == _plannedExitNodeId;
+			Color fill = planned ? new Color(0.3f, 0.54f, 0.68f, 0.9f) : new Color(0.18f, 0.2f, 0.24f, 0.92f);
+			Color border = planned ? new Color(0.92f, 0.84f, 0.58f, 0.98f) : new Color(0.62f, 0.68f, 0.76f, 0.95f);
+			DrawRect(exitRect, fill, true);
+			DrawRect(exitRect, border, false, 2f);
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(10f, 18f), GetExitDirectionLabel(i, node.Links.Count), HorizontalAlignment.Left, exitRect.Size.X - 20f, 12, Colors.White);
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(10f, 36f), linkedNode.Name, HorizontalAlignment.Left, exitRect.Size.X - 20f, 12, new Color(0.88f, 0.92f, 0.98f));
+			_buttons.Add(new ButtonDef(exitRect, "use_exit", linkedNodeId));
+		}
+	}
+
+	private Rect2 GetRoomExitRect(int index, int totalCount)
+	{
+		Vector2 size = new(112f, 46f);
+		Vector2 center = _mapRect.GetCenter();
+		Vector2 position = totalCount switch
+		{
+			1 => center + new Vector2(_mapRect.Size.X * 0.5f - size.X - 28f, -size.Y * 0.5f),
+			2 => index == 0
+				? new Vector2(_mapRect.Position.X + 22f, center.Y - size.Y * 0.5f)
+				: new Vector2(_mapRect.End.X - size.X - 22f, center.Y - size.Y * 0.5f),
+			3 => index switch
+			{
+				0 => new Vector2(_mapRect.Position.X + 22f, center.Y - size.Y * 0.5f),
+				1 => new Vector2(center.X - size.X * 0.5f, _mapRect.Position.Y + 106f),
+				_ => new Vector2(_mapRect.End.X - size.X - 22f, center.Y - size.Y * 0.5f),
+			},
+			_ => index switch
+			{
+				0 => new Vector2(_mapRect.Position.X + 22f, center.Y - size.Y * 0.5f),
+				1 => new Vector2(center.X - size.X * 0.5f, _mapRect.Position.Y + 106f),
+				2 => new Vector2(_mapRect.End.X - size.X - 22f, center.Y - size.Y * 0.5f),
+				_ => new Vector2(center.X - size.X * 0.5f, _mapRect.End.Y - size.Y - 126f),
+			},
+		};
+		return new Rect2(position, size);
+	}
+
+	private string GetExitDirectionLabel(int index, int totalCount) => totalCount switch
+	{
+		1 => index == 0 ? "主出口" : "出口",
+		2 => index == 0 ? "西侧" : "东侧",
+		3 => index switch
+		{
+			0 => "西侧",
+			1 => "北侧",
+			_ => "东侧",
+		},
+		_ => index switch
+		{
+			0 => "西侧",
+			1 => "北侧",
+			2 => "东侧",
+			_ => "南侧",
+		},
+	};
 
 	private void DrawMonasteryBackdrop()
 	{
@@ -2334,16 +2521,20 @@ public partial class RaidMapDemo : Node2D
 		y += 18f;
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u5a01\u80c1\uff1a{node.Threat}   \u6218\u5229\u54c1\uff1a{CountNodeLoot(node)}", HorizontalAlignment.Left, -1f, 13, new Color(0.75f, 0.78f, 0.82f));
 		y += 28f;
+		Rect2 mapRect = new(new Vector2(x, y), new Vector2(148f, 28f));
+		DrawButton(mapRect, _showMapOverlay ? "战略地图：开" : "战略地图：关", _showMapOverlay ? new Color(0.24f, 0.48f, 0.62f) : new Color(0.18f, 0.2f, 0.24f));
+		_buttons.Add(new ButtonDef(mapRect, "toggle_map"));
 		Rect2 autoRect = new(new Vector2(x, y), new Vector2(148f, 28f));
+		autoRect.Position += new Vector2(166f, 0f);
 		DrawButton(autoRect, _autoSearchEnabled ? "\u81ea\u52a8\u641c\u7d22\uff1a\u5f00" : "\u81ea\u52a8\u641c\u7d22\uff1a\u5173", _autoSearchEnabled ? new Color(0.24f, 0.56f, 0.32f) : new Color(0.18f, 0.2f, 0.24f));
 		_buttons.Add(new ButtonDef(autoRect, "toggle_auto_search"));
 		if (node.Type == NodeType.Extract && _battleSim == null && !_runEnded)
 		{
-			Rect2 rect = new(new Vector2(x + 170f, y), new Vector2(124f, 28f));
+			Rect2 rect = new(new Vector2(x + 166f, y + 34f), new Vector2(148f, 28f));
 			DrawButton(rect, "\u6267\u884c\u64a4\u79bb", new Color(0.24f, 0.62f, 0.36f));
 			_buttons.Add(new ButtonDef(rect, "extract"));
 		}
-		y += 42f;
+		y += node.Type == NodeType.Extract ? 74f : 42f;
 		if (CanSearch(node) && CountNodeLoot(node) > 0)
 		{
 			DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "\u5bb9\u5668", HorizontalAlignment.Left, -1f, 16, Colors.White);
