@@ -314,32 +314,54 @@ public partial class RaidMapDemo : Node2D
 		}
 		_playerStrength = 3 + _runSoldiers.Count;
 
-		AddNode(0, "入口大厅", NodeType.Room, new Vector2(120f, 360f), 0);
-		AddNode(1, "储藏室", NodeType.Search, new Vector2(280f, 220f), 0);
-		AddNode(2, "岗哨", NodeType.Battle, new Vector2(290f, 500f), 4);
-		AddNode(3, "档案室", NodeType.Search, new Vector2(470f, 160f), 0);
-		AddNode(4, "岔路口", NodeType.Room, new Vector2(470f, 360f), 2);
-		AddNode(5, "兵营", NodeType.Battle, new Vector2(470f, 560f), 5);
-		AddNode(6, "宝库", NodeType.Search, new Vector2(660f, 220f), 3);
-		AddNode(7, "南侧撤离点", NodeType.Extract, new Vector2(650f, 500f), 0);
+		AddNode(0, "入口前庭", NodeType.Room, new Vector2(120f, 360f), 0);
+		AddNode(1, "墓园", NodeType.Search, new Vector2(150f, 230f), 1);
+		AddNode(2, "马厩", NodeType.Room, new Vector2(150f, 500f), 1);
+		AddNode(3, "抄经室", NodeType.Search, new Vector2(230f, 170f), 0);
+		AddNode(4, "回廊北段", NodeType.Battle, new Vector2(355f, 170f), 4);
+		AddNode(5, "中庭", NodeType.Room, new Vector2(385f, 300f), 2);
+		AddNode(6, "宿舍", NodeType.Battle, new Vector2(255f, 520f), 4);
+		AddNode(7, "食堂", NodeType.Search, new Vector2(390f, 520f), 1);
+		AddNode(8, "院长书房", NodeType.Search, new Vector2(500f, 110f), 2);
+		AddNode(9, "礼拜堂", NodeType.Battle, new Vector2(620f, 180f), 5);
+		AddNode(10, "圣物库", NodeType.Search, new Vector2(690f, 270f), 3);
+		AddNode(11, "钟楼", NodeType.Room, new Vector2(610f, 370f), 2);
+		AddNode(12, "地窖", NodeType.Battle, new Vector2(610f, 520f), 6);
+		AddNode(13, "北侧撤离点", NodeType.Extract, new Vector2(710f, 110f), 0);
+		AddNode(14, "地下水道出口", NodeType.Extract, new Vector2(710f, 560f), 0);
 
-		LinkNodes(0, 1); LinkNodes(0, 2); LinkNodes(1, 3); LinkNodes(1, 4);
-		LinkNodes(2, 4); LinkNodes(2, 5); LinkNodes(3, 4); LinkNodes(3, 6);
-		LinkNodes(4, 5); LinkNodes(4, 6); LinkNodes(4, 7); LinkNodes(5, 7); LinkNodes(6, 7);
+		LinkNodes(0, 1); LinkNodes(0, 2); LinkNodes(0, 5);
+		LinkNodes(1, 3); LinkNodes(1, 4);
+		LinkNodes(2, 6); LinkNodes(2, 5);
+		LinkNodes(3, 4); LinkNodes(3, 8);
+		LinkNodes(4, 5); LinkNodes(4, 8); LinkNodes(4, 9);
+		LinkNodes(5, 6); LinkNodes(5, 7); LinkNodes(5, 10); LinkNodes(5, 11);
+		LinkNodes(6, 7);
+		LinkNodes(7, 12);
+		LinkNodes(8, 9); LinkNodes(8, 13);
+		LinkNodes(9, 10); LinkNodes(9, 13);
+		LinkNodes(10, 11);
+		LinkNodes(11, 12); LinkNodes(11, 14);
+		LinkNodes(12, 14);
 
 		_nodes[0].Visited = true;
 		_playerNodeId = 0;
 
-		AddRoomContainer(1, "补给箱", 4, 0);
-		AddRoomContainer(1, "工具柜", 3, 0);
+		AddRoomContainer(1, "墓地供箱", 3, 0);
+		AddRoomContainer(2, "马料柜", 2, 0);
 		AddRoomContainer(3, "文档箱", 4, 1);
-		AddRoomContainer(4, "遗弃背包", 2, 0);
-		AddRoomContainer(6, "宝物架", 5, 2);
-		AddRoomContainer(6, "宝库抽屉", 4, 1);
+		AddRoomContainer(5, "遗弃背包", 2, 0);
+		AddRoomContainer(7, "食材柜", 3, 0);
+		AddRoomContainer(8, "书房暗柜", 4, 1);
+		AddRoomContainer(10, "圣物架", 5, 2);
+		AddRoomContainer(10, "祭器匣", 4, 1);
+		AddRoomContainer(11, "钟楼杂物箱", 3, 0);
+		AddRoomContainer(12, "地窖锁柜", 5, 1);
 
-		_aiSquads.Add(new AiSquad { Name = "赤狼小队", NodeId = 6, Strength = 9, Supplies = 3, Intent = AiIntent.Idle });
-		_aiSquads.Add(new AiSquad { Name = "蓝鸦小队", NodeId = 5, Strength = 8, Supplies = 2, Intent = AiIntent.Idle });
+		_aiSquads.Add(new AiSquad { Name = "赤狼小队", NodeId = 10, Strength = 9, Supplies = 3, Intent = AiIntent.Idle });
+		_aiSquads.Add(new AiSquad { Name = "蓝鸦小队", NodeId = 6, Strength = 8, Supplies = 2, Intent = AiIntent.Idle });
 		_aiSquads.Add(new AiSquad { Name = "金狮小队", NodeId = 3, Strength = 7, Supplies = 3, Intent = AiIntent.Idle });
+		_aiSquads.Add(new AiSquad { Name = "灰烬小队", NodeId = 12, Strength = 10, Supplies = 2, Intent = AiIntent.Idle });
 
 		LogEvent("行动开始，其他小队已经进入地图。");
 		RefreshStatus();
@@ -359,7 +381,7 @@ public partial class RaidMapDemo : Node2D
 		}
 		if (_money == 0 && _stash.Count == 0)
 		{
-			_money = 120;
+			_money = 300;
 			_stash.Add("旧军刀");
 			_stash.Add("草药包");
 		}
@@ -1656,34 +1678,106 @@ public partial class RaidMapDemo : Node2D
 
 	private void DrawMap()
 	{
-		DrawRect(_mapRect, new Color(0.09f, 0.1f, 0.12f), true);
-		DrawRect(_mapRect, new Color(0.28f, 0.31f, 0.36f), false, 2f);
+		DrawRect(_mapRect, new Color(0.07f, 0.07f, 0.08f), true);
+		DrawRect(_mapRect, new Color(0.34f, 0.32f, 0.28f), false, 2f);
+		DrawMonasteryBackdrop();
 
 		foreach (MapNode node in _nodes)
 		{
 			foreach (int link in node.Links)
 			{
 				if (link < node.Id) continue;
-				DrawLine(node.Position, _nodes[link].Position, new Color(0.28f, 0.32f, 0.36f), 3f);
+				DrawMapPath(node.Position, _nodes[link].Position);
 			}
 		}
 
 		foreach (MapNode node in _nodes)
 		{
 			Color color = GetNodeColor(node);
-			DrawCircle(node.Position, 22f, color);
-			DrawArc(node.Position, 28f, 0f, Mathf.Tau, 32, new Color(color.R, color.G, color.B, 0.45f), 2f);
-			DrawString(ThemeDB.FallbackFont, node.Position + new Vector2(-42f, -32f), node.Name, HorizontalAlignment.Left, -1f, 14, Colors.White);
+			DrawCircle(node.Position, 24f, new Color(0.14f, 0.12f, 0.1f, 0.95f));
+			DrawCircle(node.Position, 20f, color);
+			DrawArc(node.Position, 28f, 0f, Mathf.Tau, 32, new Color(color.R, color.G, color.B, 0.38f), 2f);
+			DrawNodeGlyph(node, color);
+			DrawString(ThemeDB.FallbackFont, node.Position + new Vector2(-46f, -34f), node.Name, HorizontalAlignment.Left, -1f, 14, new Color(0.96f, 0.93f, 0.86f));
 			if (node.Id == _playerNodeId)
 			{
-				DrawCircle(node.Position, 9f, new Color(0.55f, 0.95f, 1f));
+				DrawArc(node.Position, 34f, 0f, Mathf.Tau, 32, new Color(0.58f, 0.95f, 0.98f, 0.9f), 3f);
+				DrawCircle(node.Position, 7f, new Color(0.58f, 0.95f, 0.98f));
 			}
 			AiSquad squad = GetSquadAtNode(node.Id);
 			if (squad != null)
 			{
-				DrawCircle(node.Position + new Vector2(18f, 18f), 8f, new Color(0.95f, 0.45f, 0.45f));
-				DrawString(ThemeDB.FallbackFont, node.Position + new Vector2(12f, 42f), squad.Name, HorizontalAlignment.Left, -1f, 10, new Color(1f, 0.85f, 0.85f));
+				Vector2 badge = node.Position + new Vector2(20f, 18f);
+				DrawCircle(badge, 9f, new Color(0.42f, 0.08f, 0.08f, 0.95f));
+				DrawCircle(badge, 7f, new Color(0.92f, 0.34f, 0.3f));
+				DrawString(ThemeDB.FallbackFont, node.Position + new Vector2(14f, 42f), squad.Name, HorizontalAlignment.Left, -1f, 10, new Color(1f, 0.84f, 0.8f));
 			}
+		}
+	}
+
+	private void DrawMonasteryBackdrop()
+	{
+		DrawRect(new Rect2(_mapRect.Position + new Vector2(18f, 18f), _mapRect.Size - new Vector2(36f, 36f)), new Color(0.17f, 0.15f, 0.12f), true);
+		DrawRect(new Rect2(_mapRect.Position + new Vector2(28f, 28f), _mapRect.Size - new Vector2(56f, 56f)), new Color(0.22f, 0.2f, 0.16f), false, 2f);
+
+		Rect2 courtyard = new(new Vector2(300f, 220f), new Vector2(170f, 150f));
+		Rect2 cloister = new(new Vector2(250f, 150f), new Vector2(270f, 290f));
+		Rect2 chapel = new(new Vector2(575f, 135f), new Vector2(125f, 120f));
+		Rect2 archive = new(new Vector2(125f, 130f), new Vector2(105f, 105f));
+		Rect2 barracks = new(new Vector2(135f, 455f), new Vector2(140f, 105f));
+		Rect2 crypt = new(new Vector2(555f, 455f), new Vector2(145f, 110f));
+		Rect2 gate = new(new Vector2(70f, 300f), new Vector2(110f, 120f));
+
+		DrawDistrictBlock(cloister, new Color(0.2f, 0.19f, 0.15f), "回廊");
+		DrawDistrictBlock(courtyard, new Color(0.14f, 0.18f, 0.13f), "中庭");
+		DrawDistrictBlock(chapel, new Color(0.23f, 0.2f, 0.17f), "礼拜堂");
+		DrawDistrictBlock(archive, new Color(0.21f, 0.18f, 0.16f), "抄经室");
+		DrawDistrictBlock(barracks, new Color(0.2f, 0.17f, 0.14f), "宿舍");
+		DrawDistrictBlock(crypt, new Color(0.16f, 0.15f, 0.18f), "墓穴");
+		DrawDistrictBlock(gate, new Color(0.19f, 0.17f, 0.14f), "前庭");
+
+		DrawLine(new Vector2(182f, 360f), new Vector2(250f, 360f), new Color(0.46f, 0.4f, 0.31f, 0.8f), 12f);
+		DrawLine(new Vector2(520f, 360f), new Vector2(620f, 360f), new Color(0.46f, 0.4f, 0.31f, 0.8f), 12f);
+		DrawLine(new Vector2(620f, 255f), new Vector2(620f, 455f), new Color(0.46f, 0.4f, 0.31f, 0.8f), 12f);
+		DrawLine(new Vector2(280f, 505f), new Vector2(550f, 505f), new Color(0.46f, 0.4f, 0.31f, 0.8f), 10f);
+	}
+
+	private void DrawDistrictBlock(Rect2 rect, Color fill, string label)
+	{
+		DrawRect(rect, fill, true);
+		DrawRect(rect, new Color(0.52f, 0.46f, 0.36f, 0.95f), false, 2f);
+		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(10f, 20f), label, HorizontalAlignment.Left, -1f, 12, new Color(0.88f, 0.83f, 0.73f));
+	}
+
+	private void DrawMapPath(Vector2 from, Vector2 to)
+	{
+		DrawLine(from, to, new Color(0.24f, 0.19f, 0.14f, 0.95f), 9f);
+		DrawLine(from, to, new Color(0.58f, 0.5f, 0.36f, 0.9f), 5f);
+	}
+
+	private void DrawNodeGlyph(MapNode node, Color color)
+	{
+		Vector2 p = node.Position;
+		Color ink = new Color(0.09f, 0.08f, 0.07f, 0.9f);
+		switch (node.Type)
+		{
+			case NodeType.Extract:
+				DrawLine(p + new Vector2(-7f, 0f), p + new Vector2(8f, 0f), ink, 2f);
+				DrawLine(p + new Vector2(3f, -5f), p + new Vector2(8f, 0f), ink, 2f);
+				DrawLine(p + new Vector2(3f, 5f), p + new Vector2(8f, 0f), ink, 2f);
+				break;
+			case NodeType.Battle:
+				DrawLine(p + new Vector2(-7f, -7f), p + new Vector2(7f, 7f), ink, 2.2f);
+				DrawLine(p + new Vector2(-7f, 7f), p + new Vector2(7f, -7f), ink, 2.2f);
+				break;
+			case NodeType.Search:
+				DrawCircle(p + new Vector2(-1f, -1f), 6f, ink);
+				DrawLine(p + new Vector2(4f, 4f), p + new Vector2(10f, 10f), ink, 2f);
+				DrawCircle(p + new Vector2(-1f, -1f), 3.5f, color);
+				break;
+			default:
+				DrawRect(new Rect2(p + new Vector2(-6f, -6f), new Vector2(12f, 12f)), ink, false, 2f);
+				break;
 		}
 	}
 
