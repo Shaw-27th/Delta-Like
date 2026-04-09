@@ -57,6 +57,7 @@ public partial class RaidMapDemo : Node2D
 		public Vector2 Position;
 		public readonly List<int> Links = new();
 		public int Threat;
+		public bool Revealed;
 		public bool Visited;
 		public bool SearchRewardClaimed;
 		public readonly List<LootContainer> Containers = new();
@@ -346,6 +347,7 @@ public partial class RaidMapDemo : Node2D
 
 		_nodes[0].Visited = true;
 		_playerNodeId = 0;
+		UpdateVision(_playerNodeId);
 
 		AddRoomContainer(1, "墓地供箱", 3, 0);
 		AddRoomContainer(2, "马料柜", 2, 0);
@@ -420,6 +422,31 @@ public partial class RaidMapDemo : Node2D
 		_nodes[nodeId].Containers.Add(container);
 	}
 
+	private void UpdateVision(int centerNodeId)
+	{
+		if (centerNodeId < 0 || centerNodeId >= _nodes.Count)
+		{
+			return;
+		}
+
+		MapNode center = _nodes[centerNodeId];
+		center.Revealed = true;
+		foreach (int link in center.Links)
+		{
+			_nodes[link].Revealed = true;
+		}
+	}
+
+	private bool HasClearVision(MapNode node)
+	{
+		if (node.Id == _playerNodeId)
+		{
+			return true;
+		}
+
+		return _nodes[_playerNodeId].Links.Contains(node.Id);
+	}
+
 	private void TryMoveToNode(int nodeId)
 	{
 		MapNode current = _nodes[_playerNodeId];
@@ -431,6 +458,7 @@ public partial class RaidMapDemo : Node2D
 
 		_playerNodeId = nodeId;
 		_nodes[nodeId].Visited = true;
+		UpdateVision(nodeId);
 		AdvanceTurn($"移动至 {_nodes[nodeId].Name}。");
 		HandleArrival(_nodes[nodeId]);
 	}
@@ -1684,30 +1712,50 @@ public partial class RaidMapDemo : Node2D
 
 		foreach (MapNode node in _nodes)
 		{
+			if (!node.Revealed)
+			{
+				continue;
+			}
+
 			foreach (int link in node.Links)
 			{
+				if (!_nodes[link].Revealed)
+				{
+					continue;
+				}
+
 				if (link < node.Id) continue;
-				bool highlight = node.Id == _playerNodeId || link == _playerNodeId;
+				bool highlight = HasClearVision(node) && HasClearVision(_nodes[link]);
 				DrawMapPath(node.Position, _nodes[link].Position, highlight);
 			}
 		}
 
 		foreach (MapNode node in _nodes)
 		{
-			Color color = GetNodeColor(node);
-			DrawCircle(node.Position, 24f, new Color(0.14f, 0.12f, 0.1f, 0.95f));
+			if (!node.Revealed)
+			{
+				DrawCircle(node.Position, 10f, new Color(0.18f, 0.17f, 0.16f, 0.45f));
+				DrawString(ThemeDB.FallbackFont, node.Position + new Vector2(-6f, -12f), "?", HorizontalAlignment.Left, -1f, 12, new Color(0.68f, 0.64f, 0.58f, 0.7f));
+				continue;
+			}
+
+			bool clearVision = HasClearVision(node);
+			Color color = GetNodeColor(node, clearVision);
+			float outerAlpha = clearVision ? 0.95f : 0.55f;
+			float labelAlpha = clearVision ? 1f : 0.65f;
+			DrawCircle(node.Position, 24f, new Color(0.14f, 0.12f, 0.1f, outerAlpha));
 			DrawCircle(node.Position, 20f, color);
-			DrawArc(node.Position, 28f, 0f, Mathf.Tau, 32, new Color(color.R, color.G, color.B, 0.38f), 2f);
+			DrawArc(node.Position, 28f, 0f, Mathf.Tau, 32, new Color(color.R, color.G, color.B, clearVision ? 0.38f : 0.18f), 2f);
 			DrawNodeGlyph(node, color);
 			Vector2 labelPos = node.Position + GetNodeLabelOffset(node.Id);
-			DrawString(ThemeDB.FallbackFont, labelPos, node.Name, HorizontalAlignment.Left, -1f, 14, new Color(0.96f, 0.93f, 0.86f));
+			DrawString(ThemeDB.FallbackFont, labelPos, node.Name, HorizontalAlignment.Left, -1f, 14, new Color(0.96f, 0.93f, 0.86f, labelAlpha));
 			if (node.Id == _playerNodeId)
 			{
 				DrawArc(node.Position, 34f, 0f, Mathf.Tau, 32, new Color(0.58f, 0.95f, 0.98f, 0.9f), 3f);
 				DrawCircle(node.Position, 7f, new Color(0.58f, 0.95f, 0.98f));
 			}
 			AiSquad squad = GetSquadAtNode(node.Id);
-			if (squad != null)
+			if (squad != null && clearVision)
 			{
 				Vector2 badge = node.Position + new Vector2(20f, 18f);
 				DrawCircle(badge, 9f, new Color(0.42f, 0.08f, 0.08f, 0.95f));
@@ -1756,7 +1804,6 @@ public partial class RaidMapDemo : Node2D
 	{
 		DrawRect(rect, fill, true);
 		DrawRect(rect, new Color(0.52f, 0.46f, 0.36f, 0.95f), false, 2f);
-		DrawString(ThemeDB.FallbackFont, rect.Position + labelOffset, label, HorizontalAlignment.Left, -1f, 12, new Color(0.82f, 0.77f, 0.68f, 0.8f));
 	}
 
 	private void DrawMapPath(Vector2 from, Vector2 to, bool highlight)
@@ -1823,8 +1870,13 @@ public partial class RaidMapDemo : Node2D
 		_ => new Vector2(14f, 42f),
 	};
 
-	private Color GetNodeColor(MapNode node)
+	private Color GetNodeColor(MapNode node, bool clearVision)
 	{
+		if (!clearVision)
+		{
+			return node.Visited ? new Color(0.28f, 0.34f, 0.4f, 0.85f) : new Color(0.2f, 0.22f, 0.25f, 0.75f);
+		}
+
 		if (node.Type == NodeType.Extract) return new Color(0.26f, 0.72f, 0.42f);
 		if (node.Threat > 0) return new Color(0.72f, 0.3f, 0.28f);
 		if (CountNodeLoot(node) > 0) return new Color(0.75f, 0.62f, 0.24f);
