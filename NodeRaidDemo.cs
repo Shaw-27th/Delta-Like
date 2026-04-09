@@ -90,13 +90,11 @@ public partial class NodeRaidDemo : Node2D
 	private sealed class EncounterState
 	{
 		public string Name = "";
-		public int PlayerHp;
-		public int EnemyHp;
 		public int TurnCost;
 		public AiSquad EnemySquad;
 		public MapNode Node;
-		public readonly List<string> Log = new();
-		public float Timer;
+		public int EnemyPower;
+		public bool EnemyHasElite;
 	}
 
 	private readonly List<MapNode> _nodes = new();
@@ -109,6 +107,7 @@ public partial class NodeRaidDemo : Node2D
 	private readonly Rect2 _sideRect = new(new Vector2(810f, 30f), new Vector2(360f, 660f));
 
 	private EncounterState _encounter;
+	private RoomBattleSim _battleSim;
 	private int _playerNodeId;
 	private int _turn;
 	private int _playerHp;
@@ -118,7 +117,7 @@ public partial class NodeRaidDemo : Node2D
 	private int _carriedValue;
 	private bool _runEnded;
 	private bool _runFailed;
-	private string _status = "Click a connected node to move.";
+	private string _status = "点击相邻节点移动。";
 
 	public override void _Ready()
 	{
@@ -128,16 +127,6 @@ public partial class NodeRaidDemo : Node2D
 
 	public override void _Process(double delta)
 	{
-		if (_encounter != null && !_runEnded)
-		{
-			_encounter.Timer += (float)delta;
-			if (_encounter.Timer >= 0.55f)
-			{
-				_encounter.Timer = 0f;
-				StepEncounter();
-			}
-		}
-
 		QueueRedraw();
 	}
 
@@ -180,10 +169,6 @@ public partial class NodeRaidDemo : Node2D
 		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0.06f, 0.07f, 0.09f), true);
 		DrawMap();
 		DrawSidePanel();
-		if (_encounter != null)
-		{
-			DrawEncounterOverlay();
-		}
 		if (_runEnded)
 		{
 			DrawEndOverlay();
@@ -206,14 +191,14 @@ public partial class NodeRaidDemo : Node2D
 		_runFailed = false;
 		_encounter = null;
 
-		AddNode(0, "Entry Hall", NodeType.Room, new Vector2(120f, 360f), 0);
-		AddNode(1, "Store Room", NodeType.Search, new Vector2(280f, 220f), 0);
-		AddNode(2, "Guard Post", NodeType.Battle, new Vector2(290f, 500f), 4);
-		AddNode(3, "Archive", NodeType.Search, new Vector2(470f, 160f), 0);
-		AddNode(4, "Crossroad", NodeType.Room, new Vector2(470f, 360f), 2);
-		AddNode(5, "Barracks", NodeType.Battle, new Vector2(470f, 560f), 5);
-		AddNode(6, "Treasure Vault", NodeType.Search, new Vector2(660f, 220f), 3);
-		AddNode(7, "South Gate", NodeType.Extract, new Vector2(650f, 500f), 0);
+		AddNode(0, "入口大厅", NodeType.Room, new Vector2(120f, 360f), 0);
+		AddNode(1, "储藏室", NodeType.Search, new Vector2(280f, 220f), 0);
+		AddNode(2, "岗哨", NodeType.Battle, new Vector2(290f, 500f), 4);
+		AddNode(3, "档案室", NodeType.Search, new Vector2(470f, 160f), 0);
+		AddNode(4, "岔路口", NodeType.Room, new Vector2(470f, 360f), 2);
+		AddNode(5, "兵营", NodeType.Battle, new Vector2(470f, 560f), 5);
+		AddNode(6, "宝库", NodeType.Search, new Vector2(660f, 220f), 3);
+		AddNode(7, "南侧撤离点", NodeType.Extract, new Vector2(650f, 500f), 0);
 
 		LinkNodes(0, 1);
 		LinkNodes(0, 2);
@@ -235,11 +220,11 @@ public partial class NodeRaidDemo : Node2D
 
 		PopulateRoomContainers();
 
-		_aiSquads.Add(new AiSquad { Name = "Red Company", CurrentNodeId = 6, Strength = 9, Supplies = 3, Intent = AiIntent.Idle });
-		_aiSquads.Add(new AiSquad { Name = "Blue Company", CurrentNodeId = 5, Strength = 8, Supplies = 2, Intent = AiIntent.Idle });
-		_aiSquads.Add(new AiSquad { Name = "Gold Company", CurrentNodeId = 3, Strength = 7, Supplies = 3, Intent = AiIntent.Idle });
+		_aiSquads.Add(new AiSquad { Name = "赤狼小队", CurrentNodeId = 6, Strength = 9, Supplies = 3, Intent = AiIntent.Idle });
+		_aiSquads.Add(new AiSquad { Name = "蓝鸦小队", CurrentNodeId = 5, Strength = 8, Supplies = 2, Intent = AiIntent.Idle });
+		_aiSquads.Add(new AiSquad { Name = "金狮小队", CurrentNodeId = 3, Strength = 7, Supplies = 3, Intent = AiIntent.Idle });
 
-		LogEvent("Run started. Other squads are already inside the map.");
+		LogEvent("行动开始，其他小队已经进入地图。");
 		RefreshStatus();
 	}
 
@@ -263,12 +248,12 @@ public partial class NodeRaidDemo : Node2D
 
 	private void PopulateRoomContainers()
 	{
-		AddRoomContainer(1, "Supply Crate", 4, 0);
-		AddRoomContainer(1, "Tool Locker", 3, 0);
-		AddRoomContainer(3, "Document Chest", 4, 1);
-		AddRoomContainer(4, "Abandoned Pack", 2, 0);
-		AddRoomContainer(6, "Treasure Rack", 5, 2);
-		AddRoomContainer(6, "Vault Drawer", 4, 1);
+		AddRoomContainer(1, "补给箱", 4, 0);
+		AddRoomContainer(1, "工具柜", 3, 0);
+		AddRoomContainer(3, "文档箱", 4, 1);
+		AddRoomContainer(4, "遗弃背包", 2, 0);
+		AddRoomContainer(6, "宝物架", 5, 2);
+		AddRoomContainer(6, "宝库抽屉", 4, 1);
 	}
 
 	private void AddRoomContainer(int nodeId, string label, int hiddenCount, int visibleCount)
@@ -297,7 +282,7 @@ public partial class NodeRaidDemo : Node2D
 		MapNode current = _nodes[_playerNodeId];
 		if (!current.Links.Contains(nodeId))
 		{
-			_status = "That node is not connected.";
+			_status = "该节点与当前位置不相连。";
 			return;
 		}
 
@@ -308,7 +293,7 @@ public partial class NodeRaidDemo : Node2D
 		target.Visited = true;
 		_playerSearchActions = 0;
 
-		AdvanceTurn($"Moved to {target.Name}.");
+		AdvanceTurn($"移动至 {target.Name}。");
 		HandleArrival(target);
 	}
 
@@ -332,7 +317,7 @@ public partial class NodeRaidDemo : Node2D
 			node.SearchConsumed = true;
 			node.SearchTokensGranted = true;
 			_playerSearchActions = 2;
-			_status = $"Arrived at {node.Name}. Gained 2 free search actions.";
+			_status = $"抵达 {node.Name}，获得 2 次免费搜索机会。";
 		}
 		else
 		{
@@ -351,9 +336,9 @@ public partial class NodeRaidDemo : Node2D
 			EnemySquad = squad,
 			Node = node,
 		};
-		_encounter.Log.Add($"Encounter at {node.Name}.");
-		_encounter.Log.Add($"Enemy: {enemyName}.");
-		_status = $"Battle started at {node.Name}.";
+		_encounter.Log.Add($"在 {node.Name} 发生遭遇战。");
+		_encounter.Log.Add($"敌人：{enemyName}");
+		_status = $"{node.Name} 爆发战斗。";
 	}
 
 	private void StepEncounter()
@@ -367,7 +352,7 @@ public partial class NodeRaidDemo : Node2D
 		int enemyDamage = _rng.RandiRange(2, 5) + (_encounter.EnemySquad != null ? 1 : 0);
 		_encounter.EnemyHp = Mathf.Max(0, _encounter.EnemyHp - playerDamage);
 		_encounter.PlayerHp = Mathf.Max(0, _encounter.PlayerHp - enemyDamage);
-		_encounter.Log.Add($"You deal {playerDamage}. Enemy deals {enemyDamage}.");
+		_encounter.Log.Add($"我方造成 {playerDamage} 点伤害，敌方造成 {enemyDamage} 点伤害。");
 		if (_encounter.Log.Count > 7)
 		{
 			_encounter.Log.RemoveAt(0);
@@ -389,15 +374,15 @@ public partial class NodeRaidDemo : Node2D
 		MapNode node = _encounter.Node;
 		AiSquad squad = _encounter.EnemySquad;
 		bool playerWon = _encounter.PlayerHp > 0;
-		AdvanceTurn(playerWon ? $"Won battle at {node.Name}." : $"Fell in battle at {node.Name}.", _encounter.TurnCost, false);
+		AdvanceTurn(playerWon ? $"在 {node.Name} 取得胜利。" : $"在 {node.Name} 战败。", _encounter.TurnCost, false);
 
 		if (!playerWon)
 		{
 			_playerHp = 0;
 			_runEnded = true;
 			_runFailed = true;
-			_status = "The run is over.";
-			LogEvent("Your squad was wiped out.");
+			_status = "本局结束。";
+			LogEvent("玩家小队全灭。");
 			_encounter = null;
 			return;
 		}
@@ -414,14 +399,14 @@ public partial class NodeRaidDemo : Node2D
 		{
 			squad.Intent = AiIntent.Defeated;
 			squad.Strength = 0;
-			LogEvent($"{squad.Name} was destroyed by the player.");
+			LogEvent($"{squad.Name} 被玩家击溃。");
 		}
 		else
 		{
-			LogEvent($"The defenders at {node.Name} were defeated.");
+			LogEvent($"{node.Name} 的守军被击败。");
 		}
 
-		_status = $"Battle won at {node.Name}. Search the remains if you want loot.";
+		_status = $"{node.Name} 战斗胜利，可以开始搜刮战利品。";
 		_encounter = null;
 	}
 
@@ -429,7 +414,7 @@ public partial class NodeRaidDemo : Node2D
 	{
 		LootContainer pile = new()
 		{
-			Label = "Corpse Pile",
+			Label = "尸体堆",
 			Kind = ContainerKind.CorpsePile,
 		};
 
@@ -445,28 +430,28 @@ public partial class NodeRaidDemo : Node2D
 		{
 			LootContainer leader = new()
 			{
-				Label = $"{squad.Name} Captain",
+				Label = $"{squad.Name} 队长",
 				Kind = ContainerKind.EliteCorpse,
 			};
-			leader.VisibleItems.Add("Steel Saber");
-			leader.VisibleItems.Add("Captain Mail");
-			leader.HiddenItems.Add("Bandage Kit");
+			leader.VisibleItems.Add("精钢军刀");
+			leader.VisibleItems.Add("队长锁甲");
+			leader.HiddenItems.Add("绷带包");
 			if (squad.Loot.Count > 0)
 			{
 				leader.HiddenItems.Add(TakeRandomSquadLoot(squad));
 			}
-			leader.HiddenItems.Add("Seal Token");
+			leader.HiddenItems.Add("封印徽记");
 			node.Containers.Add(leader);
 		}
 		else if (node.Type == NodeType.Battle)
 		{
 			LootContainer elite = new()
 			{
-				Label = "Elite Guard",
+				Label = "精英守卫",
 				Kind = ContainerKind.EliteCorpse,
 			};
-			elite.VisibleItems.Add("Guard Spear");
-			elite.HiddenItems.Add("Ration Pack");
+			elite.VisibleItems.Add("守卫长枪");
+			elite.HiddenItems.Add("口粮包");
 			elite.HiddenItems.Add(RollLootItem());
 			node.Containers.Add(elite);
 		}
@@ -488,7 +473,7 @@ public partial class NodeRaidDemo : Node2D
 			SimulateAiTurn();
 		}
 
-		LogEvent($"Turn {_turn}: {reason}");
+		LogEvent($"第 {_turn} 回合：{reason}");
 		if (refreshPlayerNode && !_runEnded)
 		{
 			RefreshStatus();
@@ -522,7 +507,7 @@ public partial class NodeRaidDemo : Node2D
 				if (squad.CurrentNodeId == extractId)
 				{
 					squad.Intent = AiIntent.Extracted;
-					LogEvent($"{squad.Name} extracted with {squad.Loot.Count} loot items.");
+					LogEvent($"{squad.Name} 已撤离，带走了 {squad.Loot.Count} 件战利品。");
 					continue;
 				}
 
@@ -535,7 +520,7 @@ public partial class NodeRaidDemo : Node2D
 			{
 				squad.Intent = AiIntent.Clearing;
 				squad.BusyTurns = _rng.RandiRange(1, 2);
-				LogEvent($"{squad.Name} started clearing {node.Name}.");
+				LogEvent($"{squad.Name} 开始清理 {node.Name}。");
 				continue;
 			}
 
@@ -543,7 +528,7 @@ public partial class NodeRaidDemo : Node2D
 			{
 				squad.Intent = AiIntent.Looting;
 				squad.BusyTurns = 1;
-				LogEvent($"{squad.Name} started looting {node.Name}.");
+				LogEvent($"{squad.Name} 开始搜刮 {node.Name}。");
 				continue;
 			}
 
@@ -570,14 +555,14 @@ public partial class NodeRaidDemo : Node2D
 				squad.Strength = Mathf.Max(1, squad.Strength - loss);
 				node.Threat = 0;
 				node.Cleared = true;
-				LogEvent($"{squad.Name} cleared {node.Name} and lost {loss} strength.");
+				LogEvent($"{squad.Name} 清理了 {node.Name}，损失了 {loss} 点战力。");
 				break;
 			}
 			case AiIntent.Looting:
 			{
 				if (TryAiLootNode(squad, node))
 				{
-					LogEvent($"{squad.Name} looted {node.Name}.");
+					LogEvent($"{squad.Name} 搜刮了 {node.Name}。");
 				}
 				break;
 			}
@@ -620,7 +605,7 @@ public partial class NodeRaidDemo : Node2D
 				b.BusyTurns = a.BusyTurns;
 				a.RivalSquadId = j;
 				b.RivalSquadId = i;
-				LogEvent($"{a.Name} and {b.Name} engaged at {_nodes[a.CurrentNodeId].Name}.");
+				LogEvent($"{a.Name} 与 {b.Name} 在 {_nodes[a.CurrentNodeId].Name} 交战。");
 			}
 		}
 	}
@@ -663,14 +648,14 @@ public partial class NodeRaidDemo : Node2D
 		MapNode node = _nodes[winner.CurrentNodeId];
 		LootContainer pile = new()
 		{
-			Label = $"{loser.Name} Remains",
+			Label = $"{loser.Name} 的遗骸",
 			Kind = ContainerKind.CorpsePile,
 		};
-		pile.HiddenItems.Add("Broken Badge");
-		pile.HiddenItems.Add("Field Ration");
+		pile.HiddenItems.Add("破损徽章");
+		pile.HiddenItems.Add("野战口粮");
 		pile.HiddenItems.Add(RollLootItem());
 		node.Containers.Add(pile);
-		LogEvent($"{winner.Name} defeated {loser.Name} at {node.Name}.");
+		LogEvent($"{winner.Name} 在 {node.Name} 击败了 {loser.Name}。");
 	}
 
 	private bool CanAiLootNode(MapNode node)
@@ -759,7 +744,7 @@ public partial class NodeRaidDemo : Node2D
 		squad.CurrentNodeId = nextNodeId;
 		squad.Intent = intent;
 		squad.Supplies = Mathf.Max(0, squad.Supplies - 1);
-		LogEvent($"{squad.Name} moved to {_nodes[nextNodeId].Name}.");
+		LogEvent($"{squad.Name} 移动到了 {_nodes[nextNodeId].Name}。");
 	}
 
 	private int FindNextStepToward(int fromNodeId, int targetNodeId)
@@ -844,7 +829,7 @@ public partial class NodeRaidDemo : Node2D
 		MapNode node = _nodes[_playerNodeId];
 		if (!CanPlayerSearchNode(node))
 		{
-			_status = "This room is not safe enough to search.";
+			_status = "当前房间不够安全，无法搜索。";
 			return;
 		}
 
@@ -856,13 +841,13 @@ public partial class NodeRaidDemo : Node2D
 		LootContainer container = node.Containers[containerIndex];
 		if (container.HiddenRemaining <= 0)
 		{
-			_status = "Nothing hidden remains in that container.";
+			_status = "这个容器里没有未检视物品了。";
 			return;
 		}
 
 		if (_playerSearchActions <= 0)
 		{
-			_status = "No search actions left. Buy more with 1 turn.";
+			_status = "搜索机会不足，可花费 1 回合补充。";
 			return;
 		}
 
@@ -870,7 +855,7 @@ public partial class NodeRaidDemo : Node2D
 		string item = container.HiddenItems[container.RevealIndex];
 		container.RevealIndex++;
 		AddLootToPlayer(item);
-		LogEvent($"Searched {container.Label} and found {item}.");
+		LogEvent($"搜索 {container.Label}，发现了 {item}。");
 		RefreshStatus();
 	}
 
@@ -879,7 +864,7 @@ public partial class NodeRaidDemo : Node2D
 		MapNode node = _nodes[_playerNodeId];
 		if (!CanPlayerSearchNode(node))
 		{
-			_status = "The room is still dangerous.";
+			_status = "房间仍然危险，暂时不能搜刮。";
 			return;
 		}
 
@@ -899,7 +884,7 @@ public partial class NodeRaidDemo : Node2D
 		string item = container.VisibleItems[itemIndex];
 		container.VisibleItems.RemoveAt(itemIndex);
 		AddLootToPlayer(item);
-		LogEvent($"Took visible item {item} from {container.Label}.");
+		LogEvent($"从 {container.Label} 取走了 {item}。");
 		RefreshStatus();
 	}
 
@@ -908,13 +893,13 @@ public partial class NodeRaidDemo : Node2D
 		MapNode node = _nodes[_playerNodeId];
 		if (!CanPlayerSearchNode(node))
 		{
-			_status = "You cannot settle down to search here.";
+			_status = "这里无法安心停下来搜索。";
 			return;
 		}
 
-		AdvanceTurn($"Spent time searching {node.Name}.", 1);
+		AdvanceTurn($"在 {node.Name} 花费时间搜索。", 1);
 		_playerSearchActions += 4;
-		_status = $"Bought 4 search actions at {node.Name}.";
+		_status = $"在 {node.Name} 获得了 4 次搜索机会。";
 	}
 
 	private void ExtractNow()
@@ -922,14 +907,14 @@ public partial class NodeRaidDemo : Node2D
 		MapNode node = _nodes[_playerNodeId];
 		if (node.Type != NodeType.Extract)
 		{
-			_status = "You are not at an extract node.";
+			_status = "当前位置不是撤离点。";
 			return;
 		}
 
 		_runEnded = true;
 		_runFailed = false;
-		_status = "Extraction successful.";
-		LogEvent("The player extracted successfully.");
+		_status = "撤离成功。";
+		LogEvent("玩家成功撤离。");
 	}
 
 	private bool CanPlayerSearchNode(MapNode node)
@@ -944,17 +929,17 @@ public partial class NodeRaidDemo : Node2D
 
 	private int GetItemValue(string item)
 	{
-		if (item.Contains("Relic") || item.Contains("Seal") || item.Contains("Gem"))
+		if (item.Contains("遗物") || item.Contains("徽记") || item.Contains("宝石"))
 		{
 			return 18;
 		}
 
-		if (item.Contains("Mail") || item.Contains("Saber") || item.Contains("Spear"))
+		if (item.Contains("锁甲") || item.Contains("军刀") || item.Contains("长枪"))
 		{
 			return 12;
 		}
 
-		if (item.Contains("Kit") || item.Contains("Ration"))
+		if (item.Contains("包") || item.Contains("口粮"))
 		{
 			return 7;
 		}
@@ -966,15 +951,15 @@ public partial class NodeRaidDemo : Node2D
 	{
 		string[] items =
 		[
-			"Old Relic",
-			"Silver Gem",
-			"Ration Pack",
-			"Herb Kit",
-			"Seal Token",
-			"Trade Ledger",
-			"Rust Key",
-			"Lantern Oil",
-			"Fine Cloth",
+			"古旧遗物",
+			"银质宝石",
+			"口粮包",
+			"草药包",
+			"封印徽记",
+			"贸易账本",
+			"生锈钥匙",
+			"灯油",
+			"细布卷",
 		];
 		return items[_rng.RandiRange(0, items.Length - 1)];
 	}
@@ -983,11 +968,11 @@ public partial class NodeRaidDemo : Node2D
 	{
 		string[] items =
 		[
-			"Merc Sword",
-			"Leather Vest",
-			"Hunter Bow",
-			"Tower Shield",
-			"Steel Helm",
+			"佣兵长剑",
+			"皮甲背心",
+			"猎弓",
+			"塔盾",
+			"钢盔",
 		];
 		return items[_rng.RandiRange(0, items.Length - 1)];
 	}
@@ -1008,23 +993,23 @@ public partial class NodeRaidDemo : Node2D
 		AiSquad enemy = GetSquadAtNode(node.Id);
 		if (enemy != null)
 		{
-			_status = $"Enemy squad {enemy.Name} is here.";
+			_status = $"当前节点存在敌对小队：{enemy.Name}。";
 			return;
 		}
 
 		if (node.Threat > 0)
 		{
-			_status = $"{node.Name} still has defenders.";
+			_status = $"{node.Name} 仍有守军驻守。";
 			return;
 		}
 
 		if (node.Type == NodeType.Extract)
 		{
-			_status = "This is an extraction point.";
+			_status = "这里是撤离点。";
 			return;
 		}
 
-		_status = $"Safe at {node.Name}. Search actions: {_playerSearchActions}.";
+		_status = $"{node.Name} 当前安全，剩余搜索机会：{_playerSearchActions}。";
 	}
 
 	private void LogEvent(string message)
@@ -1102,38 +1087,44 @@ public partial class NodeRaidDemo : Node2D
 
 		float x = _sideRect.Position.X + 18f;
 		float y = _sideRect.Position.Y + 28f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "Node Raid Demo", HorizontalAlignment.Left, -1f, 20, Colors.White);
+		float panelBottom = _sideRect.End.Y - 18f;
+		const float reservedLogHeight = 170f;
+		float contentBottom = panelBottom - reservedLogHeight;
+		bool clipped = false;
+
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "节点突袭 Demo", HorizontalAlignment.Left, -1f, 20, Colors.White);
 		y += 28f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"Turn {_turn}", HorizontalAlignment.Left, -1f, 16, new Color(0.76f, 0.84f, 0.95f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"回合 {_turn}", HorizontalAlignment.Left, -1f, 16, new Color(0.76f, 0.84f, 0.95f));
 		y += 24f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"HP {_playerHp}/{_playerMaxHp}   Strength {_playerStrength}", HorizontalAlignment.Left, -1f, 15, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"生命 {_playerHp}/{_playerMaxHp}   战力 {_playerStrength}", HorizontalAlignment.Left, -1f, 15, Colors.White);
 		y += 22f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"Search {_playerSearchActions}   Value {_carriedValue}", HorizontalAlignment.Left, -1f, 15, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"搜索 {_playerSearchActions}   战利品价值 {_carriedValue}", HorizontalAlignment.Left, -1f, 15, Colors.White);
 		y += 26f;
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), _status, HorizontalAlignment.Left, 320f, 14, new Color(0.86f, 0.9f, 0.95f));
 		y += 54f;
 
 		MapNode node = _nodes[_playerNodeId];
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"Current Node: {node.Name}", HorizontalAlignment.Left, -1f, 16, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"当前节点：{node.Name}", HorizontalAlignment.Left, -1f, 16, Colors.White);
 		y += 24f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"Type: {node.Type}", HorizontalAlignment.Left, -1f, 13, new Color(0.75f, 0.78f, 0.82f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"类型：{GetNodeTypeLabel(node.Type)}", HorizontalAlignment.Left, -1f, 13, new Color(0.75f, 0.78f, 0.82f));
 		y += 18f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"Threat: {node.Threat}   Loot: {CountNodeLoot(node)}", HorizontalAlignment.Left, -1f, 13, new Color(0.75f, 0.78f, 0.82f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"威胁：{node.Threat}   战利品：{CountNodeLoot(node)}", HorizontalAlignment.Left, -1f, 13, new Color(0.75f, 0.78f, 0.82f));
 		y += 28f;
 
-		if (node.Type == NodeType.Extract && _encounter == null && !_runEnded)
+		if (node.Type == NodeType.Extract && _encounter == null && !_runEnded && y + 34f <= contentBottom)
 		{
 			Rect2 extractButton = new(new Vector2(x, y), new Vector2(140f, 30f));
-			DrawButton(extractButton, "Extract", new Color(0.24f, 0.62f, 0.36f));
+			DrawButton(extractButton, "执行撤离", new Color(0.24f, 0.62f, 0.36f));
 			_buttons.Add(new ButtonDef(extractButton, "extract"));
 			y += 42f;
 		}
 
-		if (CanPlayerSearchNode(node) && CountNodeLoot(node) > 0)
+		if (CanPlayerSearchNode(node) && CountNodeLoot(node) > 0 && y + 24f <= contentBottom)
 		{
-			DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "Containers", HorizontalAlignment.Left, -1f, 16, Colors.White);
+			DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "容器", HorizontalAlignment.Left, -1f, 16, Colors.White);
 			y += 22f;
-			for (int i = 0; i < node.Containers.Count; i++)
+
+			for (int i = 0; i < node.Containers.Count && !clipped; i++)
 			{
 				LootContainer container = node.Containers[i];
 				if (container.IsEmpty)
@@ -1141,24 +1132,43 @@ public partial class NodeRaidDemo : Node2D
 					continue;
 				}
 
-				DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"{container.Label} [{container.Kind}]", HorizontalAlignment.Left, 320f, 13, new Color(1f, 0.93f, 0.7f));
+				if (y + 20f > contentBottom)
+				{
+					clipped = true;
+					break;
+				}
+
+				DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"{container.Label} [{GetContainerKindLabel(container.Kind)}]", HorizontalAlignment.Left, 320f, 13, new Color(1f, 0.93f, 0.7f));
 				y += 18f;
+
 				if (container.VisibleItems.Count > 0)
 				{
 					for (int itemIndex = 0; itemIndex < container.VisibleItems.Count; itemIndex++)
 					{
+						if (y + 26f > contentBottom)
+						{
+							clipped = true;
+							break;
+						}
+
 						string item = container.VisibleItems[itemIndex];
-						Rect2 takeButton = new(new Vector2(x, y), new Vector2(116f, 24f));
-						DrawButton(takeButton, $"Take {item}", new Color(0.26f, 0.42f, 0.58f));
+						Rect2 takeButton = new(new Vector2(x, y), new Vector2(140f, 24f));
+						DrawButton(takeButton, $"拿取 {item}", new Color(0.26f, 0.42f, 0.58f));
 						_buttons.Add(new ButtonDef(takeButton, "take", i * 100 + itemIndex));
 						y += 30f;
 					}
 				}
 
-				if (container.HiddenRemaining > 0)
+				if (!clipped && container.HiddenRemaining > 0)
 				{
+					if (y + 26f > contentBottom)
+					{
+						clipped = true;
+						break;
+					}
+
 					Rect2 searchButton = new(new Vector2(x, y), new Vector2(200f, 24f));
-					DrawButton(searchButton, $"Inspect hidden item ({container.HiddenRemaining})", new Color(0.54f, 0.42f, 0.18f));
+					DrawButton(searchButton, $"检视未明物品（{container.HiddenRemaining}）", new Color(0.54f, 0.42f, 0.18f));
 					_buttons.Add(new ButtonDef(searchButton, "search", i));
 					y += 30f;
 				}
@@ -1166,22 +1176,35 @@ public partial class NodeRaidDemo : Node2D
 				y += 4f;
 			}
 
-			if (_playerSearchActions <= 0)
+			if (!clipped && _playerSearchActions <= 0 && y + 30f <= contentBottom)
 			{
 				Rect2 buyButton = new(new Vector2(x, y), new Vector2(220f, 28f));
-				DrawButton(buyButton, "Spend 1 turn for 4 searches", new Color(0.46f, 0.25f, 0.19f));
+				DrawButton(buyButton, "花费 1 回合换取 4 次搜索", new Color(0.46f, 0.25f, 0.19f));
 				_buttons.Add(new ButtonDef(buyButton, "buy_search"));
 				y += 38f;
 			}
 		}
 
-		float logY = _sideRect.End.Y - 190f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, logY), "World Log", HorizontalAlignment.Left, -1f, 16, Colors.White);
+		if (clipped)
+		{
+			DrawString(ThemeDB.FallbackFont, new Vector2(x, contentBottom - 6f), "下方内容已折叠，后续再做滚动列表。", HorizontalAlignment.Left, 320f, 12, new Color(0.95f, 0.76f, 0.52f));
+		}
+
+		float logY = Mathf.Max(y + 12f, contentBottom + 8f);
+		DrawLine(new Vector2(x, logY - 10f), new Vector2(_sideRect.End.X - 18f, logY - 10f), new Color(0.24f, 0.27f, 0.31f), 1f);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, logY), "世界动态", HorizontalAlignment.Left, -1f, 16, Colors.White);
 		logY += 20f;
-		for (int i = Mathf.Max(0, _eventLog.Count - 8); i < _eventLog.Count; i++)
+
+		int maxLogLines = Mathf.Max(2, (int)((panelBottom - logY) / 18f));
+		int startIndex = Mathf.Max(0, _eventLog.Count - maxLogLines);
+		for (int i = startIndex; i < _eventLog.Count; i++)
 		{
 			DrawString(ThemeDB.FallbackFont, new Vector2(x, logY), _eventLog[i], HorizontalAlignment.Left, 320f, 12, new Color(0.8f, 0.84f, 0.9f));
 			logY += 18f;
+			if (logY > panelBottom)
+			{
+				break;
+			}
 		}
 	}
 
@@ -1200,13 +1223,13 @@ public partial class NodeRaidDemo : Node2D
 
 		float x = panel.Position.X + 24f;
 		float y = panel.Position.Y + 34f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"Battle: {_encounter.Name}", HorizontalAlignment.Left, -1f, 22, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"战斗：{_encounter.Name}", HorizontalAlignment.Left, -1f, 22, Colors.White);
 		y += 34f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"Player battle HP: {_encounter.PlayerHp}", HorizontalAlignment.Left, -1f, 16, new Color(0.65f, 0.95f, 0.72f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"我方战斗生命：{_encounter.PlayerHp}", HorizontalAlignment.Left, -1f, 16, new Color(0.65f, 0.95f, 0.72f));
 		y += 24f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"Enemy battle HP: {_encounter.EnemyHp}", HorizontalAlignment.Left, -1f, 16, new Color(0.95f, 0.56f, 0.56f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"敌方战斗生命：{_encounter.EnemyHp}", HorizontalAlignment.Left, -1f, 16, new Color(0.95f, 0.56f, 0.56f));
 		y += 34f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "Auto-resolving combat...", HorizontalAlignment.Left, -1f, 15, new Color(0.82f, 0.86f, 0.92f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "战斗正在自动结算……", HorizontalAlignment.Left, -1f, 15, new Color(0.82f, 0.86f, 0.92f));
 		y += 28f;
 
 		foreach (string line in _encounter.Log)
@@ -1224,24 +1247,54 @@ public partial class NodeRaidDemo : Node2D
 
 		float x = panel.Position.X + 26f;
 		float y = panel.Position.Y + 38f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), _runFailed ? "Run Failed" : "Extraction Complete", HorizontalAlignment.Left, -1f, 24, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), _runFailed ? "行动失败" : "撤离完成", HorizontalAlignment.Left, -1f, 24, Colors.White);
 		y += 40f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"Turns survived: {_turn}", HorizontalAlignment.Left, -1f, 16, new Color(0.82f, 0.87f, 0.95f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"总回合数：{_turn}", HorizontalAlignment.Left, -1f, 16, new Color(0.82f, 0.87f, 0.95f));
 		y += 24f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"Loot value carried out: {_carriedValue}", HorizontalAlignment.Left, -1f, 16, new Color(0.95f, 0.86f, 0.48f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"带出战利品价值：{_carriedValue}", HorizontalAlignment.Left, -1f, 16, new Color(0.95f, 0.86f, 0.48f));
 		y += 36f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "AI Squad Summary", HorizontalAlignment.Left, -1f, 16, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "AI 小队总结", HorizontalAlignment.Left, -1f, 16, Colors.White);
 		y += 24f;
 
 		foreach (AiSquad squad in _aiSquads)
 		{
-			string line = $"{squad.Name}: {squad.Intent}, strength {Mathf.Max(0, squad.Strength)}, loot {squad.Loot.Count}";
+			string line = $"{squad.Name}：{GetAiIntentLabel(squad.Intent)}，战力 {Mathf.Max(0, squad.Strength)}，战利品 {squad.Loot.Count}";
 			DrawString(ThemeDB.FallbackFont, new Vector2(x, y), line, HorizontalAlignment.Left, 620f, 14, new Color(0.82f, 0.86f, 0.92f));
 			y += 22f;
 		}
 
 		Rect2 restartButton = new(new Vector2(panel.Position.X + 26f, panel.End.Y - 54f), new Vector2(140f, 30f));
-		DrawButton(restartButton, "Restart Run", new Color(0.26f, 0.45f, 0.62f));
+		DrawButton(restartButton, "重新开始", new Color(0.26f, 0.45f, 0.62f));
 		_buttons.Add(new ButtonDef(restartButton, "restart"));
 	}
+
+	private static string GetNodeTypeLabel(NodeType type) => type switch
+	{
+		NodeType.Room => "普通房间",
+		NodeType.Battle => "战斗房间",
+		NodeType.Search => "搜索房间",
+		NodeType.Extract => "撤离点",
+		_ => "未知",
+	};
+
+	private static string GetContainerKindLabel(ContainerKind kind) => kind switch
+	{
+		ContainerKind.Room => "房间容器",
+		ContainerKind.CorpsePile => "尸体堆",
+		ContainerKind.EliteCorpse => "独立尸体",
+		_ => "未知",
+	};
+
+	private static string GetAiIntentLabel(AiIntent intent) => intent switch
+	{
+		AiIntent.Idle => "待机",
+		AiIntent.Moving => "移动中",
+		AiIntent.Clearing => "清图中",
+		AiIntent.Looting => "搜刮中",
+		AiIntent.FightingSquad => "交战中",
+		AiIntent.Extracting => "前往撤离",
+		AiIntent.Extracted => "已撤离",
+		AiIntent.Defeated => "已被击败",
+		_ => "未知",
+	};
 }
