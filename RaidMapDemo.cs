@@ -215,6 +215,10 @@ public partial class RaidMapDemo : Node2D
 	private bool _confirmSkipChecked;
 	private int _selectedContainerIndex = -1;
 	private int _pendingRevealContainerIndex = -1;
+	private bool _isPlayerMoving;
+	private int _moveTargetNodeId = -1;
+	private float _moveProgress;
+	private Vector2 _playerMarkerPosition;
 	private string _status = "点击相邻节点移动。";
 
 	public override void _Ready()
@@ -228,6 +232,7 @@ public partial class RaidMapDemo : Node2D
 		if (!_inHideout)
 		{
 			UpdateContainerSearch((float)delta);
+			UpdatePlayerMove((float)delta);
 		}
 		QueueRedraw();
 	}
@@ -249,7 +254,7 @@ public partial class RaidMapDemo : Node2D
 			}
 		}
 
-		if (_inHideout || _runEnded || _battleSim != null || _pendingEncounter != null || _selectedContainerIndex >= 0)
+		if (_inHideout || _runEnded || _battleSim != null || _pendingEncounter != null || _isPlayerMoving || _selectedContainerIndex >= 0)
 		{
 			return;
 		}
@@ -347,6 +352,10 @@ public partial class RaidMapDemo : Node2D
 
 		_nodes[0].Visited = true;
 		_playerNodeId = 0;
+		_playerMarkerPosition = _nodes[0].Position;
+		_isPlayerMoving = false;
+		_moveTargetNodeId = -1;
+		_moveProgress = 0f;
 		UpdateVision(_playerNodeId);
 
 		AddRoomContainer(1, "墓地供箱", 3, 0);
@@ -447,6 +456,41 @@ public partial class RaidMapDemo : Node2D
 		return _nodes[_playerNodeId].Links.Contains(node.Id);
 	}
 
+	private void UpdatePlayerMove(float delta)
+	{
+		if (!_isPlayerMoving || _moveTargetNodeId < 0 || _moveTargetNodeId >= _nodes.Count)
+		{
+			return;
+		}
+
+		_moveProgress = Mathf.Min(1f, _moveProgress + delta * 2.6f);
+		Vector2 from = _nodes[_playerNodeId].Position;
+		Vector2 to = _nodes[_moveTargetNodeId].Position;
+		_playerMarkerPosition = from.Lerp(to, _moveProgress);
+		if (_moveProgress >= 1f)
+		{
+			CompletePlayerMove();
+		}
+	}
+
+	private void CompletePlayerMove()
+	{
+		if (_moveTargetNodeId < 0 || _moveTargetNodeId >= _nodes.Count)
+		{
+			_isPlayerMoving = false;
+			return;
+		}
+
+		_playerNodeId = _moveTargetNodeId;
+		_nodes[_playerNodeId].Visited = true;
+		UpdateVision(_playerNodeId);
+		_playerMarkerPosition = _nodes[_playerNodeId].Position;
+		_moveTargetNodeId = -1;
+		_moveProgress = 0f;
+		_isPlayerMoving = false;
+		HandleArrival(_nodes[_playerNodeId]);
+	}
+
 	private void TryMoveToNode(int nodeId)
 	{
 		MapNode current = _nodes[_playerNodeId];
@@ -456,11 +500,12 @@ public partial class RaidMapDemo : Node2D
 			return;
 		}
 
-		_playerNodeId = nodeId;
-		_nodes[nodeId].Visited = true;
-		UpdateVision(nodeId);
+		_isPlayerMoving = true;
+		_moveTargetNodeId = nodeId;
+		_moveProgress = 0f;
+		_playerMarkerPosition = _nodes[_playerNodeId].Position;
 		AdvanceTurn($"移动至 {_nodes[nodeId].Name}。");
-		HandleArrival(_nodes[nodeId]);
+		_status = $"正在前往 {_nodes[nodeId].Name}。";
 	}
 
 	private void HandleArrival(MapNode node)
@@ -988,7 +1033,7 @@ public partial class RaidMapDemo : Node2D
 
 	private void CheckPlayerNodeEncounterAfterTimeAdvance()
 	{
-		if (_runEnded || _battleSim != null || _encounter != null || _pendingEncounter != null || _inHideout)
+		if (_runEnded || _battleSim != null || _encounter != null || _pendingEncounter != null || _inHideout || _isPlayerMoving)
 		{
 			return;
 		}
@@ -1749,7 +1794,7 @@ public partial class RaidMapDemo : Node2D
 			DrawNodeGlyph(node, color);
 			Vector2 labelPos = node.Position + GetNodeLabelOffset(node.Id);
 			DrawString(ThemeDB.FallbackFont, labelPos, node.Name, HorizontalAlignment.Left, -1f, 14, new Color(0.96f, 0.93f, 0.86f, labelAlpha));
-			if (node.Id == _playerNodeId)
+			if (node.Id == _playerNodeId && !_isPlayerMoving)
 			{
 				DrawArc(node.Position, 34f, 0f, Mathf.Tau, 32, new Color(0.58f, 0.95f, 0.98f, 0.9f), 3f);
 				DrawCircle(node.Position, 7f, new Color(0.58f, 0.95f, 0.98f));
@@ -1763,6 +1808,9 @@ public partial class RaidMapDemo : Node2D
 				DrawString(ThemeDB.FallbackFont, node.Position + GetSquadLabelOffset(node.Id), squad.Name, HorizontalAlignment.Left, -1f, 10, new Color(1f, 0.84f, 0.8f));
 			}
 		}
+
+		DrawArc(_playerMarkerPosition, 34f, 0f, Mathf.Tau, 32, new Color(0.58f, 0.95f, 0.98f, 0.9f), 3f);
+		DrawCircle(_playerMarkerPosition, 7f, new Color(0.58f, 0.95f, 0.98f));
 	}
 
 	private void DrawMonasteryBackdrop()
