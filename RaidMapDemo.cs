@@ -1819,7 +1819,9 @@ public partial class RaidMapDemo : Node2D
 				DrawCircle(badge, 9f, new Color(0.42f, 0.08f, 0.08f, 0.95f));
 				DrawCircle(badge, 7f, new Color(0.92f, 0.34f, 0.3f));
 				DrawString(ThemeDB.FallbackFont, node.Position + GetSquadLabelOffset(node.Id), squad.Name, HorizontalAlignment.Left, -1f, 10, new Color(1f, 0.84f, 0.8f));
-				DrawString(ThemeDB.FallbackFont, node.Position + GetSquadIntentOffset(node.Id), GetAiIntentSummary(squad), HorizontalAlignment.Left, -1f, 9, new Color(0.92f, 0.92f, 0.84f));
+				Vector2 intentPos = node.Position + GetSquadIntentOffset(node.Id);
+				DrawAiIntentIcon(intentPos + new Vector2(6f, -3f), squad.Intent);
+				DrawString(ThemeDB.FallbackFont, intentPos + new Vector2(18f, 0f), GetAiIntentSummary(squad), HorizontalAlignment.Left, -1f, 9, new Color(0.92f, 0.92f, 0.84f));
 			}
 		}
 
@@ -1940,6 +1942,51 @@ public partial class RaidMapDemo : Node2D
 		12 => new Vector2(6f, 42f),
 		_ => new Vector2(14f, 54f),
 	};
+
+	private void DrawAiIntentIcon(Vector2 center, AiIntent intent)
+	{
+		Color fg = new(0.92f, 0.92f, 0.84f, 0.95f);
+		Color bg = new(0.08f, 0.08f, 0.09f, 0.72f);
+		DrawCircle(center, 7f, bg);
+
+		switch (intent)
+		{
+			case AiIntent.Moving:
+			case AiIntent.Extracting:
+				DrawLine(center + new Vector2(-3f, 0f), center + new Vector2(2f, 0f), fg, 1.6f);
+				DrawLine(center + new Vector2(2f, 0f), center + new Vector2(-1f, -3f), fg, 1.6f);
+				DrawLine(center + new Vector2(2f, 0f), center + new Vector2(-1f, 3f), fg, 1.6f);
+				break;
+			case AiIntent.Clearing:
+				DrawLine(center + new Vector2(-3f, -3f), center + new Vector2(3f, 3f), fg, 1.6f);
+				DrawLine(center + new Vector2(-3f, 3f), center + new Vector2(3f, -3f), fg, 1.6f);
+				break;
+			case AiIntent.Looting:
+				DrawRect(new Rect2(center + new Vector2(-3.5f, -2.5f), new Vector2(7f, 5f)), fg, false, 1.4f);
+				DrawLine(center + new Vector2(-1.5f, -4f), center + new Vector2(1.5f, -4f), fg, 1.4f);
+				DrawLine(center + new Vector2(-1.5f, -4f), center + new Vector2(-1.5f, -2.5f), fg, 1.4f);
+				DrawLine(center + new Vector2(1.5f, -4f), center + new Vector2(1.5f, -2.5f), fg, 1.4f);
+				break;
+			case AiIntent.Fighting:
+				DrawLine(center + new Vector2(-4f, 0f), center + new Vector2(0f, -3f), fg, 1.6f);
+				DrawLine(center + new Vector2(0f, -3f), center + new Vector2(4f, 0f), fg, 1.6f);
+				DrawLine(center + new Vector2(-4f, 0f), center + new Vector2(0f, 3f), fg, 1.6f);
+				DrawLine(center + new Vector2(0f, 3f), center + new Vector2(4f, 0f), fg, 1.6f);
+				break;
+			case AiIntent.Extracted:
+				DrawArc(center, 4f, 0f, Mathf.Tau, 16, fg, 1.5f);
+				DrawLine(center + new Vector2(0f, -2f), center + new Vector2(0f, 2f), fg, 1.3f);
+				break;
+			case AiIntent.Defeated:
+				DrawLine(center + new Vector2(-3f, -3f), center + new Vector2(3f, 3f), fg, 1.6f);
+				DrawLine(center + new Vector2(-3f, 3f), center + new Vector2(3f, -3f), fg, 1.6f);
+				DrawCircle(center, 1.5f, fg);
+				break;
+			default:
+				DrawCircle(center, 2f, fg);
+				break;
+		}
+	}
 
 	private Color GetNodeColor(MapNode node, bool clearVision)
 	{
