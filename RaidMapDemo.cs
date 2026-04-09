@@ -5,6 +5,8 @@ using System.Collections.Generic;
 public partial class RaidMapDemo : Node2D
 {
 	private const int RecruitCost = 30;
+	private const int MapTemplateCount = 2;
+	private const int DifficultyCount = 3;
 
 	private enum NodeType
 	{
@@ -47,6 +49,13 @@ public partial class RaidMapDemo : Node2D
 		Blue,
 		Purple,
 		Gold,
+	}
+
+	private enum OperationDifficulty
+	{
+		Trial,
+		Muster,
+		AllIn,
 	}
 
 	private sealed class MapNode
@@ -221,6 +230,7 @@ public partial class RaidMapDemo : Node2D
 	private float _moveProgress;
 	private Vector2 _playerMarkerPosition;
 	private int _selectedMapTemplate;
+	private OperationDifficulty _selectedDifficulty = OperationDifficulty.Trial;
 	private string _status = "点击相邻节点移动。";
 
 	public override void _Ready()
@@ -325,6 +335,7 @@ public partial class RaidMapDemo : Node2D
 		if (_selectedMapTemplate == 1)
 		{
 			BuildBorderKeepMap();
+			ApplyDifficultyToRun();
 			LogEvent("行动开始，其他小队已经进入边境堡寨。");
 			RefreshStatus();
 			return;
@@ -384,6 +395,7 @@ public partial class RaidMapDemo : Node2D
 		_aiSquads.Add(new AiSquad { Name = "金狮小队", NodeId = 3, Strength = 7, Supplies = 3, Intent = AiIntent.Idle });
 		_aiSquads.Add(new AiSquad { Name = "灰烬小队", NodeId = 12, Strength = 10, Supplies = 2, Intent = AiIntent.Idle });
 
+		ApplyDifficultyToRun();
 		LogEvent("行动开始，其他小队已经进入地图。");
 		RefreshStatus();
 	}
@@ -439,6 +451,50 @@ public partial class RaidMapDemo : Node2D
 		for (int i = 0; i < visibleCount; i++) container.VisibleItems.Add(RollVisibleEquipment());
 		for (int i = 0; i < hiddenCount; i++) container.HiddenItems.Add(RollLootItem());
 		_nodes[nodeId].Containers.Add(container);
+	}
+
+	private void ApplyDifficultyToRun()
+	{
+		float threatScale = GetDifficultyThreatScale(_selectedDifficulty);
+		float lootScale = GetDifficultyLootScale(_selectedDifficulty);
+		foreach (MapNode node in _nodes)
+		{
+			if (node.Threat > 0)
+			{
+				node.Threat = Mathf.Max(1, Mathf.RoundToInt(node.Threat * threatScale));
+			}
+
+			foreach (LootContainer container in node.Containers)
+			{
+				if (lootScale >= 2f)
+				{
+					container.HiddenItems.Add(RollLootItem());
+					if (node.Type == NodeType.Search)
+					{
+						container.HiddenItems.Add(RollLootItem());
+					}
+				}
+
+				if (lootScale >= 4f)
+				{
+					container.VisibleItems.Add(RollVisibleEquipment());
+					container.HiddenItems.Add(RollLootItem());
+				}
+			}
+		}
+
+		foreach (AiSquad squad in _aiSquads)
+		{
+			squad.Strength = Mathf.Max(1, Mathf.RoundToInt(squad.Strength * threatScale));
+			if (lootScale >= 2f)
+			{
+				squad.Supplies += 1;
+			}
+			if (lootScale >= 4f)
+			{
+				squad.Supplies += 1;
+			}
+		}
 	}
 
 	private void BuildBorderKeepMap()
@@ -1328,11 +1384,18 @@ public partial class RaidMapDemo : Node2D
 					RecruitSoldier();
 					return;
 				case "select_map_prev":
-					_selectedMapTemplate = (_selectedMapTemplate + 1) % 2;
-					_selectedMapTemplate = (_selectedMapTemplate + 1) % 2;
+					_selectedMapTemplate = (_selectedMapTemplate + MapTemplateCount - 1) % MapTemplateCount;
+					ClampSelectedDifficulty();
 					return;
 				case "select_map_next":
-					_selectedMapTemplate = (_selectedMapTemplate + 1) % 2;
+					_selectedMapTemplate = (_selectedMapTemplate + 1) % MapTemplateCount;
+					ClampSelectedDifficulty();
+					return;
+				case "select_diff_prev":
+					CycleDifficulty(-1);
+					return;
+				case "select_diff_next":
+					CycleDifficulty(1);
 					return;
 			}
 		}
@@ -1587,6 +1650,82 @@ public partial class RaidMapDemo : Node2D
 		_ => "沦陷修道院",
 	};
 
+	private string GetSelectedMapRoleLabel() => _selectedMapTemplate switch
+	{
+		1 => "进阶图",
+		_ => "新手图",
+	};
+
+	private string GetDifficultyName(OperationDifficulty difficulty) => difficulty switch
+	{
+		OperationDifficulty.Trial => "试锋",
+		OperationDifficulty.Muster => "整军",
+		OperationDifficulty.AllIn => "倾巢",
+		_ => "试锋",
+	};
+
+	private int GetDifficultyRequirement(OperationDifficulty difficulty) => difficulty switch
+	{
+		OperationDifficulty.Trial => 0,
+		OperationDifficulty.Muster => 150000,
+		OperationDifficulty.AllIn => 500000,
+		_ => 0,
+	};
+
+	private float GetDifficultyThreatScale(OperationDifficulty difficulty) => difficulty switch
+	{
+		OperationDifficulty.Trial => 1f,
+		OperationDifficulty.Muster => 1.45f,
+		OperationDifficulty.AllIn => 2.1f,
+		_ => 1f,
+	};
+
+	private float GetDifficultyLootScale(OperationDifficulty difficulty) => difficulty switch
+	{
+		OperationDifficulty.Trial => 1f,
+		OperationDifficulty.Muster => 2f,
+		OperationDifficulty.AllIn => 4f,
+		_ => 1f,
+	};
+
+	private bool IsDifficultyAllowed(OperationDifficulty difficulty)
+	{
+		return _selectedMapTemplate switch
+		{
+			0 => difficulty is OperationDifficulty.Trial or OperationDifficulty.Muster,
+			1 => difficulty is OperationDifficulty.Muster or OperationDifficulty.AllIn,
+			_ => difficulty == OperationDifficulty.Trial,
+		};
+	}
+
+	private void ClampSelectedDifficulty()
+	{
+		if (IsDifficultyAllowed(_selectedDifficulty))
+		{
+			return;
+		}
+
+		_selectedDifficulty = _selectedMapTemplate == 0 ? OperationDifficulty.Trial : OperationDifficulty.Muster;
+	}
+
+	private void CycleDifficulty(int direction)
+	{
+		int start = (int)_selectedDifficulty;
+		int index = start;
+		for (int i = 0; i < DifficultyCount; i++)
+		{
+			index = (index + direction + DifficultyCount) % DifficultyCount;
+			OperationDifficulty candidate = (OperationDifficulty)index;
+			if (!IsDifficultyAllowed(candidate))
+			{
+				continue;
+			}
+
+			_selectedDifficulty = candidate;
+			return;
+		}
+	}
+
 	private void SellStashItem(int index)
 	{
 		if (index < 0 || index >= _stash.Count)
@@ -1772,6 +1911,22 @@ public partial class RaidMapDemo : Node2D
 		DrawButton(mapNextRect, ">", new Color(0.22f, 0.24f, 0.29f));
 		_buttons.Add(new ButtonDef(mapPrevRect, "select_map_prev"));
 		_buttons.Add(new ButtonDef(mapNextRect, "select_map_next"));
+		y += 32f;
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"地图定位：{GetSelectedMapRoleLabel()}", HorizontalAlignment.Left, -1f, 14, new Color(0.76f, 0.84f, 0.94f));
+		y += 28f;
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "行动难度", HorizontalAlignment.Left, -1f, 16, Colors.White);
+		Rect2 diffPrevRect = new(new Vector2(x + 110f, y - 18f), new Vector2(28f, 24f));
+		Rect2 diffNextRect = new(new Vector2(x + 400f, y - 18f), new Vector2(28f, 24f));
+		Rect2 diffNameRect = new(new Vector2(x + 148f, y - 18f), new Vector2(242f, 24f));
+		DrawButton(diffPrevRect, "<", new Color(0.22f, 0.24f, 0.29f));
+		DrawRect(diffNameRect, new Color(0.11f, 0.12f, 0.15f), true);
+		DrawRect(diffNameRect, new Color(0.34f, 0.37f, 0.42f), false, 1f);
+		DrawString(ThemeDB.FallbackFont, diffNameRect.Position + new Vector2(10f, 17f), GetDifficultyName(_selectedDifficulty), HorizontalAlignment.Left, -1f, 13, new Color(0.96f, 0.9f, 0.78f));
+		DrawButton(diffNextRect, ">", new Color(0.22f, 0.24f, 0.29f));
+		_buttons.Add(new ButtonDef(diffPrevRect, "select_diff_prev"));
+		_buttons.Add(new ButtonDef(diffNextRect, "select_diff_next"));
+		y += 30f;
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"武备要求：{GetDifficultyRequirement(_selectedDifficulty)}", HorizontalAlignment.Left, -1f, 14, new Color(0.95f, 0.86f, 0.48f));
 
 		Rect2 startRect = new(new Vector2(panel.End.X - 170f, panel.Position.Y + 24f), new Vector2(140f, 34f));
 		DrawButton(startRect, "入局", new Color(0.24f, 0.62f, 0.36f));
@@ -1784,8 +1939,8 @@ public partial class RaidMapDemo : Node2D
 			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
 		}
 
-		Rect2 stashRect = new(new Vector2(panel.Position.X + 18f, panel.Position.Y + 122f), new Vector2(474f, 386f));
-		Rect2 shopRect = new(new Vector2(panel.Position.X + 548f, panel.Position.Y + 122f), new Vector2(474f, 386f));
+		Rect2 stashRect = new(new Vector2(panel.Position.X + 18f, panel.Position.Y + 192f), new Vector2(474f, 316f));
+		Rect2 shopRect = new(new Vector2(panel.Position.X + 548f, panel.Position.Y + 192f), new Vector2(474f, 316f));
 		DrawRect(stashRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(shopRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(stashRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
@@ -2551,7 +2706,8 @@ public partial class RaidMapDemo : Node2D
 	}
 	private void DrawEndOverlay()
 	{
-		Rect2 panel = new(new Vector2(250f, 170f), new Vector2(720f, 330f));
+		Vector2 viewport = GetViewportRect().Size;
+		Rect2 panel = new(viewport * 0.5f - new Vector2(360f, 210f), new Vector2(720f, 420f));
 		DrawRect(panel, new Color(0.01f, 0.01f, 0.02f, 0.96f), true);
 		DrawRect(panel, Colors.White, false, 2f);
 
