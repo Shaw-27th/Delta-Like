@@ -4,6 +4,8 @@ using System.Collections.Generic;
 [GlobalClass]
 public partial class RaidMapDemo : Node2D
 {
+	private const int RecruitCost = 30;
+
 	private enum NodeType
 	{
 		Room,
@@ -127,6 +129,17 @@ public partial class RaidMapDemo : Node2D
 		public float SearchProgress;
 	}
 
+	private sealed class ShopEntry
+	{
+		public string Label = "";
+		public int Price;
+	}
+
+	private sealed class SoldierRecord
+	{
+		public string Name = "";
+	}
+
 	private sealed class AiSquad
 	{
 		public string Name = "";
@@ -168,6 +181,11 @@ public partial class RaidMapDemo : Node2D
 	private readonly List<AiSquad> _aiSquads = new();
 	private readonly List<string> _eventLog = new();
 	private readonly List<ButtonDef> _buttons = new();
+	private readonly List<string> _runBackpack = new();
+	private readonly List<string> _stash = new();
+	private readonly List<ShopEntry> _shopStock = new();
+	private readonly List<SoldierRecord> _soldierRoster = new();
+	private readonly List<SoldierRecord> _runSoldiers = new();
 	private readonly RandomNumberGenerator _rng = new();
 
 	private readonly Rect2 _mapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
@@ -182,8 +200,11 @@ public partial class RaidMapDemo : Node2D
 	private int _playerStrength;
 	private int _searchActions;
 	private int _lootValue;
+	private int _money;
+	private int _nextSoldierId = 1;
 	private bool _runEnded;
 	private bool _runFailed;
+	private bool _inHideout = true;
 	private bool _autoSearchEnabled;
 	private bool _skipSearchConfirm;
 	private bool _showSearchConfirm;
@@ -195,12 +216,15 @@ public partial class RaidMapDemo : Node2D
 	public override void _Ready()
 	{
 		_rng.Randomize();
-		ResetRun();
+		InitHideout();
 	}
 
 	public override void _Process(double delta)
 	{
-		UpdateContainerSearch((float)delta);
+		if (!_inHideout)
+		{
+			UpdateContainerSearch((float)delta);
+		}
 		QueueRedraw();
 	}
 
@@ -221,7 +245,7 @@ public partial class RaidMapDemo : Node2D
 			}
 		}
 
-		if (_runEnded || _battleSim != null || _showSearchConfirm || _selectedContainerIndex >= 0)
+		if (_inHideout || _runEnded || _battleSim != null || _showSearchConfirm || _selectedContainerIndex >= 0)
 		{
 			return;
 		}
@@ -240,6 +264,11 @@ public partial class RaidMapDemo : Node2D
 	{
 		_buttons.Clear();
 		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0.06f, 0.07f, 0.09f), true);
+		if (_inHideout)
+		{
+			DrawHideout();
+			return;
+		}
 		DrawMap();
 		DrawSidePanel();
 		if (_selectedContainerIndex >= 0)
@@ -258,9 +287,11 @@ public partial class RaidMapDemo : Node2D
 
 	private void ResetRun()
 	{
+		_inHideout = false;
 		_nodes.Clear();
 		_aiSquads.Clear();
 		_eventLog.Clear();
+		_runBackpack.Clear();
 
 		_playerMaxHp = 24;
 		_playerHp = 24;
@@ -277,6 +308,12 @@ public partial class RaidMapDemo : Node2D
 		_selectedContainerIndex = -1;
 		_pendingRevealContainerIndex = -1;
 		_encounter = null;
+		_runSoldiers.Clear();
+		foreach (SoldierRecord soldier in _soldierRoster)
+		{
+			_runSoldiers.Add(new SoldierRecord { Name = soldier.Name });
+		}
+		_playerStrength = 3 + _runSoldiers.Count;
 
 		AddNode(0, "入口大厅", NodeType.Room, new Vector2(120f, 360f), 0);
 		AddNode(1, "储藏室", NodeType.Search, new Vector2(280f, 220f), 0);
@@ -307,6 +344,42 @@ public partial class RaidMapDemo : Node2D
 
 		LogEvent("行动开始，其他小队已经进入地图。");
 		RefreshStatus();
+	}
+
+	private void InitHideout()
+	{
+		_inHideout = true;
+		_runEnded = false;
+		_runFailed = false;
+		_selectedContainerIndex = -1;
+		_showSearchConfirm = false;
+		_pendingRevealContainerIndex = -1;
+		_battleSim = null;
+		_eventLog.Clear();
+		if (_shopStock.Count == 0)
+		{
+			SeedShop();
+		}
+		if (_money == 0 && _stash.Count == 0)
+		{
+			_money = 120;
+			_stash.Add("旧军刀");
+			_stash.Add("草药包");
+		}
+		if (_soldierRoster.Count == 0 && _nextSoldierId == 1)
+		{
+			RecruitSoldierInternal();
+			RecruitSoldierInternal();
+		}
+	}
+
+	private void SeedShop()
+	{
+		_shopStock.Clear();
+		_shopStock.Add(new ShopEntry { Label = "军用口粮", Price = 18 });
+		_shopStock.Add(new ShopEntry { Label = "草药包", Price = 22 });
+		_shopStock.Add(new ShopEntry { Label = "钢制短刀", Price = 40 });
+		_shopStock.Add(new ShopEntry { Label = "银质宝石", Price = 65 });
 	}
 
 	private void AddNode(int id, string name, NodeType type, Vector2 position, int threat)
@@ -359,16 +432,8 @@ public partial class RaidMapDemo : Node2D
 			return;
 		}
 
-		if (!node.SearchRewardClaimed)
-		{
-			node.SearchRewardClaimed = true;
-			_searchActions = 2;
-			_status = $"抵达 {node.Name}，获得 2 次免费搜索机会。";
-		}
-		else
-		{
-			RefreshStatus();
-		}
+		node.SearchRewardClaimed = true;
+		RefreshStatus();
 	}
 
 	private void StartEncounter(MapNode node, string enemyName, int enemyPower, AiSquad squad, bool hasElite)
@@ -387,10 +452,10 @@ public partial class RaidMapDemo : Node2D
 		_battleSim = new RoomBattleSim();
 		AddChild(_battleSim);
 		_battleSim.BattleFinished += OnBattleFinished;
-		_battleSim.Setup(node.Name, _playerHp, _playerStrength, enemyPower, hasElite, enemyName);
+		_battleSim.Setup(node.Name, _playerHp, _playerStrength, _runSoldiers.Count, enemyPower, hasElite, enemyName);
 	}
 
-	private void OnBattleFinished(bool victory, int remainingHp, int remainingStrength)
+	private void OnBattleFinished(bool victory, bool heroAlive, int remainingHp, int remainingSoldiers, int remainingStrength)
 	{
 		if (_battleSim != null)
 		{
@@ -407,23 +472,29 @@ public partial class RaidMapDemo : Node2D
 		MapNode node = _encounter.Node;
 		AiSquad squad = _encounter.Squad;
 		AdvanceTurn(victory ? $"在 {node.Name} 取得胜利。" : $"在 {node.Name} 战败。", _encounter.TurnCost, false);
+		ApplySoldierLosses(remainingSoldiers);
 
 		if (!victory)
 		{
 			_playerHp = 0;
+			_runBackpack.Clear();
 			_runEnded = true;
 			_runFailed = true;
-			_status = "本局结束。";
-			LogEvent("玩家小队全灭。");
+			_status = "全队死亡，本局物资全部丢失。";
+			LogEvent("玩家小队全灭，本局物资未能带出。");
 			_encounter = null;
 			return;
 		}
 
-		_playerHp = Mathf.Clamp(remainingHp, 4, _playerMaxHp);
-		_playerStrength = Mathf.Max(4, remainingStrength);
+		_playerHp = heroAlive ? Mathf.Clamp(remainingHp, 1, _playerMaxHp) : 1;
+		_playerStrength = Mathf.Max(3 + _runSoldiers.Count, remainingStrength);
 		node.Threat = 0;
 		GenerateBattleLoot(node, squad);
 		_searchActions = 0;
+		if (!heroAlive)
+		{
+			LogEvent("英雄在战斗中倒下，但幸存士兵赢得了战斗。英雄以 1 点生命值继续探索。");
+		}
 
 		if (squad != null)
 		{
@@ -983,11 +1054,30 @@ public partial class RaidMapDemo : Node2D
 
 	private void HandleButton(ButtonDef button)
 	{
+		if (_inHideout)
+		{
+			switch (button.Action)
+			{
+				case "start_run":
+					ResetRun();
+					return;
+				case "sell_stash":
+					SellStashItem(button.Index);
+					return;
+				case "buy_shop":
+					BuyShopItem(button.Index);
+					return;
+				case "recruit_soldier":
+					RecruitSoldier();
+					return;
+			}
+		}
+
 		if (_runEnded)
 		{
 			if (button.Action == "restart")
 			{
-				ResetRun();
+				InitHideout();
 			}
 			return;
 		}
@@ -1214,6 +1304,10 @@ public partial class RaidMapDemo : Node2D
 			return;
 		}
 
+		foreach (string item in _runBackpack)
+		{
+			_stash.Add(item);
+		}
 		_runEnded = true;
 		_runFailed = false;
 		_status = "撤离成功。";
@@ -1227,6 +1321,7 @@ public partial class RaidMapDemo : Node2D
 
 	private void AddLoot(string item)
 	{
+		_runBackpack.Add(item);
 		_lootValue += GetItemValue(item);
 	}
 
@@ -1236,6 +1331,88 @@ public partial class RaidMapDemo : Node2D
 		if (item.Contains("锁甲") || item.Contains("军刀") || item.Contains("长枪")) return 12;
 		if (item.Contains("包") || item.Contains("口粮")) return 7;
 		return 5;
+	}
+
+	private void SellStashItem(int index)
+	{
+		if (index < 0 || index >= _stash.Count)
+		{
+			return;
+		}
+
+		string item = _stash[index];
+		_money += GetItemValue(item);
+		_stash.RemoveAt(index);
+	}
+
+	private void BuyShopItem(int index)
+	{
+		if (index < 0 || index >= _shopStock.Count)
+		{
+			return;
+		}
+
+		ShopEntry entry = _shopStock[index];
+		if (_money < entry.Price)
+		{
+			return;
+		}
+
+		_money -= entry.Price;
+		_stash.Add(entry.Label);
+	}
+
+	private void RecruitSoldierInternal()
+	{
+		_soldierRoster.Add(new SoldierRecord { Name = $"士兵{_nextSoldierId}" });
+		_nextSoldierId++;
+	}
+
+	private void RecruitSoldier()
+	{
+		if (_money < RecruitCost)
+		{
+			_status = "资金不足，无法征募新兵。";
+			return;
+		}
+
+		_money -= RecruitCost;
+		RecruitSoldierInternal();
+		_status = $"已征募新兵，当前士兵数：{_soldierRoster.Count}。";
+	}
+
+	private void ApplySoldierLosses(int remainingSoldiers)
+	{
+		remainingSoldiers = Mathf.Clamp(remainingSoldiers, 0, _runSoldiers.Count);
+		int losses = _runSoldiers.Count - remainingSoldiers;
+		if (losses <= 0)
+		{
+			return;
+		}
+
+		for (int i = 0; i < losses; i++)
+		{
+			int runIndex = _runSoldiers.Count - 1;
+			if (runIndex < 0)
+			{
+				break;
+			}
+
+			string name = _runSoldiers[runIndex].Name;
+			_runSoldiers.RemoveAt(runIndex);
+			for (int rosterIndex = _soldierRoster.Count - 1; rosterIndex >= 0; rosterIndex--)
+			{
+				if (_soldierRoster[rosterIndex].Name != name)
+				{
+					continue;
+				}
+
+				_soldierRoster.RemoveAt(rosterIndex);
+				break;
+			}
+
+			LogEvent($"{name} 阵亡。");
+		}
 	}
 
 	private string RollLootItem()
@@ -1313,6 +1490,95 @@ public partial class RaidMapDemo : Node2D
 		if (_eventLog.Count > 12)
 		{
 			_eventLog.RemoveAt(0);
+		}
+	}
+
+	private void DrawHideout()
+	{
+		Rect2 panel = new(new Vector2(80f, 50f), new Vector2(1040f, 620f));
+		DrawRect(panel, new Color(0.05f, 0.05f, 0.06f, 0.96f), true);
+		DrawRect(panel, Colors.White, false, 2f);
+
+		float x = panel.Position.X + 22f;
+		float y = panel.Position.Y + 34f;
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "局外整备", HorizontalAlignment.Left, -1f, 26, Colors.White);
+		y += 34f;
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"资金：{_money}", HorizontalAlignment.Left, -1f, 18, new Color(0.95f, 0.86f, 0.48f));
+		y += 26f;
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"可用士兵：{_soldierRoster.Count}", HorizontalAlignment.Left, -1f, 16, new Color(0.76f, 0.9f, 0.82f));
+
+		Rect2 startRect = new(new Vector2(panel.End.X - 170f, panel.Position.Y + 24f), new Vector2(140f, 34f));
+		DrawButton(startRect, "入局", new Color(0.24f, 0.62f, 0.36f));
+		_buttons.Add(new ButtonDef(startRect, "start_run"));
+
+		Rect2 recruitRect = new(new Vector2(panel.End.X - 170f, panel.Position.Y + 66f), new Vector2(140f, 30f));
+		DrawButton(recruitRect, $"征募 {RecruitCost}", _money >= RecruitCost ? new Color(0.48f, 0.34f, 0.18f) : new Color(0.24f, 0.24f, 0.28f));
+		if (_money >= RecruitCost)
+		{
+			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
+		}
+
+		Rect2 stashRect = new(new Vector2(panel.Position.X + 18f, panel.Position.Y + 88f), new Vector2(474f, 420f));
+		Rect2 shopRect = new(new Vector2(panel.Position.X + 548f, panel.Position.Y + 88f), new Vector2(474f, 420f));
+		DrawRect(stashRect, new Color(0.09f, 0.1f, 0.12f), true);
+		DrawRect(shopRect, new Color(0.09f, 0.1f, 0.12f), true);
+		DrawRect(stashRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
+		DrawRect(shopRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
+		DrawString(ThemeDB.FallbackFont, stashRect.Position + new Vector2(14f, 24f), "仓库", HorizontalAlignment.Left, -1f, 18, Colors.White);
+		DrawString(ThemeDB.FallbackFont, shopRect.Position + new Vector2(14f, 24f), "商店", HorizontalAlignment.Left, -1f, 18, Colors.White);
+
+		float stashY = stashRect.Position.Y + 44f;
+		if (_stash.Count == 0)
+		{
+			DrawString(ThemeDB.FallbackFont, new Vector2(stashRect.Position.X + 14f, stashY), "仓库为空", HorizontalAlignment.Left, -1f, 14, new Color(0.72f, 0.76f, 0.82f));
+		}
+		for (int i = 0; i < _stash.Count; i++)
+		{
+			Rect2 row = new(new Vector2(stashRect.Position.X + 14f, stashY), new Vector2(stashRect.Size.X - 28f, 28f));
+			DrawRect(row, new Color(0.12f, 0.13f, 0.16f), true);
+			DrawRect(row, new Color(0.34f, 0.37f, 0.42f), false, 1f);
+			DrawString(ThemeDB.FallbackFont, row.Position + new Vector2(10f, 19f), _stash[i], HorizontalAlignment.Left, 220f, 12, Colors.White);
+			DrawString(ThemeDB.FallbackFont, row.Position + new Vector2(250f, 19f), $"售价 {GetItemValue(_stash[i])}", HorizontalAlignment.Left, 70f, 12, new Color(0.95f, 0.86f, 0.48f));
+			Rect2 sellRect = new(new Vector2(row.End.X - 68f, row.Position.Y + 2f), new Vector2(56f, 24f));
+			DrawButton(sellRect, "出售", new Color(0.46f, 0.25f, 0.19f));
+			_buttons.Add(new ButtonDef(sellRect, "sell_stash", i));
+			stashY += 34f;
+			if (stashY > stashRect.End.Y - 34f) break;
+		}
+
+		float shopY = shopRect.Position.Y + 44f;
+		for (int i = 0; i < _shopStock.Count; i++)
+		{
+			ShopEntry entry = _shopStock[i];
+			Rect2 row = new(new Vector2(shopRect.Position.X + 14f, shopY), new Vector2(shopRect.Size.X - 28f, 28f));
+			DrawRect(row, new Color(0.12f, 0.13f, 0.16f), true);
+			DrawRect(row, new Color(0.34f, 0.37f, 0.42f), false, 1f);
+			DrawString(ThemeDB.FallbackFont, row.Position + new Vector2(10f, 19f), entry.Label, HorizontalAlignment.Left, 220f, 12, Colors.White);
+			DrawString(ThemeDB.FallbackFont, row.Position + new Vector2(250f, 19f), $"价格 {entry.Price}", HorizontalAlignment.Left, 70f, 12, new Color(0.78f, 0.87f, 0.98f));
+			Rect2 buyRect = new(new Vector2(row.End.X - 68f, row.Position.Y + 2f), new Vector2(56f, 24f));
+			DrawButton(buyRect, _money >= entry.Price ? "买入" : "不足", _money >= entry.Price ? new Color(0.26f, 0.42f, 0.58f) : new Color(0.24f, 0.24f, 0.28f));
+			if (_money >= entry.Price)
+			{
+				_buttons.Add(new ButtonDef(buyRect, "buy_shop", i));
+			}
+			shopY += 34f;
+		}
+
+		float soldierY = panel.End.Y - 110f;
+		float soldierX = panel.Position.X + 22f;
+		DrawString(ThemeDB.FallbackFont, new Vector2(soldierX, soldierY), "士兵名单", HorizontalAlignment.Left, -1f, 16, Colors.White);
+		soldierY += 22f;
+		if (_soldierRoster.Count == 0)
+		{
+			DrawString(ThemeDB.FallbackFont, new Vector2(soldierX, soldierY), "当前没有可用士兵。", HorizontalAlignment.Left, -1f, 13, new Color(0.72f, 0.76f, 0.82f));
+		}
+		else
+		{
+			for (int i = 0; i < _soldierRoster.Count && i < 6; i++)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierX, soldierY), $"• {_soldierRoster[i].Name}", HorizontalAlignment.Left, -1f, 13, new Color(0.82f, 0.88f, 0.94f));
+				soldierY += 18f;
+			}
 		}
 	}
 

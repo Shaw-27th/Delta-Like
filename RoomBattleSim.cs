@@ -5,7 +5,7 @@ using System.Collections.Generic;
 public partial class RoomBattleSim : Node2D
 {
 	[Signal]
-	public delegate void BattleFinishedEventHandler(bool victory, int remainingHp, int remainingStrength);
+	public delegate void BattleFinishedEventHandler(bool victory, bool heroAlive, int remainingHp, int remainingSoldiers, int remainingStrength);
 
 	private sealed class BattleUnit
 	{
@@ -41,7 +41,7 @@ public partial class RoomBattleSim : Node2D
 		_rng.Randomize();
 	}
 
-	public void Setup(string title, int playerHp, int playerStrength, int enemyPower, bool enemyHasElite, string enemyName)
+	public void Setup(string title, int playerHp, int playerStrength, int allySoldierCount, int enemyPower, bool enemyHasElite, string enemyName)
 	{
 		_title = title;
 		_units.Clear();
@@ -50,7 +50,7 @@ public partial class RoomBattleSim : Node2D
 		_paused = false;
 		_speedScale = 1f;
 
-		int allyCount = Mathf.Clamp(2 + playerStrength / 4, 3, 5);
+		int allyCount = Mathf.Clamp(allySoldierCount, 0, 6);
 		int enemyCount = Mathf.Clamp(2 + enemyPower / 4, 3, 6);
 
 		AddUnit("英雄", true, true, new Vector2(_arenaRect.Position.X + 90f, _arenaRect.GetCenter().Y), Mathf.Clamp(playerHp, 10, 24), 52f, 45f, 3, 5, new Color(0.3f, 0.82f, 1f));
@@ -287,6 +287,8 @@ public partial class RoomBattleSim : Node2D
 		bool playerAlive = false;
 		bool enemyAlive = false;
 		int heroHp = 0;
+		bool heroAlive = false;
+		int soldierCount = 0;
 		int strength = 0;
 
 		foreach (BattleUnit unit in _units)
@@ -303,6 +305,11 @@ public partial class RoomBattleSim : Node2D
 				if (unit.IsHero)
 				{
 					heroHp = unit.Hp;
+					heroAlive = true;
+				}
+				else
+				{
+					soldierCount++;
 				}
 			}
 			else
@@ -317,6 +324,6 @@ public partial class RoomBattleSim : Node2D
 		}
 
 		_finished = true;
-		EmitSignal(SignalName.BattleFinished, playerAlive, heroHp, strength);
+		EmitSignal(SignalName.BattleFinished, playerAlive, heroAlive, heroHp, soldierCount, strength);
 	}
 }
