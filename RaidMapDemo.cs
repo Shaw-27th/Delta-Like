@@ -1315,12 +1315,12 @@ private sealed class RoomProjectileEffect
 
 		if (unit.IsHero)
 		{
-			return unit.IsRanged ? 10f : 11f;
+			return unit.IsRanged ? 11.8f : 13f;
 		}
 
 		if (unit.IsElite)
 		{
-			return unit.IsRanged ? 8.2f : 9.2f;
+			return unit.IsRanged ? 9.4f : 10.6f;
 		}
 
 		return unit.IsRanged ? 7.4f : 8.4f;
@@ -2004,14 +2004,14 @@ private sealed class RoomProjectileEffect
 				DrawLine(windupTip, windupLeft, windupColor, 2.2f);
 				DrawLine(windupTip, windupRight, windupColor, 2.2f);
 			}
-			Rect2 hpBg = new(unit.Position + new Vector2(-20f, 12f), new Vector2(40f, 4f));
+			Rect2 hpBg = new(unit.Position + new Vector2(-20f, 18f), new Vector2(40f, 4f));
 			DrawRect(hpBg, new Color(0.14f, 0.14f, 0.16f), true);
 			float ratio = unit.MaxHp > 0 ? (float)unit.Hp / unit.MaxHp : 0f;
 			DrawRect(new Rect2(hpBg.Position, new Vector2(hpBg.Size.X * ratio, hpBg.Size.Y)), unit.IsPlayerSide ? new Color(0.46f, 0.95f, 0.58f) : new Color(0.95f, 0.5f, 0.5f), true);
 			DrawRect(hpBg, Colors.White, false, 1f);
 			if (!unit.IsRanged && unit.MaxStamina > 0f)
 			{
-				Rect2 staminaBg = new(unit.Position + new Vector2(-20f, 18f), new Vector2(40f, 3f));
+				Rect2 staminaBg = new(unit.Position + new Vector2(-20f, 24f), new Vector2(40f, 3f));
 				DrawRect(staminaBg, new Color(0.11f, 0.11f, 0.13f, 0.95f), true);
 				float staminaRatio = unit.MaxStamina > 0f ? unit.Stamina / unit.MaxStamina : 0f;
 				Color staminaColor = unit.IsSprinting
@@ -2036,15 +2036,16 @@ private sealed class RoomProjectileEffect
 		float runSwing = Mathf.Sin(runPhase);
 		float runLift = Mathf.Abs(Mathf.Sin(runPhase)) * (isRunning ? 1.2f : 0.2f);
 		float attackPose = GetRoomAttackPose(unit);
-		float torsoHalfWidth = unit.IsRanged ? 4.2f : 5.2f;
-		float torsoHeight = unit.IsHero ? 13f : 11f;
-		float shoulderWidth = torsoHalfWidth + (unit.IsElite ? 1.3f : 0.7f);
+		float sizeScale = unit.IsHero ? 1.28f : (unit.IsElite ? 1.18f : 1f);
+		float torsoHalfWidth = (unit.IsRanged ? 4.2f : 5.2f) * sizeScale;
+		float torsoHeight = (unit.IsHero ? 13f : 11f) * sizeScale;
+		float shoulderWidth = torsoHalfWidth + (unit.IsElite ? 1.3f : 0.7f) * sizeScale;
 
-		Vector2 feet = unit.Position + new Vector2(0f, 11f + runLift);
-		Vector2 hip = feet + new Vector2(0f, -7.5f);
+		Vector2 feet = unit.Position + new Vector2(0f, 12f * sizeScale + runLift);
+		Vector2 hip = feet + new Vector2(0f, -8f * sizeScale);
 		Vector2 chest = hip + new Vector2(0f, -torsoHeight * 0.52f);
 		Vector2 neck = chest + new Vector2(0f, -torsoHeight * 0.4f);
-		Vector2 headCenter = neck + new Vector2(0f, -4.4f + idleBob);
+		Vector2 headCenter = neck + new Vector2(0f, -4.6f * sizeScale + idleBob);
 		Vector2 torsoLean = new(faceSide.X * (isRunning ? runSwing * 1.6f : attackPose * 1.9f), 0f);
 		hip += torsoLean * 0.35f;
 		chest += torsoLean;
@@ -2056,10 +2057,10 @@ private sealed class RoomProjectileEffect
 			? new Color(0.88f, 0.96f, 1f, 0.95f)
 			: new Color(1f, 0.88f, 0.84f, 0.95f);
 
-		Vector2 torsoTopLeft = chest + new Vector2(-shoulderWidth, -2.5f);
-		Vector2 torsoTopRight = chest + new Vector2(shoulderWidth, -2.5f);
-		Vector2 torsoBottomLeft = hip + new Vector2(-torsoHalfWidth, 3.2f);
-		Vector2 torsoBottomRight = hip + new Vector2(torsoHalfWidth, 3.2f);
+		Vector2 torsoTopLeft = chest + new Vector2(-shoulderWidth, -2.8f * sizeScale);
+		Vector2 torsoTopRight = chest + new Vector2(shoulderWidth, -2.8f * sizeScale);
+		Vector2 torsoBottomLeft = hip + new Vector2(-torsoHalfWidth, 3.6f * sizeScale);
+		Vector2 torsoBottomRight = hip + new Vector2(torsoHalfWidth, 3.6f * sizeScale);
 		Vector2[] torso =
 		[
 			torsoTopLeft,
@@ -2070,20 +2071,20 @@ private sealed class RoomProjectileEffect
 		DrawColoredPolygon(torso, bodyColor);
 		DrawPolyline(new[] { torsoTopLeft, torsoTopRight, torsoBottomRight, torsoBottomLeft, torsoTopLeft }, outline, 1.6f);
 
-		float headRadius = unit.IsHero ? 4.8f : 4.1f;
+		float headRadius = (unit.IsHero ? 4.8f : 4.1f) * sizeScale;
 		DrawCircle(headCenter, headRadius + 1.2f, outline);
 		DrawCircle(headCenter, headRadius, bodyColor.Lerp(Colors.White, unit.IsRanged ? 0.16f : 0.08f));
 		Vector2 eye = headCenter + new Vector2(faceSide.X * (headRadius * 0.32f), -0.3f);
 		DrawCircle(eye, 0.8f, new Color(0.06f, 0.07f, 0.09f, 0.9f));
 
-		Vector2 shoulderFront = chest + new Vector2(faceSide.X * shoulderWidth * 0.72f, -1.6f);
-		Vector2 shoulderBack = chest + new Vector2(-faceSide.X * shoulderWidth * 0.52f, -1.1f);
-		float frontArmLift = isAttacking ? -4.8f - attackPose * 2.2f : runSwing * 1.6f;
-		float backArmLift = isAttacking ? 2.2f : -runSwing * 1.3f;
-		Vector2 elbowFront = shoulderFront + new Vector2(faceSide.X * (unit.IsRanged ? 5.8f : 4.6f), 4.2f + frontArmLift);
-		Vector2 handFront = elbowFront + new Vector2(faceSide.X * (unit.IsRanged ? 6.8f : 5.6f), unit.IsRanged ? -0.8f - attackPose * 1.8f : 2f + frontArmLift * 0.35f);
-		Vector2 elbowBack = shoulderBack + new Vector2(-faceSide.X * 3.6f, 4.6f + backArmLift);
-		Vector2 handBack = elbowBack + new Vector2(-faceSide.X * 2.2f, 4.2f + backArmLift * 0.45f);
+		Vector2 shoulderFront = chest + new Vector2(faceSide.X * shoulderWidth * 0.72f, -1.6f * sizeScale);
+		Vector2 shoulderBack = chest + new Vector2(-faceSide.X * shoulderWidth * 0.52f, -1.1f * sizeScale);
+		float frontArmLift = (isAttacking ? -4.8f - attackPose * 2.2f : runSwing * 1.6f) * sizeScale;
+		float backArmLift = (isAttacking ? 2.2f : -runSwing * 1.3f) * sizeScale;
+		Vector2 elbowFront = shoulderFront + new Vector2(faceSide.X * (unit.IsRanged ? 5.8f : 4.6f) * sizeScale, 4.2f * sizeScale + frontArmLift);
+		Vector2 handFront = elbowFront + new Vector2(faceSide.X * (unit.IsRanged ? 6.8f : 5.6f) * sizeScale, (unit.IsRanged ? -0.8f - attackPose * 1.8f : 2f + frontArmLift * 0.35f) * sizeScale);
+		Vector2 elbowBack = shoulderBack + new Vector2(-faceSide.X * 3.6f * sizeScale, 4.6f * sizeScale + backArmLift);
+		Vector2 handBack = elbowBack + new Vector2(-faceSide.X * 2.2f * sizeScale, 4.2f * sizeScale + backArmLift * 0.45f);
 		DrawLine(shoulderFront, elbowFront, outline, 3f);
 		DrawLine(elbowFront, handFront, outline, 2.8f);
 		DrawLine(shoulderFront, elbowFront, accent, 1.55f);
@@ -2094,12 +2095,12 @@ private sealed class RoomProjectileEffect
 		DrawLine(elbowBack, handBack, bodyColor.Lerp(Colors.Black, 0.24f), 1.2f);
 
 		float stride = isRunning ? runSwing * 3.6f : (isAttacking ? attackPose * 1.4f : Mathf.Sin(runPhase * 0.45f) * 0.6f);
-		Vector2 legLeftStart = hip + new Vector2(-torsoHalfWidth * 0.42f, 2f);
-		Vector2 legRightStart = hip + new Vector2(torsoHalfWidth * 0.42f, 2f);
-		Vector2 kneeLeft = legLeftStart + new Vector2(-1.2f + stride * 0.45f, 5.6f - Mathf.Abs(stride) * 0.18f);
-		Vector2 kneeRight = legRightStart + new Vector2(1.2f - stride * 0.45f, 5.6f - Mathf.Abs(stride) * 0.18f);
-		Vector2 footLeft = kneeLeft + new Vector2(-1.4f + stride * 0.35f, 6.2f + Mathf.Abs(stride) * 0.1f);
-		Vector2 footRight = kneeRight + new Vector2(1.4f - stride * 0.35f, 6.2f + Mathf.Abs(stride) * 0.1f);
+		Vector2 legLeftStart = hip + new Vector2(-torsoHalfWidth * 0.42f, 2.2f * sizeScale);
+		Vector2 legRightStart = hip + new Vector2(torsoHalfWidth * 0.42f, 2.2f * sizeScale);
+		Vector2 kneeLeft = legLeftStart + new Vector2((-1.2f + stride * 0.45f) * sizeScale, (5.8f - Mathf.Abs(stride) * 0.18f) * sizeScale);
+		Vector2 kneeRight = legRightStart + new Vector2((1.2f - stride * 0.45f) * sizeScale, (5.8f - Mathf.Abs(stride) * 0.18f) * sizeScale);
+		Vector2 footLeft = kneeLeft + new Vector2((-1.4f + stride * 0.35f) * sizeScale, (6.5f + Mathf.Abs(stride) * 0.1f) * sizeScale);
+		Vector2 footRight = kneeRight + new Vector2((1.4f - stride * 0.35f) * sizeScale, (6.5f + Mathf.Abs(stride) * 0.1f) * sizeScale);
 		DrawLine(legLeftStart, kneeLeft, outline, 3f);
 		DrawLine(kneeLeft, footLeft, outline, 2.8f);
 		DrawLine(legRightStart, kneeRight, outline, 3f);
