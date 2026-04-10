@@ -231,17 +231,15 @@ private sealed class RoomProjectileEffect
 
 	private sealed class RoomMeleeArcEffect
 	{
-		public Vector2 Center;
-		public Vector2 PreviousCenter;
-		public Vector2 Velocity;
+		public Vector2 Origin;
 		public float FacingAngle;
-		public float Radius;
+		public float Range;
+		public float ArcHalfAngle;
 		public float TimeLeft;
 		public float Duration;
 		public bool PlayerSide;
 		public bool Heavy;
-		public RoomUnit Target;
-		public int Damage;
+		public RoomUnit Owner;
 	}
 
 	private readonly struct ButtonDef
@@ -1054,8 +1052,7 @@ private sealed class RoomProjectileEffect
 		}
 		else if (hero.KnockbackTime > 0f)
 		{
-			hero.Position = ClampToRoom(hero.Position + hero.KnockbackVelocity * delta);
-			hero.KnockbackVelocity *= 0.86f;
+			AdvanceKnockback(hero, delta);
 		}
 		else if (hero.StaggerTime > 0f || hero.AttackWindupTime > 0f || hero.RecoveryTime > 0f)
 		{
@@ -1093,8 +1090,7 @@ private sealed class RoomProjectileEffect
 
 			if (unit.KnockbackTime > 0f)
 			{
-				unit.Position = ClampToRoom(unit.Position + unit.KnockbackVelocity * delta);
-				unit.KnockbackVelocity *= 0.86f;
+				AdvanceKnockback(unit, delta);
 				continue;
 			}
 
@@ -1136,8 +1132,7 @@ private sealed class RoomProjectileEffect
 
 			if (unit.KnockbackTime > 0f)
 			{
-				unit.Position = ClampToRoom(unit.Position + unit.KnockbackVelocity * delta);
-				unit.KnockbackVelocity *= 0.86f;
+				AdvanceKnockback(unit, delta);
 				continue;
 			}
 
@@ -1217,7 +1212,12 @@ private sealed class RoomProjectileEffect
 			Vector2 side = new(-dir.Y, dir.X);
 			float phase = _turn + attacker.Position.X * 0.013f + attacker.Position.Y * 0.007f;
 			float weave = Mathf.Sin(Time.GetTicksMsec() * 0.006f + phase);
-			float desiredGap = Mathf.Max(18f, attacker.AttackRange + 4f);
+			float cooldownBase = Mathf.Max(0.01f, 0.46f * attacker.AttackCycleScale);
+			float cooldownRatio = Mathf.Clamp(attacker.AttackCooldown / cooldownBase, 0f, 1f);
+			bool spacingOut = attacker.AttackCooldown > 0f || attacker.RecoveryTime > 0f;
+			float desiredGap = spacingOut
+				? Mathf.Max(24f, attacker.AttackRange + 20f + cooldownRatio * 14f)
+				: Mathf.Max(18f, attacker.AttackRange + 2f);
 			Vector2 desired = target.Position - dir * desiredGap + side * weave * 10f;
 			Vector2 pushAway = (attacker.Position - target.Position).Normalized();
 			if (pushAway == Vector2.Zero)
@@ -1225,12 +1225,14 @@ private sealed class RoomProjectileEffect
 				pushAway = attacker.IsPlayerSide ? Vector2.Left : Vector2.Right;
 			}
 
-			float cooldownRatio = Mathf.Clamp(attacker.AttackCooldown / Mathf.Max(0.01f, 0.46f * attacker.AttackCycleScale), 0f, 1f);
-			Vector2 contactAdjust = side * weave * (18f + cooldownRatio * 12f) + pushAway * (10f + cooldownRatio * 8f);
+			float tooCloseRatio = desiredGap > 0f ? Mathf.Clamp((desiredGap - distance) / desiredGap, 0f, 1f) : 0f;
+			Vector2 contactAdjust = spacingOut
+				? side * weave * (16f + cooldownRatio * 10f) + pushAway * (22f + cooldownRatio * 18f + tooCloseRatio * 20f)
+				: side * weave * 9f + pushAway * (6f + tooCloseRatio * 6f);
 			Vector2 move = (desired + contactAdjust) - attacker.Position;
 			if (move.LengthSquared() > 1f)
 			{
-				float duelMoveScale = attacker.AttackCooldown > 0f ? 0.72f : 0.5f;
+				float duelMoveScale = spacingOut ? 0.96f : 0.62f;
 				attacker.Position = ClampToRoom(attacker.Position + move.Normalized() * attacker.Speed * duelMoveScale * delta);
 			}
 		}
@@ -1285,6 +1287,12 @@ private sealed class RoomProjectileEffect
 		}
 	}
 
+	private void AdvanceKnockback(RoomUnit unit, float delta)
+	{
+		unit.Position = ClampToRoom(unit.Position + unit.KnockbackVelocity * delta);
+		unit.KnockbackVelocity *= 0.92f;
+	}
+
 	private void ResolvePendingAttack(RoomUnit attacker)
 	{
 		RoomUnit target = attacker.PendingAttackTarget;
@@ -1318,7 +1326,8 @@ private sealed class RoomProjectileEffect
 		}
 		else
 		{
-			SpawnRoomMeleeArcEffect(attacker.Position + dir * 12f, target, damage, dir.Angle(), attacker.IsPlayerSide, heavy);
+			ApplyProjectileOrSlashHit(target, damage, dir, heavy, false);
+			SpawnRoomMeleeArcEffect(attacker, attacker.IsPlayerSide, heavy);
 		}
 	}
 
@@ -1329,22 +1338,7 @@ private sealed class RoomProjectileEffect
 		target.StaggerTime = Mathf.Max(target.StaggerTime, attacker.IsRanged ? 0.08f : (heavy ? 0.16f : 0.12f));
 		target.HitPauseTime = Mathf.Max(target.HitPauseTime, heavy ? 0.05f : 0.035f);
 		attacker.HitPauseTime = Mathf.Max(attacker.HitPauseTime, heavy ? 0.04f : 0.025f);
-
-		float knockbackForce;
-		float knockbackDuration;
-		if (attacker.IsRanged)
-		{
-			knockbackForce = heavy ? 160f : 112f;
-			knockbackDuration = heavy ? 0.14f : 0.1f;
-		}
-		else
-		{
-			knockbackForce = heavy ? 320f : 240f;
-			knockbackDuration = heavy ? 0.24f : 0.18f;
-		}
-
-		target.KnockbackVelocity = dir * knockbackForce;
-		target.KnockbackTime = knockbackDuration;
+		ApplyRoomKnockback(target, dir, attacker.IsRanged, heavy);
 
 		if (target.Hp <= 0)
 		{
@@ -1375,22 +1369,19 @@ private sealed class RoomProjectileEffect
 		});
 	}
 
-	private void SpawnRoomMeleeArcEffect(Vector2 center, RoomUnit target, int damage, float facingAngle, bool playerSide, bool heavy)
+	private void SpawnRoomMeleeArcEffect(RoomUnit owner, bool playerSide, bool heavy)
 	{
-		Vector2 dir = new(Mathf.Cos(facingAngle), Mathf.Sin(facingAngle));
 		_roomMeleeArcEffects.Add(new RoomMeleeArcEffect
 		{
-			Center = center,
-			PreviousCenter = center,
-			Velocity = dir * (heavy ? 200f : 170f),
-			FacingAngle = facingAngle,
-			Radius = heavy ? 28f : 22f,
-			TimeLeft = heavy ? 0.34f : 0.26f,
-			Duration = heavy ? 0.34f : 0.26f,
+			Origin = owner.Position,
+			FacingAngle = owner.Facing == Vector2.Zero ? (playerSide ? 0f : Mathf.Pi) : owner.Facing.Angle(),
+			Range = heavy ? 32f : 28f,
+			ArcHalfAngle = heavy ? 0.72f : 0.6f,
+			TimeLeft = heavy ? 0.3f : 0.25f,
+			Duration = heavy ? 0.3f : 0.25f,
 			PlayerSide = playerSide,
 			Heavy = heavy,
-			Target = target,
-			Damage = damage,
+			Owner = owner,
 		});
 	}
 
@@ -1434,21 +1425,18 @@ private sealed class RoomProjectileEffect
 		for (int i = _roomMeleeArcEffects.Count - 1; i >= 0; i--)
 		{
 			RoomMeleeArcEffect effect = _roomMeleeArcEffects[i];
-			effect.PreviousCenter = effect.Center;
-			effect.Center = ClampToRoom(effect.Center + effect.Velocity * delta);
-			effect.TimeLeft -= delta;
-			if (effect.Target != null && effect.Target.IsAlive && effect.Center.DistanceTo(effect.Target.Position) <= effect.Radius)
+			if (effect.Owner == null || !effect.Owner.IsAlive)
 			{
-				Vector2 dir = (effect.Target.Position - effect.PreviousCenter).Normalized();
-				if (dir == Vector2.Zero)
-				{
-					dir = effect.PlayerSide ? Vector2.Right : Vector2.Left;
-				}
-
-				ApplyProjectileOrSlashHit(effect.Target, effect.Damage, dir, effect.Heavy, false);
 				_roomMeleeArcEffects.RemoveAt(i);
 				continue;
 			}
+
+			effect.Origin = effect.Owner.Position;
+			if (effect.Owner.Facing != Vector2.Zero)
+			{
+				effect.FacingAngle = effect.Owner.Facing.Angle();
+			}
+			effect.TimeLeft -= delta;
 
 			if (effect.TimeLeft <= 0f)
 			{
@@ -1468,27 +1456,31 @@ private sealed class RoomProjectileEffect
 		target.HitFlash = heavy ? 0.32f : 0.24f;
 		target.StaggerTime = Mathf.Max(target.StaggerTime, rangedHit ? 0.1f : (heavy ? 0.16f : 0.12f));
 		target.HitPauseTime = Mathf.Max(target.HitPauseTime, heavy ? 0.05f : 0.035f);
-
-		float knockbackForce;
-		float knockbackDuration;
-		if (rangedHit)
-		{
-			knockbackForce = heavy ? 160f : 112f;
-			knockbackDuration = heavy ? 0.14f : 0.1f;
-		}
-		else
-		{
-			knockbackForce = heavy ? 320f : 240f;
-			knockbackDuration = heavy ? 0.24f : 0.18f;
-		}
-
-		target.KnockbackVelocity = dir * knockbackForce;
-		target.KnockbackTime = knockbackDuration;
+		ApplyRoomKnockback(target, dir, rangedHit, heavy);
 
 		if (target.Hp <= 0)
 		{
 			HandleUnitDeath(target);
 		}
+	}
+
+	private void ApplyRoomKnockback(RoomUnit target, Vector2 dir, bool rangedHit, bool heavy)
+	{
+		float knockbackForce;
+		float knockbackDuration;
+		if (rangedHit)
+		{
+			knockbackForce = heavy ? 240f : 170f;
+			knockbackDuration = heavy ? 0.2f : 0.14f;
+		}
+		else
+		{
+			knockbackForce = heavy ? 880f : 640f;
+			knockbackDuration = heavy ? 0.68f : 0.52f;
+		}
+
+		target.KnockbackVelocity = dir * knockbackForce;
+		target.KnockbackTime = knockbackDuration;
 	}
 
 	private void HandleUnitDeath(RoomUnit dead)
@@ -1771,29 +1763,59 @@ private sealed class RoomProjectileEffect
 		for (int i = 0; i < _roomMeleeArcEffects.Count; i++)
 		{
 			RoomMeleeArcEffect effect = _roomMeleeArcEffects[i];
-			float ratio = effect.Duration > 0f ? effect.TimeLeft / effect.Duration : 0f;
-			float progress = 1f - Mathf.Clamp(ratio, 0f, 1f);
-			float alpha = Mathf.Clamp(ratio * 1.15f, 0f, 1f);
-			Color color = effect.PlayerSide
-				? new Color(0.82f, 1f, 0.9f, alpha * (effect.Heavy ? 0.95f : 0.84f))
-				: new Color(1f, 0.86f, 0.82f, alpha * (effect.Heavy ? 0.95f : 0.84f));
-			float sweep = effect.Heavy ? 1.95f : 1.6f;
-			float swingLead = effect.Heavy ? 1.25f : 1.05f;
-			float startAngle = effect.FacingAngle - swingLead + progress * 0.95f;
-			float endAngle = startAngle + sweep;
-			for (int trail = 0; trail < 4; trail++)
+			float swingProgress = effect.Duration > 0.001f ? 1f - (effect.TimeLeft / effect.Duration) : 1f;
+			float reveal = Mathf.Clamp(swingProgress / 0.42f, 0f, 1f);
+			float collapse = swingProgress > 0.52f ? Mathf.Clamp((swingProgress - 0.52f) / 0.48f, 0f, 1f) : 0f;
+			float visibleStrength = reveal * (1f - collapse);
+			float alpha = Mathf.Clamp(Mathf.Sin(reveal * Mathf.Pi * 0.82f) * (1f - collapse * 0.92f), 0f, 1f);
+			float arcStart = effect.FacingAngle - effect.ArcHalfAngle;
+			float arcEnd = effect.FacingAngle + effect.ArcHalfAngle;
+			float visibleStart = Mathf.Lerp(arcStart, arcEnd, collapse);
+			float visibleEnd = Mathf.Lerp(arcStart, arcEnd, reveal);
+			if (visibleEnd <= visibleStart)
 			{
-				float trailOffset = trail * 0.18f;
-				float trailStart = startAngle - trailOffset;
-				float trailEnd = endAngle - trailOffset * 0.75f;
-				float trailAlpha = alpha * (1f - trail * 0.24f);
-				float trailWidth = (effect.Heavy ? 6.2f : 4.8f) - trail * 0.7f;
-				Color trailColor = new(color.R, color.G, color.B, trailAlpha);
-				DrawArc(effect.Center, effect.Radius, trailStart, trailEnd, 26, trailColor, trailWidth);
+				continue;
 			}
-			Vector2 tipDir = new(Mathf.Cos(endAngle), Mathf.Sin(endAngle));
-			Vector2 tipPos = effect.Center + tipDir * (effect.Radius + 2f);
-			DrawCircle(tipPos, effect.Heavy ? 4.2f : 3.2f, new Color(1f, 1f, 1f, alpha * 0.88f));
+
+			Vector2 startDir = Vector2.Right.Rotated(visibleStart);
+			Vector2 endDir = Vector2.Right.Rotated(visibleEnd);
+			Vector2 startPos = effect.Origin + startDir * effect.Range;
+			Vector2 endPos = effect.Origin + endDir * effect.Range;
+			Color color = effect.PlayerSide
+				? new Color(1f, 1f, 1f, alpha * (effect.Heavy ? 0.72f : 0.62f))
+				: new Color(1f, 0.96f, 0.94f, alpha * (effect.Heavy ? 0.72f : 0.62f));
+			float lineWidth = effect.Heavy ? 2.2f : 1.8f;
+			float glowWidth = effect.Heavy ? 3.8f : 3.1f;
+			DrawArc(effect.Origin, effect.Range, visibleStart, visibleEnd, 22, new Color(color.R, color.G, color.B, color.A * 0.14f), glowWidth);
+			DrawArc(effect.Origin, effect.Range, visibleStart, visibleEnd, 22, color, lineWidth);
+			DrawArc(effect.Origin, effect.Range - 1.2f, visibleStart + 0.01f, visibleEnd, 20, new Color(1f, 1f, 1f, alpha * 0.9f), effect.Heavy ? 1.05f : 0.9f);
+
+			float startDotRadius = (effect.Heavy ? 1.6f : 1.35f) * visibleStrength;
+			if (startDotRadius > 0.15f)
+			{
+				DrawCircle(startPos, startDotRadius, new Color(1f, 1f, 1f, alpha * 0.58f));
+			}
+
+			float tipDotRadius = (effect.Heavy ? 2.2f : 1.85f) * visibleStrength;
+			if (tipDotRadius > 0.15f)
+			{
+				DrawCircle(endPos, tipDotRadius, new Color(1f, 1f, 1f, alpha * 0.95f));
+			}
+
+			Vector2 tangent = (endPos - startPos).Normalized();
+			if (tangent != Vector2.Zero)
+			{
+				Vector2 tipBase = endPos - tangent * (effect.Heavy ? 6f : 5f);
+				Vector2 tipNormal = new(-tangent.Y, tangent.X);
+				float tipWidth = (effect.Heavy ? 2.6f : 2.2f) * visibleStrength;
+				Vector2[] tip =
+				[
+					endPos,
+					tipBase + tipNormal * tipWidth,
+					tipBase - tipNormal * tipWidth,
+				];
+				DrawColoredPolygon(tip, new Color(1f, 1f, 1f, alpha * 0.92f));
+			}
 		}
 
 	}
