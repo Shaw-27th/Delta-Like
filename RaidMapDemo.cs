@@ -175,6 +175,36 @@ public partial class RaidMapDemo : Node2D
 		public string PromptText = "";
 	}
 
+	private enum RoomDoorSide
+	{
+		Left,
+		Top,
+		Right,
+		Bottom,
+	}
+
+	private sealed class RoomUnit
+	{
+		public bool IsPlayerSide;
+		public bool IsHero;
+		public bool IsElite;
+		public bool IsRanged;
+		public string Name = "";
+		public Vector2 Position;
+		public Vector2 Facing = Vector2.Right;
+		public float Speed;
+		public int Hp;
+		public int MaxHp;
+		public int DamageMin;
+		public int DamageMax;
+		public float AttackRange;
+		public float AttackCooldown;
+		public float HitFlash;
+		public Vector2 KnockbackVelocity;
+		public float KnockbackTime;
+		public bool IsAlive => Hp > 0;
+	}
+
 	private readonly struct ButtonDef
 	{
 		public ButtonDef(Rect2 rect, string action, int index = -1)
@@ -198,6 +228,7 @@ public partial class RaidMapDemo : Node2D
 	private readonly List<ShopEntry> _shopStock = new();
 	private readonly List<SoldierRecord> _soldierRoster = new();
 	private readonly List<SoldierRecord> _runSoldiers = new();
+	private readonly List<RoomUnit> _roomUnits = new();
 	private readonly RandomNumberGenerator _rng = new();
 
 	private readonly Rect2 _mapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
@@ -233,6 +264,11 @@ public partial class RaidMapDemo : Node2D
 	private Vector2 _playerMarkerPosition;
 	private int _selectedMapTemplate;
 	private OperationDifficulty _selectedDifficulty = OperationDifficulty.Trial;
+	private Vector2 _heroMoveTarget;
+	private bool _heroHasMoveTarget;
+	private int _pendingExitNodeId = -1;
+	private RoomDoorSide _pendingExitSide = RoomDoorSide.Right;
+	private bool _roomDirty;
 	private string _status = "点击相邻节点移动。";
 
 	public override void _Ready()
@@ -247,6 +283,7 @@ public partial class RaidMapDemo : Node2D
 		{
 			UpdateContainerSearch((float)delta);
 			UpdatePlayerMove((float)delta);
+			UpdateRoomSimulation((float)delta);
 		}
 		QueueRedraw();
 	}
@@ -274,17 +311,32 @@ public partial class RaidMapDemo : Node2D
 			}
 		}
 
-		if (_inHideout || _runEnded || _battleSim != null || _pendingEncounter != null || _isPlayerMoving || _selectedContainerIndex >= 0 || !_showMapOverlay)
+		if (_inHideout || _runEnded || _selectedContainerIndex >= 0)
 		{
 			return;
 		}
 
-		foreach (MapNode node in _nodes)
+		if (_showMapOverlay)
 		{
-			if (node.Position.DistanceTo(click) <= 24f)
+			foreach (MapNode node in _nodes)
 			{
-				TryPlanExitToNode(node.Id);
-				return;
+				if (node.Position.DistanceTo(click) <= 24f)
+				{
+					TryPlanExitToNode(node.Id);
+					return;
+				}
+			}
+			return;
+		}
+
+		Rect2 roomRect = GetRoomArenaRect();
+		if (roomRect.HasPoint(click))
+		{
+			_heroMoveTarget = ClampToRoom(click);
+			_heroHasMoveTarget = true;
+			if (_pendingExitNodeId < 0)
+			{
+				_status = "主英雄正在移动，小兵将跟随。";
 			}
 		}
 	}
@@ -298,7 +350,7 @@ public partial class RaidMapDemo : Node2D
 			DrawHideout();
 			return;
 		}
-		DrawRoomView();
+		DrawRoomViewUnified();
 		if (_showMapOverlay)
 		{
 			DrawMapOverlay();
@@ -307,10 +359,6 @@ public partial class RaidMapDemo : Node2D
 		if (_selectedContainerIndex >= 0)
 		{
 			DrawContainerPopup();
-		}
-		if (_pendingEncounter != null)
-		{
-			DrawEncounterPrompt();
 		}
 		if (_runEnded)
 		{
@@ -339,6 +387,10 @@ public partial class RaidMapDemo : Node2D
 		_plannedExitNodeId = -1;
 		_selectedContainerIndex = -1;
 		_encounter = null;
+		_roomUnits.Clear();
+		_heroHasMoveTarget = false;
+		_pendingExitNodeId = -1;
+		_roomDirty = true;
 		_runSoldiers.Clear();
 		foreach (SoldierRecord soldier in _soldierRoster)
 		{
@@ -351,6 +403,7 @@ public partial class RaidMapDemo : Node2D
 			BuildBorderKeepMap();
 			ApplyDifficultyToRun();
 			LogEvent("行动开始，其他小队已经进入边境堡寨。");
+			EnterNodeRoom(_playerNodeId, RoomDoorSide.Left, false);
 			RefreshStatus();
 			return;
 		}
@@ -411,6 +464,7 @@ public partial class RaidMapDemo : Node2D
 
 		ApplyDifficultyToRun();
 		LogEvent("行动开始，其他小队已经进入地图。");
+		EnterNodeRoom(_playerNodeId, RoomDoorSide.Left, false);
 		RefreshStatus();
 	}
 
@@ -623,6 +677,628 @@ public partial class RaidMapDemo : Node2D
 		HandleArrival(_nodes[_playerNodeId]);
 	}
 
+	private Rect2 GetRoomArenaRect()
+	{
+		return new Rect2(_mapRect.Position + new Vector2(40f, 60f), _mapRect.Size - new Vector2(80f, 100f));
+	}
+
+	private Vector2 ClampToRoom(Vector2 position)
+	{
+		Rect2 rect = GetRoomArenaRect();
+		return new Vector2(
+			Mathf.Clamp(position.X, rect.Position.X + 18f, rect.End.X - 18f),
+			Mathf.Clamp(position.Y, rect.Position.Y + 18f, rect.End.Y - 18f));
+	}
+
+	private void EnterNodeRoom(int nodeId, RoomDoorSide entrySide, bool advanceTurn)
+	{
+		int previousNodeId = _playerNodeId;
+		_playerNodeId = nodeId;
+		_nodes[_playerNodeId].Visited = true;
+		UpdateVision(_playerNodeId);
+		_pendingExitNodeId = -1;
+		_heroHasMoveTarget = false;
+
+		Vector2 heroSpawn = GetDoorSpawnPoint(entrySide);
+		if (_roomUnits.Count == 0)
+		{
+			SpawnAlliesAt(heroSpawn);
+		}
+		else
+		{
+			RoomUnit hero = FindHeroUnit();
+			if (hero != null)
+			{
+				hero.Position = heroSpawn;
+				hero.Facing = Vector2.Right;
+				hero.KnockbackTime = 0f;
+				hero.KnockbackVelocity = Vector2.Zero;
+			}
+			RelayoutAlliesAroundHero();
+		}
+
+		RebuildRoomEnemies();
+		_playerMarkerPosition = _nodes[_playerNodeId].Position;
+		_roomDirty = false;
+
+		if (advanceTurn && previousNodeId != nodeId)
+		{
+			AdvanceTurn($"穿过房门进入 {_nodes[nodeId].Name}。");
+		}
+		RefreshStatus();
+	}
+
+	private Vector2 GetDoorSpawnPoint(RoomDoorSide side)
+	{
+		Rect2 rect = GetRoomArenaRect();
+		Vector2 p = side switch
+		{
+			RoomDoorSide.Left => new Vector2(rect.Position.X + 34f, rect.GetCenter().Y),
+			RoomDoorSide.Top => new Vector2(rect.GetCenter().X, rect.Position.Y + 34f),
+			RoomDoorSide.Right => new Vector2(rect.End.X - 34f, rect.GetCenter().Y),
+			_ => new Vector2(rect.GetCenter().X, rect.End.Y - 34f),
+		};
+		return ClampToRoom(p);
+	}
+
+	private void SpawnAlliesAt(Vector2 heroPos)
+	{
+		_roomUnits.Clear();
+		RoomUnit hero = CreateRoomUnit(true, true, false, true, "英雄", heroPos);
+		hero.Hp = _playerHp;
+		hero.MaxHp = _playerMaxHp;
+		hero.DamageMin = 2;
+		hero.DamageMax = 5;
+		hero.AttackRange = 112f;
+		hero.Speed = 165f;
+		_roomUnits.Add(hero);
+
+		for (int i = 0; i < _runSoldiers.Count; i++)
+		{
+			Vector2 offset = new Vector2(-28f - (i % 3) * 20f, (i / 3) * 24f - 24f);
+			RoomUnit soldier = CreateRoomUnit(true, false, false, false, _runSoldiers[i].Name, ClampToRoom(heroPos + offset));
+			soldier.Hp = 8;
+			soldier.MaxHp = 8;
+			soldier.DamageMin = 1;
+			soldier.DamageMax = 3;
+			soldier.AttackRange = 36f;
+			soldier.Speed = 152f;
+			_roomUnits.Add(soldier);
+		}
+	}
+
+	private RoomUnit CreateRoomUnit(bool isPlayerSide, bool isHero, bool isElite, bool isRanged, string name, Vector2 position)
+	{
+		return new RoomUnit
+		{
+			IsPlayerSide = isPlayerSide,
+			IsHero = isHero,
+			IsElite = isElite,
+			IsRanged = isRanged,
+			Name = name,
+			Position = position,
+			Facing = isPlayerSide ? Vector2.Right : Vector2.Left,
+			Speed = isHero ? 162f : 150f,
+			Hp = isHero ? _playerHp : 8,
+			MaxHp = isHero ? _playerMaxHp : 8,
+			DamageMin = isHero ? 2 : 1,
+			DamageMax = isHero ? 5 : 3,
+			AttackRange = isRanged ? 110f : 34f,
+			AttackCooldown = 0f,
+		};
+	}
+
+	private void RebuildRoomEnemies()
+	{
+		for (int i = _roomUnits.Count - 1; i >= 0; i--)
+		{
+			if (!_roomUnits[i].IsPlayerSide)
+			{
+				_roomUnits.RemoveAt(i);
+			}
+		}
+
+		MapNode node = _nodes[_playerNodeId];
+		AiSquad squad = GetSquadAtNode(node.Id);
+		if (squad != null)
+		{
+			SpawnSquadEnemies(squad);
+		}
+		else if (node.Threat > 0)
+		{
+			SpawnThreatEnemies(node.Threat);
+		}
+	}
+
+	private void SpawnThreatEnemies(int threat)
+	{
+		Rect2 rect = GetRoomArenaRect();
+		int count = Mathf.Clamp(1 + threat / 2, 2, 6);
+		for (int i = 0; i < count; i++)
+		{
+			Vector2 p = ClampToRoom(new Vector2(rect.End.X - 100f - (i % 3) * 24f, rect.GetCenter().Y + (i / 3) * 30f - 30f));
+			RoomUnit enemy = CreateRoomUnit(false, false, false, i % 3 == 0, "守军", p);
+			enemy.Hp = 6 + threat;
+			enemy.MaxHp = enemy.Hp;
+			enemy.DamageMin = 1 + threat / 3;
+			enemy.DamageMax = 3 + threat / 2;
+			enemy.AttackRange = enemy.IsRanged ? 108f : 34f;
+			_roomUnits.Add(enemy);
+		}
+	}
+
+	private void SpawnSquadEnemies(AiSquad squad)
+	{
+		Rect2 rect = GetRoomArenaRect();
+		RoomUnit elite = CreateRoomUnit(false, false, true, true, $"{squad.Name} 队长", ClampToRoom(new Vector2(rect.End.X - 96f, rect.GetCenter().Y - 34f)));
+		elite.Hp = 12 + squad.Strength / 2;
+		elite.MaxHp = elite.Hp;
+		elite.DamageMin = 3;
+		elite.DamageMax = 6;
+		elite.AttackRange = 116f;
+		_roomUnits.Add(elite);
+
+		int count = Mathf.Clamp(squad.Strength / 2, 3, 7);
+		for (int i = 0; i < count; i++)
+		{
+			Vector2 p = ClampToRoom(new Vector2(rect.End.X - 130f - (i % 4) * 22f, rect.GetCenter().Y + (i / 4) * 30f + 12f));
+			RoomUnit enemy = CreateRoomUnit(false, false, false, i % 3 == 1, "敌兵", p);
+			enemy.Hp = 7;
+			enemy.MaxHp = 7;
+			enemy.DamageMin = 1;
+			enemy.DamageMax = 3;
+			enemy.AttackRange = enemy.IsRanged ? 104f : 32f;
+			_roomUnits.Add(enemy);
+		}
+	}
+
+	private RoomUnit FindHeroUnit()
+	{
+		foreach (RoomUnit unit in _roomUnits)
+		{
+			if (unit.IsPlayerSide && unit.IsHero && unit.IsAlive)
+			{
+				return unit;
+			}
+		}
+		return null;
+	}
+
+	private bool HasHostilesInRoom()
+	{
+		foreach (RoomUnit unit in _roomUnits)
+		{
+			if (!unit.IsPlayerSide && unit.IsAlive)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private RoomUnit FindNearestTarget(RoomUnit source, bool enemySide)
+	{
+		RoomUnit best = null;
+		float bestDist = float.MaxValue;
+		foreach (RoomUnit unit in _roomUnits)
+		{
+			if (!unit.IsAlive || unit.IsPlayerSide != enemySide)
+			{
+				continue;
+			}
+
+			float dist = source.Position.DistanceTo(unit.Position);
+			if (dist < bestDist)
+			{
+				bestDist = dist;
+				best = unit;
+			}
+		}
+		return best;
+	}
+
+	private void UpdateRoomSimulation(float delta)
+	{
+		if (_inHideout || _runEnded)
+		{
+			return;
+		}
+
+		if (_roomDirty)
+		{
+			RebuildRoomEnemies();
+			_roomDirty = false;
+		}
+
+		RoomUnit hero = FindHeroUnit();
+		if (hero == null)
+		{
+			return;
+		}
+
+		hero.AttackCooldown = Mathf.Max(0f, hero.AttackCooldown - delta);
+		hero.HitFlash = Mathf.Max(0f, hero.HitFlash - delta);
+		if (hero.KnockbackTime > 0f)
+		{
+			hero.Position = ClampToRoom(hero.Position + hero.KnockbackVelocity * delta);
+			hero.KnockbackVelocity *= 0.86f;
+			hero.KnockbackTime = Mathf.Max(0f, hero.KnockbackTime - delta);
+		}
+		else if (_heroHasMoveTarget)
+		{
+			Vector2 toTarget = _heroMoveTarget - hero.Position;
+			if (toTarget.Length() <= 6f)
+			{
+				_heroHasMoveTarget = false;
+			}
+			else
+			{
+				Vector2 dir = toTarget.Normalized();
+				hero.Facing = dir;
+				hero.Position = ClampToRoom(hero.Position + dir * hero.Speed * delta);
+			}
+		}
+
+		bool hasHostiles = HasHostilesInRoom();
+		for (int i = 0; i < _roomUnits.Count; i++)
+		{
+			RoomUnit unit = _roomUnits[i];
+			if (!unit.IsAlive || !unit.IsPlayerSide || unit.IsHero)
+			{
+				continue;
+			}
+
+			unit.AttackCooldown = Mathf.Max(0f, unit.AttackCooldown - delta);
+			unit.HitFlash = Mathf.Max(0f, unit.HitFlash - delta);
+			if (unit.KnockbackTime > 0f)
+			{
+				unit.Position = ClampToRoom(unit.Position + unit.KnockbackVelocity * delta);
+				unit.KnockbackVelocity *= 0.86f;
+				unit.KnockbackTime = Mathf.Max(0f, unit.KnockbackTime - delta);
+				continue;
+			}
+
+			RoomUnit target = FindNearestTarget(unit, false);
+			if (hasHostiles && target != null)
+			{
+				StepUnitCombat(unit, target, delta);
+			}
+			else
+			{
+				Vector2 follow = hero.Position + new Vector2(-24f, 0f);
+				Vector2 dir = follow - unit.Position;
+				if (dir.Length() > 14f)
+				{
+					unit.Facing = dir.Normalized();
+					unit.Position = ClampToRoom(unit.Position + unit.Facing * unit.Speed * 0.86f * delta);
+				}
+			}
+		}
+
+		for (int i = 0; i < _roomUnits.Count; i++)
+		{
+			RoomUnit unit = _roomUnits[i];
+			if (!unit.IsAlive || unit.IsPlayerSide)
+			{
+				continue;
+			}
+
+			unit.AttackCooldown = Mathf.Max(0f, unit.AttackCooldown - delta);
+			unit.HitFlash = Mathf.Max(0f, unit.HitFlash - delta);
+			if (unit.KnockbackTime > 0f)
+			{
+				unit.Position = ClampToRoom(unit.Position + unit.KnockbackVelocity * delta);
+				unit.KnockbackVelocity *= 0.86f;
+				unit.KnockbackTime = Mathf.Max(0f, unit.KnockbackTime - delta);
+				continue;
+			}
+
+			RoomUnit target = FindNearestTarget(unit, true);
+			if (target != null)
+			{
+				StepUnitCombat(unit, target, delta);
+			}
+		}
+
+		if (HasHostilesInRoom())
+		{
+			RoomUnit heroTarget = FindNearestTarget(hero, false);
+			if (heroTarget != null && !_heroHasMoveTarget)
+			{
+				StepUnitCombat(hero, heroTarget, delta);
+			}
+		}
+
+		if (_pendingExitNodeId >= 0)
+		{
+			MapNode node = _nodes[_playerNodeId];
+			int linkIndex = node.Links.IndexOf(_pendingExitNodeId);
+			if (linkIndex >= 0)
+			{
+				Rect2 door = GetRoomExitRect(linkIndex, node.Links.Count).Grow(8f);
+				if (door.HasPoint(hero.Position))
+				{
+					RoomDoorSide entrySide = GetOppositeSide(_pendingExitSide);
+					int nextNodeId = _pendingExitNodeId;
+					_pendingExitNodeId = -1;
+					EnterNodeRoom(nextNodeId, entrySide, true);
+				}
+			}
+		}
+
+		if (hero.Hp <= 0)
+		{
+			bool allyAlive = false;
+			for (int i = 0; i < _roomUnits.Count; i++)
+			{
+				if (_roomUnits[i].IsPlayerSide && !_roomUnits[i].IsHero && _roomUnits[i].IsAlive)
+				{
+					allyAlive = true;
+					break;
+				}
+			}
+
+			if (allyAlive)
+			{
+				hero.Hp = 1;
+				_playerHp = 1;
+			}
+			else
+			{
+				_playerHp = 0;
+				_runBackpack.Clear();
+				_runEnded = true;
+				_runFailed = true;
+			}
+		}
+	}
+
+	private void StepUnitCombat(RoomUnit attacker, RoomUnit target, float delta)
+	{
+		Vector2 toTarget = target.Position - attacker.Position;
+		float distance = toTarget.Length();
+		if (distance <= 0.001f)
+		{
+			return;
+		}
+
+		Vector2 dir = toTarget / distance;
+		attacker.Facing = dir;
+		if (distance > attacker.AttackRange)
+		{
+			attacker.Position = ClampToRoom(attacker.Position + dir * attacker.Speed * delta);
+			return;
+		}
+
+		if (attacker.AttackCooldown > 0f)
+		{
+			return;
+		}
+
+		int damage = _rng.RandiRange(attacker.DamageMin, attacker.DamageMax);
+		target.Hp = Mathf.Max(0, target.Hp - damage);
+		attacker.AttackCooldown = attacker.IsRanged ? 0.55f : 0.72f;
+		target.HitFlash = 0.12f;
+		target.KnockbackVelocity = dir * (attacker.IsRanged ? 85f : 180f);
+		target.KnockbackTime = attacker.IsRanged ? 0.06f : 0.14f;
+		if (target.Hp <= 0)
+		{
+			HandleUnitDeath(target);
+		}
+	}
+
+	private void HandleUnitDeath(RoomUnit dead)
+	{
+		if (!dead.IsPlayerSide)
+		{
+			MapNode node = _nodes[_playerNodeId];
+			if (dead.IsElite)
+			{
+				LootContainer elite = new() { Label = dead.Name, Kind = ContainerKind.EliteCorpse };
+				elite.EquippedItems.Add(new EquippedLoot { Slot = EquipmentSlot.Weapon, Label = "精钢军刀" });
+				elite.EquippedItems.Add(new EquippedLoot { Slot = EquipmentSlot.Armor, Label = "队长锁甲" });
+				elite.EquippedItems.Add(new EquippedLoot { Slot = EquipmentSlot.Trinket, Label = "纹章坠饰" });
+				elite.HiddenItems.Add(RollLootItem());
+				node.Containers.Add(elite);
+			}
+			else
+			{
+				LootContainer pile = null;
+				for (int i = node.Containers.Count - 1; i >= 0; i--)
+				{
+					if (node.Containers[i].Kind == ContainerKind.CorpsePile)
+					{
+						pile = node.Containers[i];
+						break;
+					}
+				}
+
+				if (pile == null)
+				{
+					pile = new LootContainer { Label = "尸体堆", Kind = ContainerKind.CorpsePile };
+					node.Containers.Add(pile);
+				}
+				pile.HiddenItems.Add(RollLootItem());
+			}
+
+			if (!HasHostilesInRoom())
+			{
+				AiSquad squad = GetSquadAtNode(node.Id);
+				if (squad != null)
+				{
+					squad.Intent = AiIntent.Defeated;
+					squad.Strength = 0;
+				}
+				node.Threat = 0;
+			}
+		}
+		else if (!dead.IsHero)
+		{
+			for (int i = _runSoldiers.Count - 1; i >= 0; i--)
+			{
+				if (_runSoldiers[i].Name == dead.Name)
+				{
+					_runSoldiers.RemoveAt(i);
+					break;
+				}
+			}
+		}
+	}
+
+	private void RelayoutAlliesAroundHero()
+	{
+		RoomUnit hero = FindHeroUnit();
+		if (hero == null)
+		{
+			return;
+		}
+
+		int index = 0;
+		for (int i = 0; i < _roomUnits.Count; i++)
+		{
+			RoomUnit unit = _roomUnits[i];
+			if (!unit.IsPlayerSide || unit.IsHero || !unit.IsAlive)
+			{
+				continue;
+			}
+
+			Vector2 offset = new Vector2(-24f - (index % 3) * 20f, (index / 3) * 24f - 24f);
+			unit.Position = ClampToRoom(hero.Position + offset);
+			index++;
+		}
+	}
+
+	private RoomDoorSide GetExitSide(int index, int totalCount)
+	{
+		return totalCount switch
+		{
+			1 => RoomDoorSide.Right,
+			2 => index == 0 ? RoomDoorSide.Left : RoomDoorSide.Right,
+			3 => index switch
+			{
+				0 => RoomDoorSide.Left,
+				1 => RoomDoorSide.Top,
+				_ => RoomDoorSide.Right,
+			},
+			_ => index switch
+			{
+				0 => RoomDoorSide.Left,
+				1 => RoomDoorSide.Top,
+				2 => RoomDoorSide.Right,
+				_ => RoomDoorSide.Bottom,
+			},
+		};
+	}
+
+	private RoomDoorSide GetOppositeSide(RoomDoorSide side)
+	{
+		return side switch
+		{
+			RoomDoorSide.Left => RoomDoorSide.Right,
+			RoomDoorSide.Right => RoomDoorSide.Left,
+			RoomDoorSide.Top => RoomDoorSide.Bottom,
+			_ => RoomDoorSide.Top,
+		};
+	}
+
+	private void DrawRoomViewUnified()
+	{
+		DrawRect(_mapRect, new Color(0.07f, 0.07f, 0.08f), true);
+		DrawRect(_mapRect, new Color(0.34f, 0.32f, 0.28f), false, 2f);
+		if (_selectedMapTemplate == 1)
+		{
+			DrawBorderKeepBackdrop();
+		}
+		else
+		{
+			DrawMonasteryBackdrop();
+		}
+
+		MapNode node = _nodes[_playerNodeId];
+		Rect2 arena = GetRoomArenaRect();
+		DrawRect(arena, new Color(0.1f, 0.12f, 0.17f, 0.94f), true);
+		DrawRect(arena, new Color(0.54f, 0.6f, 0.72f, 0.85f), false, 2f);
+
+		for (float x = arena.Position.X + 32f; x < arena.End.X; x += 32f)
+		{
+			DrawLine(new Vector2(x, arena.Position.Y), new Vector2(x, arena.End.Y), new Color(0.16f, 0.19f, 0.24f, 0.38f), 1f);
+		}
+		for (float y = arena.Position.Y + 32f; y < arena.End.Y; y += 32f)
+		{
+			DrawLine(new Vector2(arena.Position.X, y), new Vector2(arena.End.X, y), new Color(0.16f, 0.19f, 0.24f, 0.38f), 1f);
+		}
+
+		DrawString(ThemeDB.FallbackFont, arena.Position + new Vector2(14f, 22f), node.Name, HorizontalAlignment.Left, -1f, 20, Colors.White);
+		DrawString(ThemeDB.FallbackFont, arena.Position + new Vector2(14f, 42f), "战斗/搜索/过门为同一实时状态", HorizontalAlignment.Left, -1f, 12, new Color(0.88f, 0.92f, 0.98f));
+
+		if (_heroHasMoveTarget)
+		{
+			RoomUnit hero = FindHeroUnit();
+			if (hero != null)
+			{
+				DrawLine(hero.Position, _heroMoveTarget, new Color(0.56f, 0.9f, 0.98f, 0.72f), 1.8f);
+			}
+		}
+
+		DrawRoomExitsUnified(node);
+		DrawRoomUnits();
+	}
+
+	private void DrawRoomExitsUnified(MapNode node)
+	{
+		for (int i = 0; i < node.Links.Count && i < 4; i++)
+		{
+			int linkedNodeId = node.Links[i];
+			MapNode linkedNode = _nodes[linkedNodeId];
+			Rect2 exitRect = GetRoomExitRect(i, node.Links.Count);
+			bool pending = linkedNodeId == _pendingExitNodeId;
+			Color fill = pending ? new Color(0.3f, 0.62f, 0.82f, 0.92f) : new Color(0.28f, 0.34f, 0.44f, 0.9f);
+			Color border = pending ? new Color(1f, 0.92f, 0.58f, 1f) : new Color(0.85f, 0.92f, 1f, 0.96f);
+			DrawRect(exitRect, fill, true);
+			DrawRect(exitRect, border, false, 2f);
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(8f, 17f), GetExitDirectionLabel(i, node.Links.Count), HorizontalAlignment.Left, exitRect.Size.X - 16f, 12, Colors.White);
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(8f, 34f), linkedNode.Name, HorizontalAlignment.Left, exitRect.Size.X - 16f, 11, new Color(0.9f, 0.95f, 1f));
+			_buttons.Add(new ButtonDef(exitRect, "use_exit", linkedNodeId));
+		}
+	}
+
+	private void DrawRoomUnits()
+	{
+		for (int i = 0; i < _roomUnits.Count; i++)
+		{
+			RoomUnit unit = _roomUnits[i];
+			if (!unit.IsAlive)
+			{
+				DrawCircle(unit.Position, 6f, new Color(0.42f, 0.42f, 0.46f, 0.7f));
+				continue;
+			}
+
+			Color body = unit.IsPlayerSide
+				? (unit.IsHero ? new Color(0.34f, 0.84f, 1f) : new Color(0.5f, 0.92f, 0.72f))
+				: (unit.IsElite ? new Color(0.96f, 0.52f, 0.4f) : new Color(0.92f, 0.38f, 0.38f));
+			if (unit.HitFlash > 0f)
+			{
+				body = body.Lightened(0.45f);
+			}
+
+			float radius = unit.IsHero ? 12f : 9f;
+			Vector2 dir = unit.Facing == Vector2.Zero ? (unit.IsPlayerSide ? Vector2.Right : Vector2.Left) : unit.Facing.Normalized();
+			Vector2 normal = new(-dir.Y, dir.X);
+			Vector2 tip = unit.Position + dir * (radius + 6f);
+			Vector2 left = unit.Position - dir * radius + normal * (radius * 0.75f);
+			Vector2 right = unit.Position - dir * radius - normal * (radius * 0.75f);
+			DrawColoredPolygon(new Vector2[] { tip, left, right }, body);
+			DrawPolyline(new Vector2[] { tip, left, right, tip }, Colors.White, 1.4f);
+
+			Rect2 hpBg = new(unit.Position + new Vector2(-20f, 12f), new Vector2(40f, 4f));
+			DrawRect(hpBg, new Color(0.14f, 0.14f, 0.16f), true);
+			float ratio = unit.MaxHp > 0 ? (float)unit.Hp / unit.MaxHp : 0f;
+			DrawRect(new Rect2(hpBg.Position, new Vector2(hpBg.Size.X * ratio, hpBg.Size.Y)), unit.IsPlayerSide ? new Color(0.46f, 0.95f, 0.58f) : new Color(0.95f, 0.5f, 0.5f), true);
+			DrawRect(hpBg, Colors.White, false, 1f);
+			DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-22f, -14f), unit.Name, HorizontalAlignment.Left, 80f, 10, Colors.White);
+		}
+	}
+
 	private void TryMoveToNode(int nodeId)
 	{
 		MapNode current = _nodes[_playerNodeId];
@@ -656,16 +1332,33 @@ public partial class RaidMapDemo : Node2D
 
 	private void TryUseExit(int nodeId)
 	{
-		if (_selectedContainerIndex >= 0 || _pendingEncounter != null || _battleSim != null || _isPlayerMoving)
+		if (_selectedContainerIndex >= 0 || _runEnded || _inHideout)
 		{
 			return;
 		}
 
-		TryMoveToNode(nodeId);
+		MapNode node = _nodes[_playerNodeId];
+		int linkIndex = node.Links.IndexOf(nodeId);
+		if (linkIndex < 0)
+		{
+			return;
+		}
+
+		Rect2 doorRect = GetRoomExitRect(linkIndex, node.Links.Count);
+		_pendingExitNodeId = nodeId;
+		_pendingExitSide = GetExitSide(linkIndex, node.Links.Count);
+		_heroMoveTarget = ClampToRoom(doorRect.GetCenter());
+		_heroHasMoveTarget = true;
+		_status = $"前往 {_nodes[nodeId].Name} 的门口。";
 	}
 
 	private void HandleArrival(MapNode node)
 	{
+		node.SearchRewardClaimed = true;
+		_roomDirty = true;
+		RefreshStatus();
+		return;
+
 		AiSquad encounteredSquad = GetSquadAtNode(node.Id);
 		if (encounteredSquad != null)
 		{
@@ -698,6 +1391,9 @@ public partial class RaidMapDemo : Node2D
 
 	private void StartEncounter(MapNode node, string enemyName, int enemyPower, AiSquad squad, bool hasElite)
 	{
+		_roomDirty = true;
+		return;
+
 		_encounter = new Encounter
 		{
 			EnemyName = enemyName,
@@ -717,6 +1413,9 @@ public partial class RaidMapDemo : Node2D
 
 	private void QueueEncounter(MapNode node, string enemyName, int enemyPower, AiSquad squad, bool hasElite, string promptText)
 	{
+		_roomDirty = true;
+		return;
+
 		if (_selectedContainerIndex >= 0)
 		{
 			_selectedContainerIndex = -1;
@@ -737,6 +1436,9 @@ public partial class RaidMapDemo : Node2D
 
 	private void StartPendingEncounter()
 	{
+		_roomDirty = true;
+		return;
+
 		if (_pendingEncounter == null)
 		{
 			return;
@@ -749,6 +1451,8 @@ public partial class RaidMapDemo : Node2D
 
 	private void OnBattleFinished(bool victory, bool heroAlive, int remainingHp, int remainingSoldiers, int remainingStrength)
 	{
+		return;
+
 		if (_battleSim != null)
 		{
 			_battleSim.BattleFinished -= OnBattleFinished;
@@ -981,7 +1685,7 @@ public partial class RaidMapDemo : Node2D
 
 	private void UpdateContainerSearch(float delta)
 	{
-		if (_battleSim != null || _selectedContainerIndex < 0)
+		if (_selectedContainerIndex < 0)
 		{
 			return;
 		}
@@ -1195,23 +1899,12 @@ public partial class RaidMapDemo : Node2D
 
 	private void CheckPlayerNodeEncounterAfterTimeAdvance()
 	{
-		if (_runEnded || _battleSim != null || _encounter != null || _pendingEncounter != null || _inHideout || _isPlayerMoving)
+		if (_runEnded || _inHideout)
 		{
 			return;
 		}
 
-		MapNode node = _nodes[_playerNodeId];
-		AiSquad squad = GetSquadAtNode(node.Id);
-		if (squad != null)
-		{
-			QueueEncounter(node, squad.Name, squad.Strength + 8, squad, true, $"{squad.Name} 在时间推进中杀到了 {node.Name}。");
-			return;
-		}
-
-		if (node.Threat > 0)
-		{
-			QueueEncounter(node, $"{node.Name}守军", node.Threat * 4 + 6, null, node.Type == NodeType.Battle, $"{node.Name} 的敌人重新控制了局面。");
-		}
+		_roomDirty = true;
 	}
 
 	private void ResolveAiDuel(AiSquad squad)
@@ -1671,7 +2364,7 @@ public partial class RaidMapDemo : Node2D
 
 	private bool CanSearch(MapNode node)
 	{
-		return _battleSim == null && node.Threat <= 0 && GetSquadAtNode(node.Id) == null;
+		return !_runEnded && !_inHideout;
 	}
 
 	private void AddLoot(string item)
@@ -1923,7 +2616,7 @@ public partial class RaidMapDemo : Node2D
 
 	private void ToggleMapOverlay()
 	{
-		if (_inHideout || _battleSim != null || _runEnded)
+		if (_inHideout || _runEnded)
 		{
 			return;
 		}
@@ -2528,7 +3221,7 @@ public partial class RaidMapDemo : Node2D
 		autoRect.Position += new Vector2(166f, 0f);
 		DrawButton(autoRect, _autoSearchEnabled ? "\u81ea\u52a8\u641c\u7d22\uff1a\u5f00" : "\u81ea\u52a8\u641c\u7d22\uff1a\u5173", _autoSearchEnabled ? new Color(0.24f, 0.56f, 0.32f) : new Color(0.18f, 0.2f, 0.24f));
 		_buttons.Add(new ButtonDef(autoRect, "toggle_auto_search"));
-		if (node.Type == NodeType.Extract && _battleSim == null && !_runEnded)
+		if (node.Type == NodeType.Extract && !_runEnded)
 		{
 			Rect2 rect = new(new Vector2(x + 166f, y + 34f), new Vector2(148f, 28f));
 			DrawButton(rect, "\u6267\u884c\u64a4\u79bb", new Color(0.24f, 0.62f, 0.36f));

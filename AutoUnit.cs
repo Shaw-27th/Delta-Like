@@ -134,6 +134,12 @@ public partial class AutoUnit : Node2D
 
 	public override void _Draw()
 	{
+		if (!IsAlive)
+		{
+			DrawCorpse();
+			return;
+		}
+
 		DrawHealthBar();
 		DrawBody();
 	}
@@ -518,6 +524,20 @@ public partial class AutoUnit : Node2D
 		{
 			DrawMeleeSlash(forward, drawOffset, swingProgress);
 		}
+	}
+
+	private void DrawCorpse()
+	{
+		Color corpseColor = UnitColor.Darkened(0.45f);
+		Vector2 right = new Vector2(-FacingDirection.Y, FacingDirection.X);
+		Vector2 a = -FacingDirection * (BodyRadius * 0.9f) + right * (BodyRadius * 0.45f);
+		Vector2 b = FacingDirection * (BodyRadius * 0.9f) - right * (BodyRadius * 0.45f);
+		Vector2 c = -FacingDirection * (BodyRadius * 0.9f) - right * (BodyRadius * 0.45f);
+		Vector2 d = FacingDirection * (BodyRadius * 0.9f) + right * (BodyRadius * 0.45f);
+
+		DrawLine(a, b, corpseColor, 4f);
+		DrawLine(c, d, corpseColor, 4f);
+		DrawCircle(Vector2.Zero, 4f, corpseColor.Lightened(0.15f));
 	}
 
 	private void DrawHealthBar()

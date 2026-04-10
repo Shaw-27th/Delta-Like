@@ -64,9 +64,10 @@ public partial class RoomBattleSim : Node2D
 	private readonly List<ArcEffect> _arcEffects = new();
 	private readonly List<string> _log = new();
 	private readonly List<Rect2> _controlRects = new();
+	private readonly List<Rect2> _coverRects = new();
 	private readonly RandomNumberGenerator _rng = new();
-	private readonly Rect2 _panelRect = new(new Vector2(120f, 70f), new Vector2(960f, 580f));
-	private readonly Rect2 _arenaRect = new(new Vector2(160f, 150f), new Vector2(880f, 360f));
+	private readonly Rect2 _panelRect = new(new Vector2(72f, 40f), new Vector2(1056f, 640f));
+	private readonly Rect2 _arenaRect = new(new Vector2(104f, 112f), new Vector2(992f, 396f));
 
 	private string _title = "";
 	private bool _finished;
@@ -213,21 +214,16 @@ public partial class RoomBattleSim : Node2D
 	public override void _Draw()
 	{
 		_controlRects.Clear();
-		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0f, 0f, 0f, 0.55f), true);
+		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0f, 0f, 0f, 0.72f), true);
 		DrawRect(_panelRect, new Color(0.04f, 0.04f, 0.05f, 0.97f), true);
 		DrawRect(_panelRect, Colors.White, false, 2f);
 		DrawString(ThemeDB.FallbackFont, _panelRect.Position + new Vector2(24f, 34f), $"房间战斗：{_title}", HorizontalAlignment.Left, -1f, 24, Colors.White);
 		DrawBattleControls();
-
-		DrawRect(_arenaRect, new Color(0.1f, 0.11f, 0.13f), true);
-		DrawRect(_arenaRect, new Color(0.28f, 0.31f, 0.35f), false, 2f);
-		DrawLine(new Vector2(_arenaRect.GetCenter().X, _arenaRect.Position.Y), new Vector2(_arenaRect.GetCenter().X, _arenaRect.End.Y), new Color(0.2f, 0.22f, 0.26f), 2f);
-		DrawLine(new Vector2(_arenaRect.Position.X + 180f, _arenaRect.Position.Y + 20f), new Vector2(_arenaRect.Position.X + 180f, _arenaRect.End.Y - 20f), new Color(0.2f, 0.32f, 0.26f, 0.55f), 1.5f);
-		DrawLine(new Vector2(_arenaRect.End.X - 180f, _arenaRect.Position.Y + 20f), new Vector2(_arenaRect.End.X - 180f, _arenaRect.End.Y - 20f), new Color(0.32f, 0.2f, 0.22f, 0.55f), 1.5f);
+		DrawArenaBackdrop();
 		DrawString(ThemeDB.FallbackFont, _arenaRect.Position + new Vector2(20f, 24f), "我方后排", HorizontalAlignment.Left, -1f, 12, new Color(0.7f, 0.9f, 1f, 0.72f));
-		DrawString(ThemeDB.FallbackFont, _arenaRect.Position + new Vector2(104f, 24f), "我方前排", HorizontalAlignment.Left, -1f, 12, new Color(0.72f, 1f, 0.82f, 0.72f));
-		DrawString(ThemeDB.FallbackFont, new Vector2(_arenaRect.End.X - 160f, _arenaRect.Position.Y + 24f), "敌方前排", HorizontalAlignment.Left, -1f, 12, new Color(1f, 0.8f, 0.8f, 0.72f));
-		DrawString(ThemeDB.FallbackFont, new Vector2(_arenaRect.End.X - 74f, _arenaRect.Position.Y + 24f), "敌方后排", HorizontalAlignment.Left, -1f, 12, new Color(1f, 0.76f, 0.7f, 0.72f));
+		DrawString(ThemeDB.FallbackFont, _arenaRect.Position + new Vector2(118f, 24f), "我方前排", HorizontalAlignment.Left, -1f, 12, new Color(0.72f, 1f, 0.82f, 0.72f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(_arenaRect.End.X - 176f, _arenaRect.Position.Y + 24f), "敌方前排", HorizontalAlignment.Left, -1f, 12, new Color(1f, 0.8f, 0.8f, 0.72f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(_arenaRect.End.X - 82f, _arenaRect.Position.Y + 24f), "敌方后排", HorizontalAlignment.Left, -1f, 12, new Color(1f, 0.76f, 0.7f, 0.72f));
 
 		DrawCombatEffects();
 		foreach (BattleUnit unit in _units)
@@ -257,15 +253,70 @@ public partial class RoomBattleSim : Node2D
 			DrawRect(new Rect2(unit.Position + new Vector2(-20f, 18f), new Vector2(40f * ((float)unit.Hp / unit.MaxHp), 5f)), unit.IsPlayerSide ? new Color(0.42f, 0.94f, 0.58f) : new Color(0.95f, 0.45f, 0.45f), true);
 		}
 
-		float logX = _panelRect.Position.X + 24f;
-		float logY = _arenaRect.End.Y + 34f;
+		Rect2 logPanel = new(new Vector2(_panelRect.Position.X + 18f, _arenaRect.End.Y + 18f), new Vector2(_panelRect.Size.X - 36f, 104f));
+		DrawRect(logPanel, new Color(0.08f, 0.09f, 0.11f, 0.88f), true);
+		DrawRect(logPanel, new Color(0.28f, 0.31f, 0.35f), false, 1.5f);
+		float logX = logPanel.Position.X + 16f;
+		float logY = logPanel.Position.Y + 22f;
 		DrawString(ThemeDB.FallbackFont, new Vector2(logX, logY), "战斗记录", HorizontalAlignment.Left, -1f, 16, Colors.White);
 		logY += 22f;
 		for (int i = Mathf.Max(0, _log.Count - 7); i < _log.Count; i++)
 		{
-			DrawString(ThemeDB.FallbackFont, new Vector2(logX, logY), _log[i], HorizontalAlignment.Left, 900f, 13, new Color(0.84f, 0.88f, 0.94f));
+			DrawString(ThemeDB.FallbackFont, new Vector2(logX, logY), _log[i], HorizontalAlignment.Left, logPanel.Size.X - 28f, 13, new Color(0.84f, 0.88f, 0.94f));
 			logY += 20f;
 		}
+	}
+
+	private void DrawArenaBackdrop()
+	{
+		if (_coverRects.Count == 0)
+		{
+			BuildArenaCover();
+		}
+
+		DrawRect(_arenaRect, new Color(0.11f, 0.13f, 0.17f), true);
+		DrawRect(_arenaRect, new Color(0.28f, 0.31f, 0.35f), false, 2f);
+		for (float x = _arenaRect.Position.X + 64f; x < _arenaRect.End.X; x += 64f)
+		{
+			DrawLine(new Vector2(x, _arenaRect.Position.Y), new Vector2(x, _arenaRect.End.Y), new Color(0.16f, 0.18f, 0.22f, 0.55f), 1f);
+		}
+		for (float y = _arenaRect.Position.Y + 64f; y < _arenaRect.End.Y; y += 64f)
+		{
+			DrawLine(new Vector2(_arenaRect.Position.X, y), new Vector2(_arenaRect.End.X, y), new Color(0.16f, 0.18f, 0.22f, 0.55f), 1f);
+		}
+		DrawLine(new Vector2(_arenaRect.GetCenter().X, _arenaRect.Position.Y), new Vector2(_arenaRect.GetCenter().X, _arenaRect.End.Y), new Color(0.2f, 0.22f, 0.26f), 2f);
+		DrawLine(new Vector2(_arenaRect.Position.X + 180f, _arenaRect.Position.Y + 20f), new Vector2(_arenaRect.Position.X + 180f, _arenaRect.End.Y - 20f), new Color(0.2f, 0.32f, 0.26f, 0.55f), 1.5f);
+		DrawLine(new Vector2(_arenaRect.End.X - 180f, _arenaRect.Position.Y + 20f), new Vector2(_arenaRect.End.X - 180f, _arenaRect.End.Y - 20f), new Color(0.32f, 0.2f, 0.22f, 0.55f), 1.5f);
+		foreach (Rect2 cover in _coverRects)
+		{
+			DrawRect(cover, new Color(0.28f, 0.3f, 0.34f), true);
+			DrawRect(cover, new Color(0.78f, 0.82f, 0.9f, 0.85f), false, 2f);
+			Vector2 center = cover.GetCenter();
+			DrawLine(new Vector2(cover.Position.X + 10f, center.Y), new Vector2(cover.End.X - 10f, center.Y), new Color(0.88f, 0.92f, 0.98f, 0.35f), 2f);
+		}
+	}
+
+	private void BuildArenaCover()
+	{
+		_coverRects.Clear();
+		int variant = Mathf.Abs(_title.GetHashCode()) % 3;
+		if (variant == 0)
+		{
+			_coverRects.Add(new Rect2(new Vector2(_arenaRect.Position.X + 236f, _arenaRect.Position.Y + 92f), new Vector2(88f, 132f)));
+			_coverRects.Add(new Rect2(new Vector2(_arenaRect.End.X - 324f, _arenaRect.End.Y - 152f), new Vector2(92f, 122f)));
+			_coverRects.Add(new Rect2(new Vector2(_arenaRect.GetCenter().X - 52f, _arenaRect.GetCenter().Y - 24f), new Vector2(104f, 48f)));
+			return;
+		}
+		if (variant == 1)
+		{
+			_coverRects.Add(new Rect2(new Vector2(_arenaRect.Position.X + 212f, _arenaRect.GetCenter().Y - 118f), new Vector2(96f, 88f)));
+			_coverRects.Add(new Rect2(new Vector2(_arenaRect.End.X - 308f, _arenaRect.GetCenter().Y + 24f), new Vector2(96f, 88f)));
+			_coverRects.Add(new Rect2(new Vector2(_arenaRect.GetCenter().X - 38f, _arenaRect.Position.Y + 116f), new Vector2(76f, 144f)));
+			return;
+		}
+		_coverRects.Add(new Rect2(new Vector2(_arenaRect.Position.X + 236f, _arenaRect.Position.Y + 70f), new Vector2(86f, 146f)));
+		_coverRects.Add(new Rect2(new Vector2(_arenaRect.End.X - 320f, _arenaRect.Position.Y + 168f), new Vector2(86f, 146f)));
+		_coverRects.Add(new Rect2(new Vector2(_arenaRect.GetCenter().X - 64f, _arenaRect.End.Y - 122f), new Vector2(128f, 52f)));
 	}
 
 	public override void _UnhandledInput(InputEvent @event)
