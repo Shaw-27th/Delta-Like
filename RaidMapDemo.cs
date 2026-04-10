@@ -1217,18 +1217,21 @@ private sealed class RoomProjectileEffect
 			Vector2 side = new(-dir.Y, dir.X);
 			float phase = _turn + attacker.Position.X * 0.013f + attacker.Position.Y * 0.007f;
 			float weave = Mathf.Sin(Time.GetTicksMsec() * 0.006f + phase);
-			Vector2 desired = target.Position - dir * Mathf.Max(12f, attacker.AttackRange - 6f) + side * weave * 10f;
+			float desiredGap = Mathf.Max(18f, attacker.AttackRange + 4f);
+			Vector2 desired = target.Position - dir * desiredGap + side * weave * 10f;
 			Vector2 pushAway = (attacker.Position - target.Position).Normalized();
 			if (pushAway == Vector2.Zero)
 			{
 				pushAway = attacker.IsPlayerSide ? Vector2.Left : Vector2.Right;
 			}
 
-			Vector2 contactAdjust = side * weave * 24f + pushAway * 8f;
+			float cooldownRatio = Mathf.Clamp(attacker.AttackCooldown / Mathf.Max(0.01f, 0.46f * attacker.AttackCycleScale), 0f, 1f);
+			Vector2 contactAdjust = side * weave * (18f + cooldownRatio * 12f) + pushAway * (10f + cooldownRatio * 8f);
 			Vector2 move = (desired + contactAdjust) - attacker.Position;
 			if (move.LengthSquared() > 1f)
 			{
-				attacker.Position = ClampToRoom(attacker.Position + move.Normalized() * attacker.Speed * 0.55f * delta);
+				float duelMoveScale = attacker.AttackCooldown > 0f ? 0.72f : 0.5f;
+				attacker.Position = ClampToRoom(attacker.Position + move.Normalized() * attacker.Speed * duelMoveScale * delta);
 			}
 		}
 
@@ -1379,11 +1382,11 @@ private sealed class RoomProjectileEffect
 		{
 			Center = center,
 			PreviousCenter = center,
-			Velocity = dir * (heavy ? 250f : 210f),
+			Velocity = dir * (heavy ? 200f : 170f),
 			FacingAngle = facingAngle,
 			Radius = heavy ? 28f : 22f,
-			TimeLeft = heavy ? 0.18f : 0.14f,
-			Duration = heavy ? 0.18f : 0.14f,
+			TimeLeft = heavy ? 0.34f : 0.26f,
+			Duration = heavy ? 0.34f : 0.26f,
 			PlayerSide = playerSide,
 			Heavy = heavy,
 			Target = target,
@@ -1776,9 +1779,18 @@ private sealed class RoomProjectileEffect
 				: new Color(1f, 0.86f, 0.82f, alpha * (effect.Heavy ? 0.95f : 0.84f));
 			float sweep = effect.Heavy ? 1.95f : 1.6f;
 			float swingLead = effect.Heavy ? 1.25f : 1.05f;
-			float startAngle = effect.FacingAngle - swingLead + progress * 0.4f;
+			float startAngle = effect.FacingAngle - swingLead + progress * 0.95f;
 			float endAngle = startAngle + sweep;
-			DrawArc(effect.Center, effect.Radius, startAngle, endAngle, 26, color, effect.Heavy ? 6.2f : 4.8f);
+			for (int trail = 0; trail < 4; trail++)
+			{
+				float trailOffset = trail * 0.18f;
+				float trailStart = startAngle - trailOffset;
+				float trailEnd = endAngle - trailOffset * 0.75f;
+				float trailAlpha = alpha * (1f - trail * 0.24f);
+				float trailWidth = (effect.Heavy ? 6.2f : 4.8f) - trail * 0.7f;
+				Color trailColor = new(color.R, color.G, color.B, trailAlpha);
+				DrawArc(effect.Center, effect.Radius, trailStart, trailEnd, 26, trailColor, trailWidth);
+			}
 			Vector2 tipDir = new(Mathf.Cos(endAngle), Mathf.Sin(endAngle));
 			Vector2 tipPos = effect.Center + tipDir * (effect.Radius + 2f);
 			DrawCircle(tipPos, effect.Heavy ? 4.2f : 3.2f, new Color(1f, 1f, 1f, alpha * 0.88f));
