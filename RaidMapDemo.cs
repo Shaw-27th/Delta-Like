@@ -270,8 +270,8 @@ private sealed class RoomProjectileEffect
 	private readonly List<RoomMeleeArcEffect> _roomMeleeArcEffects = new();
 	private readonly RandomNumberGenerator _rng = new();
 
-	private readonly Rect2 _mapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
-	private readonly Rect2 _sideRect = new(new Vector2(810f, 30f), new Vector2(360f, 660f));
+	private Rect2 _mapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
+	private Rect2 _sideRect = new(new Vector2(810f, 30f), new Vector2(360f, 660f));
 
 	private Encounter _encounter;
 	private Encounter _pendingEncounter;
@@ -313,11 +313,13 @@ private sealed class RoomProjectileEffect
 	public override void _Ready()
 	{
 		_rng.Randomize();
+		UpdateLayoutRects();
 		InitHideout();
 	}
 
 	public override void _Process(double delta)
 	{
+		UpdateLayoutRects();
 		if (!_inHideout)
 		{
 			UpdateContainerSearch((float)delta);
@@ -329,6 +331,7 @@ private sealed class RoomProjectileEffect
 
 	public override void _UnhandledInput(InputEvent @event)
 	{
+		UpdateLayoutRects();
 		if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo && keyEvent.Keycode == Key.M)
 		{
 			ToggleMapOverlay();
@@ -382,6 +385,7 @@ private sealed class RoomProjectileEffect
 
 	public override void _Draw()
 	{
+		UpdateLayoutRects();
 		_buttons.Clear();
 		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0.06f, 0.07f, 0.09f), true);
 		if (_inHideout)
@@ -403,6 +407,21 @@ private sealed class RoomProjectileEffect
 		{
 			DrawEndOverlay();
 		}
+	}
+
+	private void UpdateLayoutRects()
+	{
+		Vector2 viewport = GetViewportRect().Size;
+		float outerMargin = viewport.X >= 1500f ? 36f : 24f;
+		float topMargin = viewport.Y >= 860f ? 32f : 24f;
+		float bottomMargin = topMargin;
+		float gap = viewport.X >= 1500f ? 28f : 20f;
+		float sideWidth = Mathf.Clamp(viewport.X * 0.29f, 360f, 460f);
+		float mapWidth = Mathf.Max(640f, viewport.X - outerMargin * 2f - gap - sideWidth);
+		float panelHeight = Mathf.Max(620f, viewport.Y - topMargin - bottomMargin);
+
+		_mapRect = new Rect2(new Vector2(outerMargin, topMargin), new Vector2(mapWidth, panelHeight));
+		_sideRect = new Rect2(new Vector2(_mapRect.End.X + gap, topMargin), new Vector2(sideWidth, panelHeight));
 	}
 
 	private void ResetRun()
@@ -3164,7 +3183,11 @@ private sealed class RoomProjectileEffect
 
 	private void DrawHideout()
 	{
-		Rect2 panel = new(new Vector2(80f, 50f), new Vector2(1040f, 620f));
+		Vector2 viewport = GetViewportRect().Size;
+		Vector2 panelSize = new(
+			Mathf.Clamp(viewport.X - 120f, 1040f, 1420f),
+			Mathf.Clamp(viewport.Y - 100f, 620f, 860f));
+		Rect2 panel = new((viewport - panelSize) * 0.5f, panelSize);
 		DrawRect(panel, new Color(0.05f, 0.05f, 0.06f, 0.96f), true);
 		DrawRect(panel, Colors.White, false, 2f);
 
@@ -3215,8 +3238,12 @@ private sealed class RoomProjectileEffect
 			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
 		}
 
-		Rect2 stashRect = new(new Vector2(panel.Position.X + 18f, panel.Position.Y + 192f), new Vector2(474f, 316f));
-		Rect2 shopRect = new(new Vector2(panel.Position.X + 548f, panel.Position.Y + 192f), new Vector2(474f, 316f));
+		float contentTop = panel.Position.Y + 192f;
+		float contentGap = 28f;
+		float contentWidth = (panel.Size.X - 18f - 18f - contentGap) * 0.5f;
+		float contentHeight = Mathf.Max(316f, panel.Size.Y - 304f);
+		Rect2 stashRect = new(new Vector2(panel.Position.X + 18f, contentTop), new Vector2(contentWidth, contentHeight));
+		Rect2 shopRect = new(new Vector2(stashRect.End.X + contentGap, contentTop), new Vector2(contentWidth, contentHeight));
 		DrawRect(stashRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(shopRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(stashRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
