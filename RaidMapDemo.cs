@@ -7,7 +7,7 @@ public partial class RaidMapDemo : Node2D
 	private const int RecruitCost = 30;
 	private const int MapTemplateCount = 2;
 	private const int DifficultyCount = 3;
-	private const bool EnableCombatFxDebugOpening = true;
+	private const bool EnableCombatFxDebugOpening = false;
 
 	private enum NodeType
 	{
@@ -1487,9 +1487,9 @@ private sealed class RoomProjectileEffect
 	{
 		target.Hp = Mathf.Max(0, target.Hp - damage);
 		target.HitFlash = heavy ? 0.32f : 0.24f;
-		target.StaggerTime = Mathf.Max(target.StaggerTime, attacker.IsRanged ? 0.08f : (heavy ? 0.16f : 0.12f));
-		target.HitPauseTime = Mathf.Max(target.HitPauseTime, heavy ? 0.05f : 0.035f);
-		attacker.HitPauseTime = Mathf.Max(attacker.HitPauseTime, heavy ? 0.04f : 0.025f);
+		target.StaggerTime = Mathf.Max(target.StaggerTime, attacker.IsRanged ? 0.12f : (heavy ? 0.24f : 0.18f));
+		target.HitPauseTime = Mathf.Max(target.HitPauseTime, heavy ? 0.08f : 0.055f);
+		attacker.HitPauseTime = Mathf.Max(attacker.HitPauseTime, heavy ? 0.07f : 0.05f);
 		ApplyRoomKnockback(target, dir, attacker.IsRanged, heavy);
 
 		if (target.Hp <= 0)
@@ -1606,8 +1606,8 @@ private sealed class RoomProjectileEffect
 
 		target.Hp = Mathf.Max(0, target.Hp - damage);
 		target.HitFlash = heavy ? 0.32f : 0.24f;
-		target.StaggerTime = Mathf.Max(target.StaggerTime, rangedHit ? 0.1f : (heavy ? 0.16f : 0.12f));
-		target.HitPauseTime = Mathf.Max(target.HitPauseTime, heavy ? 0.05f : 0.035f);
+		target.StaggerTime = Mathf.Max(target.StaggerTime, rangedHit ? 0.14f : (heavy ? 0.24f : 0.18f));
+		target.HitPauseTime = Mathf.Max(target.HitPauseTime, heavy ? 0.08f : 0.055f);
 		ApplyRoomKnockback(target, dir, rangedHit, heavy);
 
 		if (target.Hp <= 0)
@@ -1622,13 +1622,13 @@ private sealed class RoomProjectileEffect
 		float knockbackDuration;
 		if (rangedHit)
 		{
-			knockbackForce = heavy ? 240f : 170f;
-			knockbackDuration = heavy ? 0.2f : 0.14f;
+			knockbackForce = heavy ? 280f : 200f;
+			knockbackDuration = heavy ? 0.24f : 0.18f;
 		}
 		else
 		{
-			knockbackForce = heavy ? 880f : 640f;
-			knockbackDuration = heavy ? 0.68f : 0.52f;
+			knockbackForce = heavy ? 1080f : 820f;
+			knockbackDuration = heavy ? 0.88f : 0.68f;
 		}
 
 		target.KnockbackVelocity = dir * knockbackForce;
