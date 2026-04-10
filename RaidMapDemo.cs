@@ -184,6 +184,15 @@ public partial class RaidMapDemo : Node2D
 		Bottom,
 	}
 
+	private enum RoomCombatState
+	{
+		Idle,
+		Advance,
+		AttackCommit,
+		Retreat,
+		Regroup,
+	}
+
 	private sealed class RoomUnit
 	{
 		public bool IsPlayerSide;
@@ -213,6 +222,9 @@ public partial class RaidMapDemo : Node2D
 		public float HitFlash;
 		public Vector2 KnockbackVelocity;
 		public float KnockbackTime;
+		public RoomCombatState CombatState;
+		public float CombatStateTimer;
+		public Vector2 TacticalAnchor;
 		public bool IsAlive => Hp > 0;
 	}
 
@@ -272,6 +284,7 @@ private sealed class RoomProjectileEffect
 
 	private Rect2 _mapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
 	private Rect2 _sideRect = new(new Vector2(810f, 30f), new Vector2(360f, 660f));
+	private float _uiScale = 1f;
 
 	private Encounter _encounter;
 	private Encounter _pendingEncounter;
@@ -412,6 +425,7 @@ private sealed class RoomProjectileEffect
 	private void UpdateLayoutRects()
 	{
 		Vector2 viewport = GetViewportRect().Size;
+		_uiScale = Mathf.Clamp(Mathf.Min(viewport.X / 1360f, viewport.Y / 760f), 1f, 1.22f);
 		float outerMargin = viewport.X >= 1500f ? 36f : 24f;
 		float topMargin = viewport.Y >= 860f ? 32f : 24f;
 		float bottomMargin = topMargin;
@@ -423,6 +437,10 @@ private sealed class RoomProjectileEffect
 		_mapRect = new Rect2(new Vector2(outerMargin, topMargin), new Vector2(mapWidth, panelHeight));
 		_sideRect = new Rect2(new Vector2(_mapRect.End.X + gap, topMargin), new Vector2(sideWidth, panelHeight));
 	}
+
+	private float Ui(float value) => value * _uiScale;
+
+	private int UiFont(int size) => Mathf.RoundToInt(size * _uiScale);
 
 	private void ResetRun()
 	{
@@ -897,6 +915,8 @@ private sealed class RoomProjectileEffect
 			AttackRange = isRanged ? 160f : 28f,
 			AttackCooldown = 0f,
 			AttackCycleScale = 1f,
+			CombatState = isRanged ? RoomCombatState.Idle : RoomCombatState.Advance,
+			TacticalAnchor = position,
 		};
 	}
 
@@ -1221,61 +1241,22 @@ private sealed class RoomProjectileEffect
 		float distance = toTarget.Length();
 		if (distance <= 0.001f)
 		{
-			return;
+			int separationSeed = attacker.Name.Length + target.Name.Length + attacker.MaxHp;
+			Vector2 fallbackDir = separationSeed % 2 == 0 ? Vector2.Right : Vector2.Left;
+			attacker.Position = ClampToRoom(attacker.Position - fallbackDir * 2f);
+			distance = 2f;
+			toTarget = target.Position - attacker.Position;
 		}
 
 		Vector2 dir = toTarget / distance;
 		attacker.Facing = dir;
-		if (!attacker.IsRanged && !target.IsRanged && distance <= attacker.AttackRange + 12f)
+		if (!attacker.IsRanged)
 		{
-			Vector2 side = new(-dir.Y, dir.X);
-			float phase = _turn + attacker.Position.X * 0.013f + attacker.Position.Y * 0.007f;
-			float weave = Mathf.Sin(Time.GetTicksMsec() * 0.006f + phase);
-			float cooldownBase = Mathf.Max(0.01f, 0.46f * attacker.AttackCycleScale);
-			float cooldownRatio = Mathf.Clamp(attacker.AttackCooldown / cooldownBase, 0f, 1f);
-			bool spacingOut = attacker.AttackCooldown > 0f || attacker.RecoveryTime > 0f;
-			float desiredGap = spacingOut
-				? Mathf.Max(24f, attacker.AttackRange + 20f + cooldownRatio * 14f)
-				: Mathf.Max(18f, attacker.AttackRange + 2f);
-			Vector2 desired = target.Position - dir * desiredGap + side * weave * 10f;
-			Vector2 pushAway = (attacker.Position - target.Position).Normalized();
-			if (pushAway == Vector2.Zero)
-			{
-				pushAway = attacker.IsPlayerSide ? Vector2.Left : Vector2.Right;
-			}
-
-			float tooCloseRatio = desiredGap > 0f ? Mathf.Clamp((desiredGap - distance) / desiredGap, 0f, 1f) : 0f;
-			Vector2 contactAdjust = spacingOut
-				? side * weave * (16f + cooldownRatio * 10f) + pushAway * (22f + cooldownRatio * 18f + tooCloseRatio * 20f)
-				: side * weave * 9f + pushAway * (6f + tooCloseRatio * 6f);
-			Vector2 move = (desired + contactAdjust) - attacker.Position;
-			if (move.LengthSquared() > 1f)
-			{
-				float duelMoveScale = spacingOut ? 0.96f : 0.62f;
-				attacker.Position = ClampToRoom(attacker.Position + move.Normalized() * attacker.Speed * duelMoveScale * delta);
-			}
-		}
-
-		if (distance > attacker.AttackRange)
-		{
-			attacker.Position = ClampToRoom(attacker.Position + dir * attacker.Speed * delta);
+			StepMeleeUnitCombat(attacker, target, dir, distance, delta);
 			return;
 		}
 
-		if (attacker.AttackCooldown > 0f || attacker.AttackWindupTime > 0f || attacker.RecoveryTime > 0f || attacker.StaggerTime > 0f || attacker.HitPauseTime > 0f)
-		{
-			return;
-		}
-
-		attacker.PendingAttackTarget = target;
-		attacker.PendingAttackDamage = _rng.RandiRange(attacker.DamageMin, attacker.DamageMax);
-		attacker.PendingAttackHeavy = attacker.IsHero || attacker.IsElite;
-		attacker.PendingAttackRangeSlack = attacker.IsRanged ? 28f : 14f;
-		attacker.PendingAttackLungeDistance = 0f;
-		attacker.AttackWindupTime = attacker.IsRanged ? 0.13f : (attacker.PendingAttackHeavy ? 0.12f : 0.09f);
-		attacker.RecoveryTime = attacker.IsRanged ? 0.1f : 0.08f;
-		float baseCooldown = attacker.IsRanged ? 0.42f : (attacker.PendingAttackHeavy ? 0.54f : 0.46f);
-		attacker.AttackCooldown = baseCooldown * Mathf.Max(0.1f, attacker.AttackCycleScale);
+		StepRangedUnitCombat(attacker, target, dir, distance, delta);
 	}
 
 	private void TickRoomUnitState(RoomUnit unit, float delta)
@@ -1292,6 +1273,7 @@ private sealed class RoomProjectileEffect
 		unit.StaggerTime = Mathf.Max(0f, unit.StaggerTime - delta);
 		unit.RecoveryTime = Mathf.Max(0f, unit.RecoveryTime - delta);
 		unit.KnockbackTime = Mathf.Max(0f, unit.KnockbackTime - delta);
+		unit.CombatStateTimer = Mathf.Max(0f, unit.CombatStateTimer - delta);
 
 		if (unit.AttackWindupTime <= 0f)
 		{
@@ -1304,6 +1286,157 @@ private sealed class RoomProjectileEffect
 		{
 			ResolvePendingAttack(unit);
 		}
+	}
+
+	private void StepMeleeUnitCombat(RoomUnit attacker, RoomUnit target, Vector2 dir, float distance, float delta)
+	{
+		float baseCooldown = Mathf.Max(0.01f, (attacker.IsHero || attacker.IsElite ? 0.54f : 0.46f) * attacker.AttackCycleScale);
+		float cooldownRatio = Mathf.Clamp(attacker.AttackCooldown / baseCooldown, 0f, 1f);
+		int flankSeed = attacker.Name.Length + attacker.MaxHp + (attacker.IsPlayerSide ? 1 : 0);
+		Vector2 side = new Vector2(-dir.Y, dir.X) * (flankSeed % 2 == 0 ? -1f : 1f);
+		float attackBand = attacker.AttackRange + 2f;
+		float regroupBand = attacker.AttackRange + 12f;
+		float retreatBand = attacker.AttackRange + 24f + cooldownRatio * 10f;
+
+		if (attacker.AttackWindupTime > 0f || attacker.RecoveryTime > 0f)
+		{
+			attacker.CombatState = RoomCombatState.AttackCommit;
+			MoveUnitToward(attacker, target.Position - dir * attackBand, attacker.Speed * 0.42f, delta);
+			return;
+		}
+
+		if (CanStartAttack(attacker) && distance <= attacker.AttackRange + 4f)
+		{
+			BeginRoomAttack(attacker, target, 14f);
+			return;
+		}
+
+		if (distance < Mathf.Max(10f, attacker.AttackRange * 0.55f))
+		{
+			Vector2 separateTarget = attacker.Position - dir * Ui(18f) + side * Ui(10f);
+			attacker.CombatState = RoomCombatState.Retreat;
+			MoveUnitToward(attacker, separateTarget, attacker.Speed * 0.95f, delta);
+			return;
+		}
+
+		if (attacker.AttackCooldown > baseCooldown * 0.35f)
+		{
+			attacker.CombatState = RoomCombatState.Retreat;
+			Vector2 retreatTarget = target.Position - dir * retreatBand + side * Ui(8f);
+			MoveUnitToward(attacker, retreatTarget, attacker.Speed * 0.92f, delta);
+			return;
+		}
+
+		if (distance > attackBand)
+		{
+			attacker.CombatState = RoomCombatState.Advance;
+			Vector2 engageTarget = target.Position - dir * attackBand + side * Ui(4f);
+			MoveUnitToward(attacker, engageTarget, attacker.Speed, delta);
+			return;
+		}
+
+		attacker.CombatState = RoomCombatState.Regroup;
+		Vector2 regroupTarget = target.Position - dir * regroupBand + side * Ui(6f);
+		MoveUnitToward(attacker, regroupTarget, attacker.Speed * 0.6f, delta);
+	}
+
+	private void StepRangedUnitCombat(RoomUnit attacker, RoomUnit target, Vector2 dir, float distance, float delta)
+	{
+		float baseCooldown = Mathf.Max(0.01f, 0.42f * attacker.AttackCycleScale);
+		int flankSeed = attacker.Name.Length + attacker.MaxHp + (attacker.IsPlayerSide ? 1 : 0);
+		Vector2 side = new Vector2(-dir.Y, dir.X) * (flankSeed % 2 == 0 ? 1f : -1f);
+		float desiredMin = attacker.AttackRange * 0.62f;
+		float desiredMax = attacker.AttackRange * 0.9f;
+
+		if (attacker.AttackWindupTime > 0f || attacker.RecoveryTime > 0f)
+		{
+			attacker.CombatState = RoomCombatState.AttackCommit;
+			Vector2 holdTarget = target.Position - dir * Mathf.Lerp(desiredMin, desiredMax, 0.55f);
+			MoveUnitToward(attacker, holdTarget, attacker.Speed * 0.28f, delta);
+			return;
+		}
+
+		if (distance < desiredMin)
+		{
+			attacker.CombatState = RoomCombatState.Retreat;
+			Vector2 retreatTarget = target.Position - dir * (desiredMax + Ui(18f)) + side * Ui(14f);
+			MoveUnitToward(attacker, retreatTarget, attacker.Speed * 0.9f, delta);
+			return;
+		}
+
+		if (distance > desiredMax)
+		{
+			attacker.CombatState = RoomCombatState.Advance;
+			Vector2 advanceTarget = target.Position - dir * (desiredMax - Ui(8f));
+			MoveUnitToward(attacker, advanceTarget, attacker.Speed * 0.82f, delta);
+			return;
+		}
+
+		if (CanStartAttack(attacker))
+		{
+			BeginRoomAttack(attacker, target, 28f);
+			return;
+		}
+
+		attacker.CombatState = RoomCombatState.Regroup;
+		Vector2 strafeTarget = attacker.Position + side * Ui(18f);
+		if (attacker.CombatStateTimer <= 0f || attacker.TacticalAnchor == Vector2.Zero)
+		{
+			attacker.CombatStateTimer = 0.18f + _rng.RandfRange(0f, 0.12f);
+			attacker.TacticalAnchor = target.Position - dir * Mathf.Lerp(desiredMin, desiredMax, 0.58f) + side * Ui(18f);
+		}
+
+		Vector2 anchoredTarget = attacker.TacticalAnchor;
+		if (distance < desiredMin + Ui(8f))
+		{
+			anchoredTarget -= dir * Ui(10f);
+		}
+		else if (distance > desiredMax - Ui(8f))
+		{
+			anchoredTarget += dir * Ui(8f);
+		}
+
+		MoveUnitToward(attacker, anchoredTarget.Lerp(strafeTarget, 0.3f), attacker.Speed * 0.55f, delta);
+		if (attacker.AttackCooldown <= baseCooldown * 0.15f)
+		{
+			attacker.CombatState = RoomCombatState.Advance;
+		}
+	}
+
+	private bool CanStartAttack(RoomUnit attacker)
+	{
+		return attacker.AttackCooldown <= 0f
+			&& attacker.AttackWindupTime <= 0f
+			&& attacker.RecoveryTime <= 0f
+			&& attacker.StaggerTime <= 0f
+			&& attacker.HitPauseTime <= 0f;
+	}
+
+	private void BeginRoomAttack(RoomUnit attacker, RoomUnit target, float rangeSlack)
+	{
+		attacker.PendingAttackTarget = target;
+		attacker.PendingAttackDamage = _rng.RandiRange(attacker.DamageMin, attacker.DamageMax);
+		attacker.PendingAttackHeavy = attacker.IsHero || attacker.IsElite;
+		attacker.PendingAttackRangeSlack = rangeSlack;
+		attacker.PendingAttackLungeDistance = 0f;
+		attacker.AttackWindupTime = attacker.IsRanged ? 0.13f : (attacker.PendingAttackHeavy ? 0.12f : 0.09f);
+		attacker.RecoveryTime = attacker.IsRanged ? 0.1f : 0.08f;
+		float baseCooldown = attacker.IsRanged ? 0.42f : (attacker.PendingAttackHeavy ? 0.54f : 0.46f);
+		attacker.AttackCooldown = baseCooldown * Mathf.Max(0.1f, attacker.AttackCycleScale);
+		attacker.CombatState = RoomCombatState.AttackCommit;
+		attacker.CombatStateTimer = attacker.AttackWindupTime + attacker.RecoveryTime;
+		attacker.TacticalAnchor = attacker.Position;
+	}
+
+	private void MoveUnitToward(RoomUnit unit, Vector2 target, float speed, float delta)
+	{
+		Vector2 move = target - unit.Position;
+		if (move.LengthSquared() <= 1f)
+		{
+			return;
+		}
+
+		unit.Position = ClampToRoom(unit.Position + move.Normalized() * speed * delta);
 	}
 
 	private void AdvanceKnockback(RoomUnit unit, float delta)
@@ -3185,14 +3318,14 @@ private sealed class RoomProjectileEffect
 	{
 		Vector2 viewport = GetViewportRect().Size;
 		Vector2 panelSize = new(
-			Mathf.Clamp(viewport.X - 120f, 1040f, 1420f),
-			Mathf.Clamp(viewport.Y - 100f, 620f, 860f));
+			Mathf.Clamp(viewport.X - Ui(120f), 1040f, 1420f),
+			Mathf.Clamp(viewport.Y - Ui(100f), 620f, 860f));
 		Rect2 panel = new((viewport - panelSize) * 0.5f, panelSize);
 		DrawRect(panel, new Color(0.05f, 0.05f, 0.06f, 0.96f), true);
 		DrawRect(panel, Colors.White, false, 2f);
 
-		float x = panel.Position.X + 22f;
-		float y = panel.Position.Y + 34f;
+		float x = panel.Position.X + Ui(24f);
+		float y = panel.Position.Y + Ui(40f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "局外整备", HorizontalAlignment.Left, -1f, 26, Colors.White);
 		y += 34f;
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"资金：{_money}", HorizontalAlignment.Left, -1f, 18, new Color(0.95f, 0.86f, 0.48f));
@@ -3200,9 +3333,9 @@ private sealed class RoomProjectileEffect
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"可用士兵：{_soldierRoster.Count}", HorizontalAlignment.Left, -1f, 16, new Color(0.76f, 0.9f, 0.82f));
 		y += 28f;
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "行动地图", HorizontalAlignment.Left, -1f, 16, Colors.White);
-		Rect2 mapPrevRect = new(new Vector2(x + 110f, y - 18f), new Vector2(28f, 24f));
-		Rect2 mapNextRect = new(new Vector2(x + 400f, y - 18f), new Vector2(28f, 24f));
-		Rect2 mapNameRect = new(new Vector2(x + 148f, y - 18f), new Vector2(242f, 24f));
+		Rect2 mapPrevRect = new(new Vector2(x + Ui(122f), y - Ui(22f)), new Vector2(Ui(34f), Ui(28f)));
+		Rect2 mapNextRect = new(new Vector2(x + Ui(440f), y - Ui(22f)), new Vector2(Ui(34f), Ui(28f)));
+		Rect2 mapNameRect = new(new Vector2(x + Ui(166f), y - Ui(22f)), new Vector2(Ui(262f), Ui(28f)));
 		DrawButton(mapPrevRect, "<", new Color(0.22f, 0.24f, 0.29f));
 		DrawRect(mapNameRect, new Color(0.11f, 0.12f, 0.15f), true);
 		DrawRect(mapNameRect, new Color(0.34f, 0.37f, 0.42f), false, 1f);
@@ -3210,13 +3343,13 @@ private sealed class RoomProjectileEffect
 		DrawButton(mapNextRect, ">", new Color(0.22f, 0.24f, 0.29f));
 		_buttons.Add(new ButtonDef(mapPrevRect, "select_map_prev"));
 		_buttons.Add(new ButtonDef(mapNextRect, "select_map_next"));
-		y += 32f;
+		y += Ui(38f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"地图定位：{GetSelectedMapRoleLabel()}", HorizontalAlignment.Left, -1f, 14, new Color(0.76f, 0.84f, 0.94f));
-		y += 28f;
+		y += Ui(32f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "行动难度", HorizontalAlignment.Left, -1f, 16, Colors.White);
-		Rect2 diffPrevRect = new(new Vector2(x + 110f, y - 18f), new Vector2(28f, 24f));
-		Rect2 diffNextRect = new(new Vector2(x + 400f, y - 18f), new Vector2(28f, 24f));
-		Rect2 diffNameRect = new(new Vector2(x + 148f, y - 18f), new Vector2(242f, 24f));
+		Rect2 diffPrevRect = new(new Vector2(x + Ui(122f), y - Ui(22f)), new Vector2(Ui(34f), Ui(28f)));
+		Rect2 diffNextRect = new(new Vector2(x + Ui(440f), y - Ui(22f)), new Vector2(Ui(34f), Ui(28f)));
+		Rect2 diffNameRect = new(new Vector2(x + Ui(166f), y - Ui(22f)), new Vector2(Ui(262f), Ui(28f)));
 		DrawButton(diffPrevRect, "<", new Color(0.22f, 0.24f, 0.29f));
 		DrawRect(diffNameRect, new Color(0.11f, 0.12f, 0.15f), true);
 		DrawRect(diffNameRect, new Color(0.34f, 0.37f, 0.42f), false, 1f);
@@ -3224,25 +3357,25 @@ private sealed class RoomProjectileEffect
 		DrawButton(diffNextRect, ">", new Color(0.22f, 0.24f, 0.29f));
 		_buttons.Add(new ButtonDef(diffPrevRect, "select_diff_prev"));
 		_buttons.Add(new ButtonDef(diffNextRect, "select_diff_next"));
-		y += 30f;
+		y += Ui(34f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"武备要求：{GetDifficultyRequirement(_selectedDifficulty)}", HorizontalAlignment.Left, -1f, 14, new Color(0.95f, 0.86f, 0.48f));
 
-		Rect2 startRect = new(new Vector2(panel.End.X - 170f, panel.Position.Y + 24f), new Vector2(140f, 34f));
+		Rect2 startRect = new(new Vector2(panel.End.X - Ui(184f), panel.Position.Y + Ui(26f)), new Vector2(Ui(152f), Ui(38f)));
 		DrawButton(startRect, "入局", new Color(0.24f, 0.62f, 0.36f));
 		_buttons.Add(new ButtonDef(startRect, "start_run"));
 
-		Rect2 recruitRect = new(new Vector2(panel.End.X - 170f, panel.Position.Y + 66f), new Vector2(140f, 30f));
+		Rect2 recruitRect = new(new Vector2(panel.End.X - Ui(184f), panel.Position.Y + Ui(74f)), new Vector2(Ui(152f), Ui(34f)));
 		DrawButton(recruitRect, $"征募 {RecruitCost}", _money >= RecruitCost ? new Color(0.48f, 0.34f, 0.18f) : new Color(0.24f, 0.24f, 0.28f));
 		if (_money >= RecruitCost)
 		{
 			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
 		}
 
-		float contentTop = panel.Position.Y + 192f;
-		float contentGap = 28f;
+		float contentTop = panel.Position.Y + Ui(214f);
+		float contentGap = Ui(30f);
 		float contentWidth = (panel.Size.X - 18f - 18f - contentGap) * 0.5f;
-		float contentHeight = Mathf.Max(316f, panel.Size.Y - 304f);
-		Rect2 stashRect = new(new Vector2(panel.Position.X + 18f, contentTop), new Vector2(contentWidth, contentHeight));
+		float contentHeight = Mathf.Max(316f, panel.Size.Y - Ui(330f));
+		Rect2 stashRect = new(new Vector2(panel.Position.X + Ui(18f), contentTop), new Vector2(contentWidth, contentHeight));
 		Rect2 shopRect = new(new Vector2(stashRect.End.X + contentGap, contentTop), new Vector2(contentWidth, contentHeight));
 		DrawRect(stashRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(shopRect, new Color(0.09f, 0.1f, 0.12f), true);
@@ -3288,8 +3421,8 @@ private sealed class RoomProjectileEffect
 			shopY += 34f;
 		}
 
-		float soldierY = panel.End.Y - 110f;
-		float soldierX = panel.Position.X + 22f;
+		float soldierY = panel.End.Y - Ui(120f);
+		float soldierX = panel.Position.X + Ui(24f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(soldierX, soldierY), "士兵名单", HorizontalAlignment.Left, -1f, 16, Colors.White);
 		soldierY += 22f;
 		if (_soldierRoster.Count == 0)
@@ -3767,75 +3900,75 @@ private sealed class RoomProjectileEffect
 	{
 		DrawRect(_sideRect, new Color(0.05f, 0.05f, 0.06f, 0.96f), true);
 		DrawRect(_sideRect, Colors.White, false, 2f);
-		float x = _sideRect.Position.X + 18f;
-		float y = _sideRect.Position.Y + 28f;
-		float panelBottom = _sideRect.End.Y - 18f;
+		float x = _sideRect.Position.X + Ui(22f);
+		float y = _sideRect.Position.Y + Ui(34f);
+		float panelBottom = _sideRect.End.Y - Ui(22f);
 		MapNode node = _nodes[_playerNodeId];
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "\u8282\u70b9\u7a81\u88ad Demo", HorizontalAlignment.Left, -1f, 20, Colors.White);
-		y += 28f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u56de\u5408 {_turn}", HorizontalAlignment.Left, -1f, 16, new Color(0.76f, 0.84f, 0.95f));
-		y += 24f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u751f\u547d {_playerHp}/{_playerMaxHp}   \u6218\u529b {_playerStrength}", HorizontalAlignment.Left, -1f, 15, Colors.White);
-		y += 22f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u65f6\u9699 {_timeSlotProgress}/100   \u6218\u5229\u54c1\u4ef7\u503c {_lootValue}", HorizontalAlignment.Left, -1f, 15, Colors.White);
-		y += 20f;
-		Rect2 timeBar = new(new Vector2(x, y), new Vector2(312f, 10f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "\u8282\u70b9\u7a81\u88ad Demo", HorizontalAlignment.Left, -1f, UiFont(22), Colors.White);
+		y += Ui(34f);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u56de\u5408 {_turn}", HorizontalAlignment.Left, -1f, UiFont(18), new Color(0.76f, 0.84f, 0.95f));
+		y += Ui(28f);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u751f\u547d {_playerHp}/{_playerMaxHp}   \u6218\u529b {_playerStrength}", HorizontalAlignment.Left, -1f, UiFont(16), Colors.White);
+		y += Ui(26f);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u65f6\u9699 {_timeSlotProgress}/100   \u6218\u5229\u54c1\u4ef7\u503c {_lootValue}", HorizontalAlignment.Left, -1f, UiFont(16), Colors.White);
+		y += Ui(24f);
+		Rect2 timeBar = new(new Vector2(x, y), new Vector2(_sideRect.Size.X - Ui(44f), Ui(12f)));
 		DrawRect(timeBar, new Color(0.12f, 0.13f, 0.16f), true);
 		DrawRect(timeBar, new Color(0.34f, 0.37f, 0.42f), false, 1f);
 		DrawRect(new Rect2(timeBar.Position, new Vector2(timeBar.Size.X * (_timeSlotProgress / 100f), timeBar.Size.Y)), new Color(0.84f, 0.66f, 0.26f), true);
-		y += 32f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), _status, HorizontalAlignment.Left, 320f, 14, new Color(0.86f, 0.9f, 0.95f));
-		y += 54f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u5f53\u524d\u8282\u70b9\uff1a{node.Name}", HorizontalAlignment.Left, -1f, 16, Colors.White);
-		y += 24f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u7c7b\u578b\uff1a{GetNodeTypeLabel(node.Type)}", HorizontalAlignment.Left, -1f, 13, new Color(0.75f, 0.78f, 0.82f));
-		y += 18f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u5a01\u80c1\uff1a{node.Threat}   \u6218\u5229\u54c1\uff1a{CountNodeLoot(node)}", HorizontalAlignment.Left, -1f, 13, new Color(0.75f, 0.78f, 0.82f));
-		y += 28f;
-		Rect2 mapRect = new(new Vector2(x, y), new Vector2(148f, 28f));
+		y += Ui(38f);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), _status, HorizontalAlignment.Left, _sideRect.Size.X - Ui(44f), UiFont(15), new Color(0.86f, 0.9f, 0.95f));
+		y += Ui(64f);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u5f53\u524d\u8282\u70b9\uff1a{node.Name}", HorizontalAlignment.Left, -1f, UiFont(18), Colors.White);
+		y += Ui(28f);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u7c7b\u578b\uff1a{GetNodeTypeLabel(node.Type)}", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.75f, 0.78f, 0.82f));
+		y += Ui(22f);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u5a01\u80c1\uff1a{node.Threat}   \u6218\u5229\u54c1\uff1a{CountNodeLoot(node)}", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.75f, 0.78f, 0.82f));
+		y += Ui(34f);
+		float actionWidth = (_sideRect.Size.X - Ui(60f)) * 0.5f;
+		Rect2 mapRect = new(new Vector2(x, y), new Vector2(actionWidth, Ui(34f)));
 		DrawButton(mapRect, _showMapOverlay ? "战略地图：开" : "战略地图：关", _showMapOverlay ? new Color(0.24f, 0.48f, 0.62f) : new Color(0.18f, 0.2f, 0.24f));
 		_buttons.Add(new ButtonDef(mapRect, "toggle_map"));
-		Rect2 autoRect = new(new Vector2(x, y), new Vector2(148f, 28f));
-		autoRect.Position += new Vector2(166f, 0f);
+		Rect2 autoRect = new(new Vector2(x + actionWidth + Ui(16f), y), new Vector2(actionWidth, Ui(34f)));
 		DrawButton(autoRect, _autoSearchEnabled ? "\u81ea\u52a8\u641c\u7d22\uff1a\u5f00" : "\u81ea\u52a8\u641c\u7d22\uff1a\u5173", _autoSearchEnabled ? new Color(0.24f, 0.56f, 0.32f) : new Color(0.18f, 0.2f, 0.24f));
 		_buttons.Add(new ButtonDef(autoRect, "toggle_auto_search"));
 		if (node.Type == NodeType.Extract && !_runEnded)
 		{
-			Rect2 rect = new(new Vector2(x + 166f, y + 34f), new Vector2(148f, 28f));
+			Rect2 rect = new(new Vector2(x + actionWidth + Ui(16f), y + Ui(42f)), new Vector2(actionWidth, Ui(34f)));
 			DrawButton(rect, "\u6267\u884c\u64a4\u79bb", new Color(0.24f, 0.62f, 0.36f));
 			_buttons.Add(new ButtonDef(rect, "extract"));
 		}
-		y += node.Type == NodeType.Extract ? 74f : 42f;
+		y += node.Type == NodeType.Extract ? Ui(88f) : Ui(50f);
 		if (CanSearch(node) && CountNodeLoot(node) > 0)
 		{
-			DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "\u5bb9\u5668", HorizontalAlignment.Left, -1f, 16, Colors.White);
-			y += 22f;
+			DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "\u5bb9\u5668", HorizontalAlignment.Left, -1f, UiFont(18), Colors.White);
+			y += Ui(26f);
 			for (int i = 0; i < node.Containers.Count && i < 6; i++)
 			{
 				LootContainer container = node.Containers[i];
 				if (container.IsEmpty) continue;
-				Rect2 rowRect = new(new Vector2(x, y), new Vector2(320f, 24f));
+				Rect2 rowRect = new(new Vector2(x, y), new Vector2(_sideRect.Size.X - Ui(44f), Ui(28f)));
 				Color fill = i == _selectedContainerIndex ? new Color(0.26f, 0.3f, 0.38f) : new Color(0.12f, 0.13f, 0.16f);
 				DrawRect(rowRect, fill, true);
 				DrawRect(rowRect, new Color(0.34f, 0.37f, 0.42f), false, 1f);
-				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(10f, 17f), container.Label, HorizontalAlignment.Left, 170f, 12, Colors.White);
-				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(182f, 17f), $"\u660e\u9762 {CountRevealedGridItems(container) + CountAvailableEquipped(container)}", HorizontalAlignment.Left, 60f, 11, new Color(0.78f, 0.87f, 0.98f));
-				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(238f, 17f), $"\u672a\u63ed {CountHiddenGridItems(container)}", HorizontalAlignment.Left, 56f, 11, new Color(0.92f, 0.84f, 0.6f));
-				Rect2 openRect = new(new Vector2(rowRect.End.X - 68f, rowRect.Position.Y + 2f), new Vector2(56f, 20f));
+				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(Ui(10f), Ui(20f)), container.Label, HorizontalAlignment.Left, Ui(180f), UiFont(13), Colors.White);
+				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(Ui(188f), Ui(20f)), $"\u660e\u9762 {CountRevealedGridItems(container) + CountAvailableEquipped(container)}", HorizontalAlignment.Left, Ui(72f), UiFont(11), new Color(0.78f, 0.87f, 0.98f));
+				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(Ui(250f), Ui(20f)), $"\u672a\u63ed {CountHiddenGridItems(container)}", HorizontalAlignment.Left, Ui(64f), UiFont(11), new Color(0.92f, 0.84f, 0.6f));
+				Rect2 openRect = new(new Vector2(rowRect.End.X - Ui(74f), rowRect.Position.Y + Ui(2f)), new Vector2(Ui(60f), Ui(24f)));
 				DrawButton(openRect, "\u6253\u5f00", new Color(0.23f, 0.4f, 0.58f));
 				_buttons.Add(new ButtonDef(openRect, "open_container", i));
-				y += 30f;
+				y += Ui(36f);
 			}
 		}
-		float logTop = panelBottom - 120f;
+		float logTop = panelBottom - Ui(144f);
 		DrawLine(new Vector2(x, logTop - 10f), new Vector2(_sideRect.End.X - 18f, logTop - 10f), new Color(0.24f, 0.27f, 0.31f), 1f);
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, logTop), "\u4e16\u754c\u52a8\u6001", HorizontalAlignment.Left, -1f, 16, Colors.White);
-		float logY = logTop + 20f;
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, logTop), "\u4e16\u754c\u52a8\u6001", HorizontalAlignment.Left, -1f, UiFont(18), Colors.White);
+		float logY = logTop + Ui(24f);
 		int startIndex = Mathf.Max(0, _eventLog.Count - 5);
 		for (int i = startIndex; i < _eventLog.Count; i++)
 		{
-			DrawString(ThemeDB.FallbackFont, new Vector2(x, logY), _eventLog[i], HorizontalAlignment.Left, 320f, 12, new Color(0.8f, 0.84f, 0.9f));
-			logY += 18f;
+			DrawString(ThemeDB.FallbackFont, new Vector2(x, logY), _eventLog[i], HorizontalAlignment.Left, _sideRect.Size.X - Ui(44f), UiFont(13), new Color(0.8f, 0.84f, 0.9f));
+			logY += Ui(22f);
 		}
 	}
 
@@ -3843,7 +3976,7 @@ private sealed class RoomProjectileEffect
 	{
 		DrawRect(rect, color, true);
 		DrawRect(rect, Colors.White, false, 1.5f);
-		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(8f, 17f), text, HorizontalAlignment.Left, rect.Size.X - 12f, 12, Colors.White);
+		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), rect.Size.Y - Ui(8f)), text, HorizontalAlignment.Left, rect.Size.X - Ui(16f), UiFont(13), Colors.White);
 	}
 
 	private float GetContainerCardHeight(LootContainer container)
