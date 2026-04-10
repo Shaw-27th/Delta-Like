@@ -1201,6 +1201,8 @@ private sealed class RoomProjectileEffect
 			}
 		}
 
+		ResolveRoomUnitCollisions(hero);
+
 		if (_pendingExitNodeId >= 0)
 		{
 			Rect2 door = GetRoomExitRect(_pendingExitSide).Grow(8f);
@@ -1238,6 +1240,90 @@ private sealed class RoomProjectileEffect
 				_runFailed = true;
 			}
 		}
+	}
+
+	private void ResolveRoomUnitCollisions(RoomUnit hero)
+	{
+		for (int i = 0; i < _roomUnits.Count; i++)
+		{
+			RoomUnit a = _roomUnits[i];
+			if (!a.IsAlive)
+			{
+				continue;
+			}
+
+			for (int j = i + 1; j < _roomUnits.Count; j++)
+			{
+				RoomUnit b = _roomUnits[j];
+				if (!b.IsAlive)
+				{
+					continue;
+				}
+
+				float minDistance = GetRoomUnitCollisionRadius(a) + GetRoomUnitCollisionRadius(b);
+				Vector2 delta = b.Position - a.Position;
+				float distance = delta.Length();
+				if (distance >= minDistance || minDistance <= 0f)
+				{
+					continue;
+				}
+
+				Vector2 separationDir;
+				if (distance <= 0.001f)
+				{
+					int seed = a.Name.Length + b.Name.Length + i + j;
+					separationDir = seed % 2 == 0 ? Vector2.Right : Vector2.Left;
+				}
+				else
+				{
+					separationDir = delta / distance;
+				}
+
+				float overlap = minDistance - Mathf.Max(distance, 0.001f);
+				float pushA = 0.5f;
+				float pushB = 0.5f;
+
+				if (a == hero && b.IsPlayerSide)
+				{
+					pushA = 0.12f;
+					pushB = 0.88f;
+				}
+				else if (b == hero && a.IsPlayerSide)
+				{
+					pushA = 0.88f;
+					pushB = 0.12f;
+				}
+				else if (a.IsPlayerSide == b.IsPlayerSide)
+				{
+					pushA = 0.35f;
+					pushB = 0.65f;
+				}
+
+				Vector2 offset = separationDir * overlap;
+				a.Position = ClampToRoom(a.Position - offset * pushA);
+				b.Position = ClampToRoom(b.Position + offset * pushB);
+			}
+		}
+	}
+
+	private float GetRoomUnitCollisionRadius(RoomUnit unit)
+	{
+		if (!unit.IsAlive)
+		{
+			return 0f;
+		}
+
+		if (unit.IsHero)
+		{
+			return unit.IsRanged ? 10f : 11f;
+		}
+
+		if (unit.IsElite)
+		{
+			return unit.IsRanged ? 8.2f : 9.2f;
+		}
+
+		return unit.IsRanged ? 7.4f : 8.4f;
 	}
 
 	private void StepUnitCombat(RoomUnit attacker, RoomUnit target, float delta)
