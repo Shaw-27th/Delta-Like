@@ -225,6 +225,9 @@ public partial class RaidMapDemo : Node2D
 		public RoomCombatState CombatState;
 		public float CombatStateTimer;
 		public Vector2 TacticalAnchor;
+		public float Stamina;
+		public float MaxStamina;
+		public bool IsSprinting;
 		public bool IsAlive => Hp > 0;
 	}
 
@@ -917,6 +920,8 @@ private sealed class RoomProjectileEffect
 			AttackCycleScale = 1f,
 			CombatState = isRanged ? RoomCombatState.Idle : RoomCombatState.Advance,
 			TacticalAnchor = position,
+			MaxStamina = isRanged ? 0f : (isHero ? 88f : (isElite ? 80f : 72f)),
+			Stamina = isRanged ? 0f : (isHero ? 88f : (isElite ? 80f : 72f)),
 		};
 	}
 
@@ -1274,6 +1279,17 @@ private sealed class RoomProjectileEffect
 		unit.RecoveryTime = Mathf.Max(0f, unit.RecoveryTime - delta);
 		unit.KnockbackTime = Mathf.Max(0f, unit.KnockbackTime - delta);
 		unit.CombatStateTimer = Mathf.Max(0f, unit.CombatStateTimer - delta);
+		if (unit.MaxStamina > 0f)
+		{
+			float regenRate = unit.IsSprinting ? 10f : 18f;
+			if (unit.AttackWindupTime > 0f || unit.RecoveryTime > 0f || unit.StaggerTime > 0f)
+			{
+				regenRate *= 0.45f;
+			}
+
+			unit.Stamina = Mathf.Clamp(unit.Stamina + regenRate * delta, 0f, unit.MaxStamina);
+		}
+		unit.IsSprinting = false;
 
 		if (unit.AttackWindupTime <= 0f)
 		{
@@ -1297,11 +1313,16 @@ private sealed class RoomProjectileEffect
 		float attackBand = attacker.AttackRange + 2f;
 		float regroupBand = attacker.AttackRange + 12f;
 		float retreatBand = attacker.AttackRange + 24f + cooldownRatio * 10f;
+		bool wantsSprint = distance > attacker.AttackRange + 34f
+			&& attacker.AttackCooldown <= baseCooldown * 0.35f
+			&& attacker.Stamina > attacker.MaxStamina * 0.12f;
+		float chaseSpeed = GetRoomMoveSpeed(attacker, wantsSprint, delta, 1f);
+		float controlSpeed = GetRoomMoveSpeed(attacker, false, delta, 1f);
 
 		if (attacker.AttackWindupTime > 0f || attacker.RecoveryTime > 0f)
 		{
 			attacker.CombatState = RoomCombatState.AttackCommit;
-			MoveUnitToward(attacker, target.Position - dir * attackBand, attacker.Speed * 0.42f, delta);
+			MoveUnitToward(attacker, target.Position - dir * attackBand, controlSpeed * 0.42f, delta);
 			return;
 		}
 
@@ -1315,7 +1336,7 @@ private sealed class RoomProjectileEffect
 		{
 			Vector2 separateTarget = attacker.Position - dir * Ui(18f) + side * Ui(10f);
 			attacker.CombatState = RoomCombatState.Retreat;
-			MoveUnitToward(attacker, separateTarget, attacker.Speed * 0.95f, delta);
+			MoveUnitToward(attacker, separateTarget, controlSpeed * 0.95f, delta);
 			return;
 		}
 
@@ -1323,7 +1344,7 @@ private sealed class RoomProjectileEffect
 		{
 			attacker.CombatState = RoomCombatState.Retreat;
 			Vector2 retreatTarget = target.Position - dir * retreatBand + side * Ui(8f);
-			MoveUnitToward(attacker, retreatTarget, attacker.Speed * 0.92f, delta);
+			MoveUnitToward(attacker, retreatTarget, controlSpeed * 0.92f, delta);
 			return;
 		}
 
@@ -1331,13 +1352,13 @@ private sealed class RoomProjectileEffect
 		{
 			attacker.CombatState = RoomCombatState.Advance;
 			Vector2 engageTarget = target.Position - dir * attackBand + side * Ui(4f);
-			MoveUnitToward(attacker, engageTarget, attacker.Speed, delta);
+			MoveUnitToward(attacker, engageTarget, chaseSpeed, delta);
 			return;
 		}
 
 		attacker.CombatState = RoomCombatState.Regroup;
 		Vector2 regroupTarget = target.Position - dir * regroupBand + side * Ui(6f);
-		MoveUnitToward(attacker, regroupTarget, attacker.Speed * 0.6f, delta);
+		MoveUnitToward(attacker, regroupTarget, controlSpeed * 0.6f, delta);
 	}
 
 	private void StepRangedUnitCombat(RoomUnit attacker, RoomUnit target, Vector2 dir, float distance, float delta)
@@ -1347,20 +1368,28 @@ private sealed class RoomProjectileEffect
 		Vector2 side = new Vector2(-dir.Y, dir.X) * (flankSeed % 2 == 0 ? 1f : -1f);
 		float desiredMin = attacker.AttackRange * 0.62f;
 		float desiredMax = attacker.AttackRange * 0.9f;
+		bool threatened = distance < desiredMin;
+		Vector2 retreatTarget = target.Position - dir * (desiredMax + Ui(18f)) + side * Ui(14f);
 
 		if (attacker.AttackWindupTime > 0f || attacker.RecoveryTime > 0f)
 		{
-			attacker.CombatState = RoomCombatState.AttackCommit;
-			Vector2 holdTarget = target.Position - dir * Mathf.Lerp(desiredMin, desiredMax, 0.55f);
-			MoveUnitToward(attacker, holdTarget, attacker.Speed * 0.28f, delta);
+			attacker.CombatState = threatened ? RoomCombatState.Retreat : RoomCombatState.AttackCommit;
+			Vector2 holdTarget = threatened
+				? retreatTarget
+				: target.Position - dir * Mathf.Lerp(desiredMin, desiredMax, 0.55f);
+			MoveUnitToward(attacker, holdTarget, attacker.Speed * (threatened ? 0.58f : 0.28f), delta);
 			return;
 		}
 
-		if (distance < desiredMin)
+		if (threatened)
 		{
+			if (distance <= attacker.AttackRange + Ui(10f) && CanStartAttack(attacker))
+			{
+				BeginRoomAttack(attacker, target, 28f);
+			}
+
 			attacker.CombatState = RoomCombatState.Retreat;
-			Vector2 retreatTarget = target.Position - dir * (desiredMax + Ui(18f)) + side * Ui(14f);
-			MoveUnitToward(attacker, retreatTarget, attacker.Speed * 0.9f, delta);
+			MoveUnitToward(attacker, retreatTarget, attacker.Speed * 0.96f, delta);
 			return;
 		}
 
@@ -1426,6 +1455,25 @@ private sealed class RoomProjectileEffect
 		attacker.CombatState = RoomCombatState.AttackCommit;
 		attacker.CombatStateTimer = attacker.AttackWindupTime + attacker.RecoveryTime;
 		attacker.TacticalAnchor = attacker.Position;
+	}
+
+	private float GetRoomMoveSpeed(RoomUnit unit, bool sprint, float delta, float scale)
+	{
+		float speed = unit.Speed * scale;
+		if (!sprint || unit.MaxStamina <= 0f || unit.Stamina <= 0f)
+		{
+			return speed;
+		}
+
+		float staminaUse = (unit.IsHero ? 30f : 26f) * delta;
+		if (unit.Stamina < staminaUse)
+		{
+			return speed;
+		}
+
+		unit.Stamina = Mathf.Max(0f, unit.Stamina - staminaUse);
+		unit.IsSprinting = true;
+		return speed * (unit.IsHero ? 1.82f : 1.72f);
 	}
 
 	private void MoveUnitToward(RoomUnit unit, Vector2 target, float speed, float delta)
@@ -1875,6 +1923,17 @@ private sealed class RoomProjectileEffect
 			float ratio = unit.MaxHp > 0 ? (float)unit.Hp / unit.MaxHp : 0f;
 			DrawRect(new Rect2(hpBg.Position, new Vector2(hpBg.Size.X * ratio, hpBg.Size.Y)), unit.IsPlayerSide ? new Color(0.46f, 0.95f, 0.58f) : new Color(0.95f, 0.5f, 0.5f), true);
 			DrawRect(hpBg, Colors.White, false, 1f);
+			if (!unit.IsRanged && unit.MaxStamina > 0f)
+			{
+				Rect2 staminaBg = new(unit.Position + new Vector2(-20f, 18f), new Vector2(40f, 3f));
+				DrawRect(staminaBg, new Color(0.11f, 0.11f, 0.13f, 0.95f), true);
+				float staminaRatio = unit.MaxStamina > 0f ? unit.Stamina / unit.MaxStamina : 0f;
+				Color staminaColor = unit.IsSprinting
+					? new Color(1f, 0.86f, 0.42f)
+					: new Color(0.88f, 0.78f, 0.28f);
+				DrawRect(new Rect2(staminaBg.Position, new Vector2(staminaBg.Size.X * staminaRatio, staminaBg.Size.Y)), staminaColor, true);
+				DrawRect(staminaBg, new Color(1f, 0.96f, 0.72f, 0.7f), false, 0.8f);
+			}
 			DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-22f, -14f), unit.Name, HorizontalAlignment.Left, 80f, 10, Colors.White);
 		}
 	}
