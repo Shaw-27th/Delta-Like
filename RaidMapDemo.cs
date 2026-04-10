@@ -199,10 +199,28 @@ public partial class RaidMapDemo : Node2D
 		public int DamageMax;
 		public float AttackRange;
 		public float AttackCooldown;
+		public float AttackWindupTime;
+		public float RecoveryTime;
+		public float StaggerTime;
+		public float HitPauseTime;
+		public RoomUnit PendingAttackTarget;
+		public int PendingAttackDamage;
+		public float PendingAttackRangeSlack;
+		public float PendingAttackLungeDistance;
+		public bool PendingAttackHeavy;
 		public float HitFlash;
 		public Vector2 KnockbackVelocity;
 		public float KnockbackTime;
 		public bool IsAlive => Hp > 0;
+	}
+
+	private sealed class RoomImpactEffect
+	{
+		public Vector2 Position;
+		public float Radius;
+		public float TimeLeft;
+		public float Duration;
+		public bool Heavy;
 	}
 
 	private readonly struct ButtonDef
@@ -229,6 +247,7 @@ public partial class RaidMapDemo : Node2D
 	private readonly List<SoldierRecord> _soldierRoster = new();
 	private readonly List<SoldierRecord> _runSoldiers = new();
 	private readonly List<RoomUnit> _roomUnits = new();
+	private readonly List<RoomImpactEffect> _roomImpactEffects = new();
 	private readonly RandomNumberGenerator _rng = new();
 
 	private readonly Rect2 _mapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
@@ -388,6 +407,7 @@ public partial class RaidMapDemo : Node2D
 		_selectedContainerIndex = -1;
 		_encounter = null;
 		_roomUnits.Clear();
+		_roomImpactEffects.Clear();
 		_heroHasMoveTarget = false;
 		_pendingExitNodeId = -1;
 		_roomDirty = true;
@@ -749,7 +769,7 @@ public partial class RaidMapDemo : Node2D
 		hero.MaxHp = _playerMaxHp;
 		hero.DamageMin = 2;
 		hero.DamageMax = 5;
-		hero.AttackRange = 112f;
+		hero.AttackRange = 82f;
 		hero.Speed = 165f;
 		_roomUnits.Add(hero);
 
@@ -761,7 +781,7 @@ public partial class RaidMapDemo : Node2D
 			soldier.MaxHp = 8;
 			soldier.DamageMin = 1;
 			soldier.DamageMax = 3;
-			soldier.AttackRange = 36f;
+			soldier.AttackRange = 24f;
 			soldier.Speed = 152f;
 			_roomUnits.Add(soldier);
 		}
@@ -783,7 +803,7 @@ public partial class RaidMapDemo : Node2D
 			MaxHp = isHero ? _playerMaxHp : 8,
 			DamageMin = isHero ? 2 : 1,
 			DamageMax = isHero ? 5 : 3,
-			AttackRange = isRanged ? 110f : 34f,
+			AttackRange = isRanged ? 80f : 22f,
 			AttackCooldown = 0f,
 		};
 	}
@@ -816,13 +836,13 @@ public partial class RaidMapDemo : Node2D
 		int count = Mathf.Clamp(1 + threat / 2, 2, 6);
 		for (int i = 0; i < count; i++)
 		{
-			Vector2 p = ClampToRoom(new Vector2(rect.End.X - 100f - (i % 3) * 24f, rect.GetCenter().Y + (i / 3) * 30f - 30f));
+			Vector2 p = ClampToRoom(new Vector2(rect.End.X - 74f - (i % 3) * 20f, rect.GetCenter().Y + (i / 3) * 28f - 28f));
 			RoomUnit enemy = CreateRoomUnit(false, false, false, i % 3 == 0, "守军", p);
 			enemy.Hp = 6 + threat;
 			enemy.MaxHp = enemy.Hp;
 			enemy.DamageMin = 1 + threat / 3;
 			enemy.DamageMax = 3 + threat / 2;
-			enemy.AttackRange = enemy.IsRanged ? 108f : 34f;
+			enemy.AttackRange = enemy.IsRanged ? 78f : 22f;
 			_roomUnits.Add(enemy);
 		}
 	}
@@ -830,24 +850,24 @@ public partial class RaidMapDemo : Node2D
 	private void SpawnSquadEnemies(AiSquad squad)
 	{
 		Rect2 rect = GetRoomArenaRect();
-		RoomUnit elite = CreateRoomUnit(false, false, true, true, $"{squad.Name} 队长", ClampToRoom(new Vector2(rect.End.X - 96f, rect.GetCenter().Y - 34f)));
+		RoomUnit elite = CreateRoomUnit(false, false, true, true, $"{squad.Name} 队长", ClampToRoom(new Vector2(rect.End.X - 76f, rect.GetCenter().Y - 26f)));
 		elite.Hp = 12 + squad.Strength / 2;
 		elite.MaxHp = elite.Hp;
 		elite.DamageMin = 3;
 		elite.DamageMax = 6;
-		elite.AttackRange = 116f;
+		elite.AttackRange = 86f;
 		_roomUnits.Add(elite);
 
 		int count = Mathf.Clamp(squad.Strength / 2, 3, 7);
 		for (int i = 0; i < count; i++)
 		{
-			Vector2 p = ClampToRoom(new Vector2(rect.End.X - 130f - (i % 4) * 22f, rect.GetCenter().Y + (i / 4) * 30f + 12f));
+			Vector2 p = ClampToRoom(new Vector2(rect.End.X - 98f - (i % 4) * 20f, rect.GetCenter().Y + (i / 4) * 28f + 8f));
 			RoomUnit enemy = CreateRoomUnit(false, false, false, i % 3 == 1, "敌兵", p);
 			enemy.Hp = 7;
 			enemy.MaxHp = 7;
 			enemy.DamageMin = 1;
 			enemy.DamageMax = 3;
-			enemy.AttackRange = enemy.IsRanged ? 104f : 32f;
+			enemy.AttackRange = enemy.IsRanged ? 76f : 22f;
 			_roomUnits.Add(enemy);
 		}
 	}
@@ -916,13 +936,25 @@ public partial class RaidMapDemo : Node2D
 			return;
 		}
 
-		hero.AttackCooldown = Mathf.Max(0f, hero.AttackCooldown - delta);
-		hero.HitFlash = Mathf.Max(0f, hero.HitFlash - delta);
-		if (hero.KnockbackTime > 0f)
+		UpdateRoomImpactEffects(delta);
+		TickRoomUnitState(hero, delta);
+		if (!hero.IsAlive)
+		{
+			return;
+		}
+
+		if (hero.HitPauseTime > 0f)
+		{
+			hero.Facing = hero.Facing == Vector2.Zero ? Vector2.Right : hero.Facing.Normalized();
+		}
+		else if (hero.KnockbackTime > 0f)
 		{
 			hero.Position = ClampToRoom(hero.Position + hero.KnockbackVelocity * delta);
 			hero.KnockbackVelocity *= 0.86f;
-			hero.KnockbackTime = Mathf.Max(0f, hero.KnockbackTime - delta);
+		}
+		else if (hero.StaggerTime > 0f || hero.AttackWindupTime > 0f || hero.RecoveryTime > 0f)
+		{
+			hero.Facing = hero.Facing == Vector2.Zero ? Vector2.Right : hero.Facing.Normalized();
 		}
 		else if (_heroHasMoveTarget)
 		{
@@ -948,13 +980,21 @@ public partial class RaidMapDemo : Node2D
 				continue;
 			}
 
-			unit.AttackCooldown = Mathf.Max(0f, unit.AttackCooldown - delta);
-			unit.HitFlash = Mathf.Max(0f, unit.HitFlash - delta);
+			TickRoomUnitState(unit, delta);
+			if (unit.HitPauseTime > 0f)
+			{
+				continue;
+			}
+
 			if (unit.KnockbackTime > 0f)
 			{
 				unit.Position = ClampToRoom(unit.Position + unit.KnockbackVelocity * delta);
 				unit.KnockbackVelocity *= 0.86f;
-				unit.KnockbackTime = Mathf.Max(0f, unit.KnockbackTime - delta);
+				continue;
+			}
+
+			if (unit.StaggerTime > 0f || unit.AttackWindupTime > 0f || unit.RecoveryTime > 0f)
+			{
 				continue;
 			}
 
@@ -983,13 +1023,21 @@ public partial class RaidMapDemo : Node2D
 				continue;
 			}
 
-			unit.AttackCooldown = Mathf.Max(0f, unit.AttackCooldown - delta);
-			unit.HitFlash = Mathf.Max(0f, unit.HitFlash - delta);
+			TickRoomUnitState(unit, delta);
+			if (unit.HitPauseTime > 0f)
+			{
+				continue;
+			}
+
 			if (unit.KnockbackTime > 0f)
 			{
 				unit.Position = ClampToRoom(unit.Position + unit.KnockbackVelocity * delta);
 				unit.KnockbackVelocity *= 0.86f;
-				unit.KnockbackTime = Mathf.Max(0f, unit.KnockbackTime - delta);
+				continue;
+			}
+
+			if (unit.StaggerTime > 0f || unit.AttackWindupTime > 0f || unit.RecoveryTime > 0f)
+			{
 				continue;
 			}
 
@@ -1065,20 +1113,140 @@ public partial class RaidMapDemo : Node2D
 			return;
 		}
 
-		if (attacker.AttackCooldown > 0f)
+		if (attacker.AttackCooldown > 0f || attacker.AttackWindupTime > 0f || attacker.RecoveryTime > 0f || attacker.StaggerTime > 0f || attacker.HitPauseTime > 0f)
 		{
 			return;
 		}
 
-		int damage = _rng.RandiRange(attacker.DamageMin, attacker.DamageMax);
+		attacker.PendingAttackTarget = target;
+		attacker.PendingAttackDamage = _rng.RandiRange(attacker.DamageMin, attacker.DamageMax);
+		attacker.PendingAttackHeavy = attacker.IsHero || attacker.IsElite;
+		attacker.PendingAttackRangeSlack = attacker.IsRanged ? 20f : 10f;
+		attacker.PendingAttackLungeDistance = attacker.IsRanged ? 0f : (attacker.PendingAttackHeavy ? 18f : 12f);
+		attacker.AttackWindupTime = attacker.IsRanged ? 0.13f : (attacker.PendingAttackHeavy ? 0.12f : 0.09f);
+		attacker.RecoveryTime = attacker.IsRanged ? 0.1f : 0.08f;
+		attacker.AttackCooldown = attacker.IsRanged ? 0.42f : (attacker.PendingAttackHeavy ? 0.54f : 0.46f);
+	}
+
+	private void TickRoomUnitState(RoomUnit unit, float delta)
+	{
+		if (unit.HitPauseTime > 0f)
+		{
+			unit.HitPauseTime = Mathf.Max(0f, unit.HitPauseTime - delta);
+			unit.HitFlash = Mathf.Max(0f, unit.HitFlash - delta);
+			return;
+		}
+
+		unit.AttackCooldown = Mathf.Max(0f, unit.AttackCooldown - delta);
+		unit.HitFlash = Mathf.Max(0f, unit.HitFlash - delta);
+		unit.StaggerTime = Mathf.Max(0f, unit.StaggerTime - delta);
+		unit.RecoveryTime = Mathf.Max(0f, unit.RecoveryTime - delta);
+		unit.KnockbackTime = Mathf.Max(0f, unit.KnockbackTime - delta);
+
+		if (unit.AttackWindupTime <= 0f)
+		{
+			return;
+		}
+
+		float previousWindup = unit.AttackWindupTime;
+		unit.AttackWindupTime = Mathf.Max(0f, unit.AttackWindupTime - delta);
+		if (previousWindup > 0f && unit.AttackWindupTime <= 0f)
+		{
+			ResolvePendingAttack(unit);
+		}
+	}
+
+	private void ResolvePendingAttack(RoomUnit attacker)
+	{
+		RoomUnit target = attacker.PendingAttackTarget;
+		int damage = attacker.PendingAttackDamage;
+		float rangeSlack = attacker.PendingAttackRangeSlack;
+		float lungeDistance = attacker.PendingAttackLungeDistance;
+		bool heavy = attacker.PendingAttackHeavy;
+		attacker.PendingAttackTarget = null;
+		attacker.PendingAttackDamage = 0;
+		attacker.PendingAttackRangeSlack = 0f;
+		attacker.PendingAttackLungeDistance = 0f;
+		attacker.PendingAttackHeavy = false;
+
+		if (!attacker.IsAlive || target == null || !target.IsAlive)
+		{
+			return;
+		}
+
+		Vector2 toTarget = target.Position - attacker.Position;
+		float distance = toTarget.Length();
+		float maxDistance = attacker.AttackRange + rangeSlack;
+		if (distance > maxDistance)
+		{
+			return;
+		}
+
+		Vector2 dir = distance > 0.001f ? toTarget / distance : (attacker.IsPlayerSide ? Vector2.Right : Vector2.Left);
+		attacker.Facing = dir;
+		if (lungeDistance > 0f)
+		{
+			float actualLunge = Mathf.Min(lungeDistance, Mathf.Max(0f, distance - 10f));
+			if (actualLunge > 0f)
+			{
+				attacker.Position = ClampToRoom(attacker.Position + dir * actualLunge);
+			}
+		}
+		ApplyRoomHit(attacker, target, damage, dir, heavy);
+	}
+
+	private void ApplyRoomHit(RoomUnit attacker, RoomUnit target, int damage, Vector2 dir, bool heavy)
+	{
 		target.Hp = Mathf.Max(0, target.Hp - damage);
-		attacker.AttackCooldown = attacker.IsRanged ? 0.55f : 0.72f;
-		target.HitFlash = 0.12f;
-		target.KnockbackVelocity = dir * (attacker.IsRanged ? 85f : 180f);
-		target.KnockbackTime = attacker.IsRanged ? 0.06f : 0.14f;
+		target.HitFlash = heavy ? 0.24f : 0.18f;
+		target.StaggerTime = Mathf.Max(target.StaggerTime, attacker.IsRanged ? 0.08f : (heavy ? 0.16f : 0.12f));
+		target.HitPauseTime = Mathf.Max(target.HitPauseTime, heavy ? 0.05f : 0.035f);
+		attacker.HitPauseTime = Mathf.Max(attacker.HitPauseTime, heavy ? 0.04f : 0.025f);
+
+		float knockbackForce;
+		float knockbackDuration;
+		if (attacker.IsRanged)
+		{
+			knockbackForce = heavy ? 120f : 82f;
+			knockbackDuration = heavy ? 0.11f : 0.07f;
+		}
+		else
+		{
+			knockbackForce = heavy ? 235f : 170f;
+			knockbackDuration = heavy ? 0.18f : 0.13f;
+		}
+
+		target.KnockbackVelocity = dir * knockbackForce;
+		target.KnockbackTime = knockbackDuration;
+		SpawnRoomImpactEffect(target.Position, heavy ? 18f : 13f, heavy);
+
 		if (target.Hp <= 0)
 		{
 			HandleUnitDeath(target);
+		}
+	}
+
+	private void SpawnRoomImpactEffect(Vector2 position, float radius, bool heavy)
+	{
+		_roomImpactEffects.Add(new RoomImpactEffect
+		{
+			Position = position,
+			Radius = radius,
+			TimeLeft = heavy ? 0.16f : 0.12f,
+			Duration = heavy ? 0.16f : 0.12f,
+			Heavy = heavy,
+		});
+	}
+
+	private void UpdateRoomImpactEffects(float delta)
+	{
+		for (int i = _roomImpactEffects.Count - 1; i >= 0; i--)
+		{
+			_roomImpactEffects[i].TimeLeft -= delta;
+			if (_roomImpactEffects[i].TimeLeft <= 0f)
+			{
+				_roomImpactEffects.RemoveAt(i);
+			}
 		}
 	}
 
@@ -1240,7 +1408,12 @@ public partial class RaidMapDemo : Node2D
 		}
 
 		DrawString(ThemeDB.FallbackFont, arena.Position + new Vector2(14f, 22f), node.Name, HorizontalAlignment.Left, -1f, 20, Colors.White);
+		DrawRect(new Rect2(arena.Position + new Vector2(10f, 30f), new Vector2(270f, 20f)), new Color(0.1f, 0.12f, 0.17f, 0.96f), true);
+		DrawString(ThemeDB.FallbackFont, arena.Position + new Vector2(14f, 42f), "战斗 / 搜索 / 过门处于同一实时状态", HorizontalAlignment.Left, -1f, 12, new Color(0.88f, 0.92f, 0.98f));
 		DrawString(ThemeDB.FallbackFont, arena.Position + new Vector2(14f, 42f), "战斗/搜索/过门为同一实时状态", HorizontalAlignment.Left, -1f, 12, new Color(0.88f, 0.92f, 0.98f));
+
+		DrawRect(new Rect2(arena.Position + new Vector2(10f, 30f), new Vector2(270f, 20f)), new Color(0.1f, 0.12f, 0.17f, 0.96f), true);
+		DrawString(ThemeDB.FallbackFont, arena.Position + new Vector2(14f, 42f), "战斗 / 搜索 / 过门处于同一实时状态", HorizontalAlignment.Left, -1f, 12, new Color(0.88f, 0.92f, 0.98f));
 
 		if (_heroHasMoveTarget)
 		{
@@ -1252,6 +1425,7 @@ public partial class RaidMapDemo : Node2D
 		}
 
 		DrawRoomExitsUnified(node);
+		DrawRoomImpactEffects();
 		DrawRoomUnits();
 	}
 
@@ -1268,7 +1442,7 @@ public partial class RaidMapDemo : Node2D
 			Color border = pending ? new Color(1f, 0.92f, 0.58f, 1f) : new Color(0.85f, 0.92f, 1f, 0.96f);
 			DrawRect(exitRect, fill, true);
 			DrawRect(exitRect, border, false, 2f);
-			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(8f, 17f), GetExitDirectionLabel(side), HorizontalAlignment.Left, exitRect.Size.X - 16f, 12, Colors.White);
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(8f, 17f), GetCleanExitDirectionLabel(side), HorizontalAlignment.Left, exitRect.Size.X - 16f, 12, Colors.White);
 			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(8f, 34f), linkedNode.Name, HorizontalAlignment.Left, exitRect.Size.X - 16f, 11, new Color(0.9f, 0.95f, 1f));
 			_buttons.Add(new ButtonDef(exitRect, "use_exit", linkedNodeId));
 		}
@@ -1290,7 +1464,8 @@ public partial class RaidMapDemo : Node2D
 				: (unit.IsElite ? new Color(0.96f, 0.52f, 0.4f) : new Color(0.92f, 0.38f, 0.38f));
 			if (unit.HitFlash > 0f)
 			{
-				body = body.Lightened(0.45f);
+				float flash = Mathf.Clamp(unit.HitFlash * 5f, 0f, 1f);
+				body = body.Lerp(Colors.White, flash);
 			}
 
 			float radius = unit.IsHero ? 12f : 9f;
@@ -1301,6 +1476,23 @@ public partial class RaidMapDemo : Node2D
 			Vector2 right = unit.Position - dir * radius - normal * (radius * 0.75f);
 			DrawColoredPolygon(new Vector2[] { tip, left, right }, body);
 			DrawPolyline(new Vector2[] { tip, left, right, tip }, Colors.White, 1.4f);
+			if (unit.AttackWindupTime > 0f)
+			{
+				float totalWindup = unit.IsRanged ? 0.13f : (unit.IsHero || unit.IsElite ? 0.12f : 0.09f);
+				float windupRatio = totalWindup > 0f ? 1f - Mathf.Clamp(unit.AttackWindupTime / totalWindup, 0f, 1f) : 1f;
+				Vector2 windupTip = unit.Position + dir * (radius + 11f + windupRatio * 4f);
+				Vector2 windupBase = unit.Position + dir * (radius + 3f);
+				Vector2 windupLeft = windupBase + normal * (3f + windupRatio * 3f);
+				Vector2 windupRight = windupBase - normal * (3f + windupRatio * 3f);
+				Color windupColor = new(1f, 0.94f, 0.72f, 0.95f);
+				DrawLine(windupBase, windupTip, windupColor, 2.4f);
+				DrawLine(windupTip, windupLeft, windupColor, 2.2f);
+				DrawLine(windupTip, windupRight, windupColor, 2.2f);
+			}
+			if (unit.StaggerTime > 0f)
+			{
+				DrawArc(unit.Position, radius + 9f, 0f, Mathf.Tau, 18, new Color(1f, 1f, 1f, 0.6f), 1.6f);
+			}
 
 			Rect2 hpBg = new(unit.Position + new Vector2(-20f, 12f), new Vector2(40f, 4f));
 			DrawRect(hpBg, new Color(0.14f, 0.14f, 0.16f), true);
@@ -1308,6 +1500,23 @@ public partial class RaidMapDemo : Node2D
 			DrawRect(new Rect2(hpBg.Position, new Vector2(hpBg.Size.X * ratio, hpBg.Size.Y)), unit.IsPlayerSide ? new Color(0.46f, 0.95f, 0.58f) : new Color(0.95f, 0.5f, 0.5f), true);
 			DrawRect(hpBg, Colors.White, false, 1f);
 			DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-22f, -14f), unit.Name, HorizontalAlignment.Left, 80f, 10, Colors.White);
+		}
+	}
+
+	private void DrawRoomImpactEffects()
+	{
+		for (int i = 0; i < _roomImpactEffects.Count; i++)
+		{
+			RoomImpactEffect effect = _roomImpactEffects[i];
+			float ratio = effect.Duration > 0f ? effect.TimeLeft / effect.Duration : 0f;
+			float radius = effect.Radius * (1.35f - ratio * 0.35f);
+			float alpha = Mathf.Clamp(ratio, 0f, 1f);
+			Color ring = new(1f, 1f, 1f, alpha * (effect.Heavy ? 0.95f : 0.82f));
+			Color fill = new(1f, 1f, 1f, alpha * (effect.Heavy ? 0.26f : 0.18f));
+			DrawCircle(effect.Position, radius * 0.52f, fill);
+			DrawArc(effect.Position, radius, 0f, Mathf.Tau, 18, ring, effect.Heavy ? 3f : 2.2f);
+			DrawLine(effect.Position + new Vector2(-radius, 0f), effect.Position + new Vector2(radius, 0f), new Color(1f, 1f, 1f, alpha * 0.65f), 1.4f);
+			DrawLine(effect.Position + new Vector2(0f, -radius), effect.Position + new Vector2(0f, radius), new Color(1f, 1f, 1f, alpha * 0.5f), 1.1f);
 		}
 	}
 
@@ -2996,6 +3205,14 @@ public partial class RaidMapDemo : Node2D
 			2 => "东侧",
 			_ => "南侧",
 		},
+	};
+
+	private string GetCleanExitDirectionLabel(RoomDoorSide side) => side switch
+	{
+		RoomDoorSide.Left => "西侧",
+		RoomDoorSide.Top => "北侧",
+		RoomDoorSide.Right => "东侧",
+		_ => "南侧",
 	};
 
 	private void DrawMonasteryBackdrop()
