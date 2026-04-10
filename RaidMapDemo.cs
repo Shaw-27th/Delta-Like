@@ -223,6 +223,27 @@ public partial class RaidMapDemo : Node2D
 		public bool Heavy;
 	}
 
+	private sealed class RoomProjectileEffect
+	{
+		public Vector2 From;
+		public Vector2 To;
+		public float TimeLeft;
+		public float Duration;
+		public bool PlayerSide;
+		public bool Heavy;
+	}
+
+	private sealed class RoomMeleeArcEffect
+	{
+		public Vector2 Center;
+		public float FacingAngle;
+		public float Radius;
+		public float TimeLeft;
+		public float Duration;
+		public bool PlayerSide;
+		public bool Heavy;
+	}
+
 	private readonly struct ButtonDef
 	{
 		public ButtonDef(Rect2 rect, string action, int index = -1)
@@ -248,6 +269,8 @@ public partial class RaidMapDemo : Node2D
 	private readonly List<SoldierRecord> _runSoldiers = new();
 	private readonly List<RoomUnit> _roomUnits = new();
 	private readonly List<RoomImpactEffect> _roomImpactEffects = new();
+	private readonly List<RoomProjectileEffect> _roomProjectileEffects = new();
+	private readonly List<RoomMeleeArcEffect> _roomMeleeArcEffects = new();
 	private readonly RandomNumberGenerator _rng = new();
 
 	private readonly Rect2 _mapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
@@ -408,6 +431,8 @@ public partial class RaidMapDemo : Node2D
 		_encounter = null;
 		_roomUnits.Clear();
 		_roomImpactEffects.Clear();
+		_roomProjectileEffects.Clear();
+		_roomMeleeArcEffects.Clear();
 		_heroHasMoveTarget = false;
 		_pendingExitNodeId = -1;
 		_roomDirty = true;
@@ -769,7 +794,7 @@ public partial class RaidMapDemo : Node2D
 		hero.MaxHp = _playerMaxHp;
 		hero.DamageMin = 2;
 		hero.DamageMax = 5;
-		hero.AttackRange = 82f;
+		hero.AttackRange = 164f;
 		hero.Speed = 165f;
 		_roomUnits.Add(hero);
 
@@ -781,7 +806,7 @@ public partial class RaidMapDemo : Node2D
 			soldier.MaxHp = 8;
 			soldier.DamageMin = 1;
 			soldier.DamageMax = 3;
-			soldier.AttackRange = 24f;
+			soldier.AttackRange = 48f;
 			soldier.Speed = 152f;
 			_roomUnits.Add(soldier);
 		}
@@ -803,7 +828,7 @@ public partial class RaidMapDemo : Node2D
 			MaxHp = isHero ? _playerMaxHp : 8,
 			DamageMin = isHero ? 2 : 1,
 			DamageMax = isHero ? 5 : 3,
-			AttackRange = isRanged ? 80f : 22f,
+			AttackRange = isRanged ? 160f : 44f,
 			AttackCooldown = 0f,
 		};
 	}
@@ -842,7 +867,7 @@ public partial class RaidMapDemo : Node2D
 			enemy.MaxHp = enemy.Hp;
 			enemy.DamageMin = 1 + threat / 3;
 			enemy.DamageMax = 3 + threat / 2;
-			enemy.AttackRange = enemy.IsRanged ? 78f : 22f;
+			enemy.AttackRange = enemy.IsRanged ? 156f : 44f;
 			_roomUnits.Add(enemy);
 		}
 	}
@@ -855,7 +880,7 @@ public partial class RaidMapDemo : Node2D
 		elite.MaxHp = elite.Hp;
 		elite.DamageMin = 3;
 		elite.DamageMax = 6;
-		elite.AttackRange = 86f;
+		elite.AttackRange = 172f;
 		_roomUnits.Add(elite);
 
 		int count = Mathf.Clamp(squad.Strength / 2, 3, 7);
@@ -867,7 +892,7 @@ public partial class RaidMapDemo : Node2D
 			enemy.MaxHp = 7;
 			enemy.DamageMin = 1;
 			enemy.DamageMax = 3;
-			enemy.AttackRange = enemy.IsRanged ? 76f : 22f;
+			enemy.AttackRange = enemy.IsRanged ? 152f : 44f;
 			_roomUnits.Add(enemy);
 		}
 	}
@@ -1121,8 +1146,8 @@ public partial class RaidMapDemo : Node2D
 		attacker.PendingAttackTarget = target;
 		attacker.PendingAttackDamage = _rng.RandiRange(attacker.DamageMin, attacker.DamageMax);
 		attacker.PendingAttackHeavy = attacker.IsHero || attacker.IsElite;
-		attacker.PendingAttackRangeSlack = attacker.IsRanged ? 20f : 10f;
-		attacker.PendingAttackLungeDistance = attacker.IsRanged ? 0f : (attacker.PendingAttackHeavy ? 18f : 12f);
+		attacker.PendingAttackRangeSlack = attacker.IsRanged ? 28f : 14f;
+		attacker.PendingAttackLungeDistance = attacker.IsRanged ? 0f : (attacker.PendingAttackHeavy ? 34f : 24f);
 		attacker.AttackWindupTime = attacker.IsRanged ? 0.13f : (attacker.PendingAttackHeavy ? 0.12f : 0.09f);
 		attacker.RecoveryTime = attacker.IsRanged ? 0.1f : 0.08f;
 		attacker.AttackCooldown = attacker.IsRanged ? 0.42f : (attacker.PendingAttackHeavy ? 0.54f : 0.46f);
@@ -1197,6 +1222,15 @@ public partial class RaidMapDemo : Node2D
 
 	private void ApplyRoomHit(RoomUnit attacker, RoomUnit target, int damage, Vector2 dir, bool heavy)
 	{
+		if (attacker.IsRanged)
+		{
+			SpawnRoomProjectileEffect(attacker.Position + dir * 10f, target.Position, attacker.IsPlayerSide, heavy);
+		}
+		else
+		{
+			SpawnRoomMeleeArcEffect(attacker.Position + dir * 16f, dir.Angle(), attacker.IsPlayerSide, heavy);
+		}
+
 		target.Hp = Mathf.Max(0, target.Hp - damage);
 		target.HitFlash = heavy ? 0.24f : 0.18f;
 		target.StaggerTime = Mathf.Max(target.StaggerTime, attacker.IsRanged ? 0.08f : (heavy ? 0.16f : 0.12f));
@@ -1238,6 +1272,33 @@ public partial class RaidMapDemo : Node2D
 		});
 	}
 
+	private void SpawnRoomProjectileEffect(Vector2 from, Vector2 to, bool playerSide, bool heavy)
+	{
+		_roomProjectileEffects.Add(new RoomProjectileEffect
+		{
+			From = from,
+			To = to,
+			TimeLeft = heavy ? 0.34f : 0.26f,
+			Duration = heavy ? 0.34f : 0.26f,
+			PlayerSide = playerSide,
+			Heavy = heavy,
+		});
+	}
+
+	private void SpawnRoomMeleeArcEffect(Vector2 center, float facingAngle, bool playerSide, bool heavy)
+	{
+		_roomMeleeArcEffects.Add(new RoomMeleeArcEffect
+		{
+			Center = center,
+			FacingAngle = facingAngle,
+			Radius = heavy ? 44f : 34f,
+			TimeLeft = heavy ? 0.24f : 0.18f,
+			Duration = heavy ? 0.24f : 0.18f,
+			PlayerSide = playerSide,
+			Heavy = heavy,
+		});
+	}
+
 	private void UpdateRoomImpactEffects(float delta)
 	{
 		for (int i = _roomImpactEffects.Count - 1; i >= 0; i--)
@@ -1246,6 +1307,24 @@ public partial class RaidMapDemo : Node2D
 			if (_roomImpactEffects[i].TimeLeft <= 0f)
 			{
 				_roomImpactEffects.RemoveAt(i);
+			}
+		}
+
+		for (int i = _roomProjectileEffects.Count - 1; i >= 0; i--)
+		{
+			_roomProjectileEffects[i].TimeLeft -= delta;
+			if (_roomProjectileEffects[i].TimeLeft <= 0f)
+			{
+				_roomProjectileEffects.RemoveAt(i);
+			}
+		}
+
+		for (int i = _roomMeleeArcEffects.Count - 1; i >= 0; i--)
+		{
+			_roomMeleeArcEffects[i].TimeLeft -= delta;
+			if (_roomMeleeArcEffects[i].TimeLeft <= 0f)
+			{
+				_roomMeleeArcEffects.RemoveAt(i);
 			}
 		}
 	}
@@ -1505,6 +1584,56 @@ public partial class RaidMapDemo : Node2D
 
 	private void DrawRoomImpactEffects()
 	{
+		for (int i = 0; i < _roomProjectileEffects.Count; i++)
+		{
+			RoomProjectileEffect effect = _roomProjectileEffects[i];
+			float lifeRatio = effect.Duration > 0f ? effect.TimeLeft / effect.Duration : 0f;
+			float progress = 1f - Mathf.Clamp(lifeRatio, 0f, 1f);
+			float alpha = Mathf.Clamp(lifeRatio * 1.2f, 0f, 1f);
+			Color color = effect.PlayerSide
+				? new Color(0.8f, 0.94f, 1f, alpha * (effect.Heavy ? 0.98f : 0.9f))
+				: new Color(1f, 0.82f, 0.74f, alpha * (effect.Heavy ? 0.98f : 0.9f));
+			Vector2 head = effect.From.Lerp(effect.To, progress);
+			Vector2 tail = effect.From.Lerp(effect.To, Mathf.Max(0f, progress - (effect.Heavy ? 0.28f : 0.22f)));
+			DrawLine(effect.From, effect.To, new Color(color.R, color.G, color.B, color.A * 0.18f), 1.1f);
+			DrawLine(tail, head, color, effect.Heavy ? 4.8f : 3.4f);
+			DrawCircle(head, effect.Heavy ? 4.8f : 3.6f, new Color(1f, 1f, 1f, alpha * 0.95f));
+			Vector2 dir = (effect.To - effect.From).Normalized();
+			if (dir != Vector2.Zero)
+			{
+				Vector2 normal = new(-dir.Y, dir.X);
+				Vector2 tip = head;
+				DrawLine(tip, tip - dir * 9f + normal * 4f, color, 1.8f);
+				DrawLine(tip, tip - dir * 9f - normal * 4f, color, 1.8f);
+			}
+		}
+
+		for (int i = 0; i < _roomMeleeArcEffects.Count; i++)
+		{
+			RoomMeleeArcEffect effect = _roomMeleeArcEffects[i];
+			float ratio = effect.Duration > 0f ? effect.TimeLeft / effect.Duration : 0f;
+			float progress = 1f - Mathf.Clamp(ratio, 0f, 1f);
+			float alpha = Mathf.Clamp(ratio * 1.15f, 0f, 1f);
+			Color color = effect.PlayerSide
+				? new Color(0.82f, 1f, 0.9f, alpha * (effect.Heavy ? 0.95f : 0.84f))
+				: new Color(1f, 0.86f, 0.82f, alpha * (effect.Heavy ? 0.95f : 0.84f));
+			float sweep = effect.Heavy ? 1.95f : 1.6f;
+			float swingLead = effect.Heavy ? 1.25f : 1.05f;
+			float startAngle = effect.FacingAngle - swingLead + progress * 0.4f;
+			float endAngle = startAngle + sweep;
+			for (int layer = 0; layer < 4; layer++)
+			{
+				float layerRadius = effect.Radius - layer * 4f;
+				float layerAlpha = alpha * (1f - layer * 0.2f);
+				float width = (effect.Heavy ? 4.6f : 3.4f) - layer * 0.55f;
+				Color layerColor = new(color.R, color.G, color.B, layerAlpha);
+				DrawArc(effect.Center, layerRadius, startAngle, endAngle, 22, layerColor, width);
+			}
+			Vector2 tipDir = new(Mathf.Cos(endAngle), Mathf.Sin(endAngle));
+			Vector2 tipPos = effect.Center + tipDir * (effect.Radius + 2f);
+			DrawCircle(tipPos, effect.Heavy ? 3.8f : 2.8f, new Color(1f, 1f, 1f, alpha * 0.72f));
+		}
+
 		for (int i = 0; i < _roomImpactEffects.Count; i++)
 		{
 			RoomImpactEffect effect = _roomImpactEffects[i];
