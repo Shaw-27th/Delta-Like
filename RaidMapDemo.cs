@@ -1011,18 +1011,13 @@ public partial class RaidMapDemo : Node2D
 
 		if (_pendingExitNodeId >= 0)
 		{
-			MapNode node = _nodes[_playerNodeId];
-			int linkIndex = node.Links.IndexOf(_pendingExitNodeId);
-			if (linkIndex >= 0)
+			Rect2 door = GetRoomExitRect(_pendingExitSide).Grow(8f);
+			if (door.HasPoint(hero.Position))
 			{
-				Rect2 door = GetRoomExitRect(linkIndex, node.Links.Count).Grow(8f);
-				if (door.HasPoint(hero.Position))
-				{
-					RoomDoorSide entrySide = GetOppositeSide(_pendingExitSide);
-					int nextNodeId = _pendingExitNodeId;
-					_pendingExitNodeId = -1;
-					EnterNodeRoom(nextNodeId, entrySide, true);
-				}
+				RoomDoorSide entrySide = GetOppositeSide(_pendingExitSide);
+				int nextNodeId = _pendingExitNodeId;
+				_pendingExitNodeId = -1;
+				EnterNodeRoom(nextNodeId, entrySide, true);
 			}
 		}
 
@@ -1168,6 +1163,22 @@ public partial class RaidMapDemo : Node2D
 		}
 	}
 
+	private RoomDoorSide GetExitSide(MapNode fromNode, int linkedNodeId)
+	{
+		if (linkedNodeId < 0 || linkedNodeId >= _nodes.Count)
+		{
+			return RoomDoorSide.Right;
+		}
+
+		Vector2 delta = _nodes[linkedNodeId].Position - fromNode.Position;
+		if (Mathf.Abs(delta.X) >= Mathf.Abs(delta.Y))
+		{
+			return delta.X >= 0f ? RoomDoorSide.Right : RoomDoorSide.Left;
+		}
+
+		return delta.Y >= 0f ? RoomDoorSide.Bottom : RoomDoorSide.Top;
+	}
+
 	private RoomDoorSide GetExitSide(int index, int totalCount)
 	{
 		return totalCount switch
@@ -1250,13 +1261,14 @@ public partial class RaidMapDemo : Node2D
 		{
 			int linkedNodeId = node.Links[i];
 			MapNode linkedNode = _nodes[linkedNodeId];
-			Rect2 exitRect = GetRoomExitRect(i, node.Links.Count);
+			RoomDoorSide side = GetExitSide(node, linkedNodeId);
+			Rect2 exitRect = GetRoomExitRect(side);
 			bool pending = linkedNodeId == _pendingExitNodeId;
 			Color fill = pending ? new Color(0.3f, 0.62f, 0.82f, 0.92f) : new Color(0.28f, 0.34f, 0.44f, 0.9f);
 			Color border = pending ? new Color(1f, 0.92f, 0.58f, 1f) : new Color(0.85f, 0.92f, 1f, 0.96f);
 			DrawRect(exitRect, fill, true);
 			DrawRect(exitRect, border, false, 2f);
-			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(8f, 17f), GetExitDirectionLabel(i, node.Links.Count), HorizontalAlignment.Left, exitRect.Size.X - 16f, 12, Colors.White);
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(8f, 17f), GetExitDirectionLabel(side), HorizontalAlignment.Left, exitRect.Size.X - 16f, 12, Colors.White);
 			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(8f, 34f), linkedNode.Name, HorizontalAlignment.Left, exitRect.Size.X - 16f, 11, new Color(0.9f, 0.95f, 1f));
 			_buttons.Add(new ButtonDef(exitRect, "use_exit", linkedNodeId));
 		}
@@ -1338,15 +1350,15 @@ public partial class RaidMapDemo : Node2D
 		}
 
 		MapNode node = _nodes[_playerNodeId];
-		int linkIndex = node.Links.IndexOf(nodeId);
-		if (linkIndex < 0)
+		if (!node.Links.Contains(nodeId))
 		{
 			return;
 		}
 
-		Rect2 doorRect = GetRoomExitRect(linkIndex, node.Links.Count);
+		RoomDoorSide side = GetExitSide(node, nodeId);
+		Rect2 doorRect = GetRoomExitRect(side);
 		_pendingExitNodeId = nodeId;
-		_pendingExitSide = GetExitSide(linkIndex, node.Links.Count);
+		_pendingExitSide = side;
 		_heroMoveTarget = ClampToRoom(doorRect.GetCenter());
 		_heroHasMoveTarget = true;
 		_status = $"前往 {_nodes[nodeId].Name} 的门口。";
@@ -2944,6 +2956,28 @@ public partial class RaidMapDemo : Node2D
 		};
 		return new Rect2(position, size);
 	}
+
+	private Rect2 GetRoomExitRect(RoomDoorSide side)
+	{
+		Vector2 size = new(112f, 46f);
+		Vector2 center = _mapRect.GetCenter();
+		Vector2 position = side switch
+		{
+			RoomDoorSide.Left => new Vector2(_mapRect.Position.X + 22f, center.Y - size.Y * 0.5f),
+			RoomDoorSide.Top => new Vector2(center.X - size.X * 0.5f, _mapRect.Position.Y + 106f),
+			RoomDoorSide.Right => new Vector2(_mapRect.End.X - size.X - 22f, center.Y - size.Y * 0.5f),
+			_ => new Vector2(center.X - size.X * 0.5f, _mapRect.End.Y - size.Y - 126f),
+		};
+		return new Rect2(position, size);
+	}
+
+	private string GetExitDirectionLabel(RoomDoorSide side) => side switch
+	{
+		RoomDoorSide.Left => "瑗夸晶",
+		RoomDoorSide.Top => "鍖椾晶",
+		RoomDoorSide.Right => "涓滀晶",
+		_ => "鍗椾晶",
+	};
 
 	private string GetExitDirectionLabel(int index, int totalCount) => totalCount switch
 	{
