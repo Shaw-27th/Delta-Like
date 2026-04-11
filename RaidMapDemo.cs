@@ -80,6 +80,7 @@ public partial class RaidMapDemo : Node2D
 		public bool IsPlayerSide;
 		public bool IsElite;
 		public bool IsHero;
+		public bool IsAiSquad;
 		public Vector2 Position;
 	}
 
@@ -200,6 +201,7 @@ public partial class RaidMapDemo : Node2D
 		public bool IsPlayerSide;
 		public bool IsHero;
 		public bool IsElite;
+		public bool IsAiSquad;
 		public bool IsRanged;
 		public string Name = "";
 		public Vector2 Position;
@@ -853,7 +855,7 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
-		RoomUnit hero = CreateRoomUnit(true, true, false, true, "英雄", heroPos);
+		RoomUnit hero = CreateRoomUnit(true, true, false, false, true, "英雄", heroPos);
 		hero.Hp = _playerHp;
 		hero.MaxHp = _playerMaxHp;
 		hero.DamageMin = 2;
@@ -865,7 +867,7 @@ private sealed class RoomProjectileEffect
 		for (int i = 0; i < _runSoldiers.Count; i++)
 		{
 			Vector2 offset = new Vector2(-28f - (i % 3) * 20f, (i / 3) * 24f - 24f);
-			RoomUnit soldier = CreateRoomUnit(true, false, false, false, _runSoldiers[i].Name, ClampToRoom(heroPos + offset));
+			RoomUnit soldier = CreateRoomUnit(true, false, false, false, false, _runSoldiers[i].Name, ClampToRoom(heroPos + offset));
 			soldier.Hp = 8;
 			soldier.MaxHp = 8;
 			soldier.DamageMin = 1;
@@ -878,7 +880,7 @@ private sealed class RoomProjectileEffect
 
 	private void SpawnDebugAlliesAt(Vector2 heroPos)
 	{
-		RoomUnit ranger = CreateRoomUnit(true, true, false, true, "蓝羽试射手", ClampToRoom(heroPos + new Vector2(-12f, -26f)));
+		RoomUnit ranger = CreateRoomUnit(true, true, false, false, true, "蓝羽试射手", ClampToRoom(heroPos + new Vector2(-12f, -26f)));
 		ranger.Hp = 260;
 		ranger.MaxHp = 260;
 		ranger.DamageMin = 2;
@@ -888,7 +890,7 @@ private sealed class RoomProjectileEffect
 		ranger.AttackCycleScale = 2f;
 		_roomUnits.Add(ranger);
 
-		RoomUnit vanguard = CreateRoomUnit(true, false, true, false, "前锋测试机", ClampToRoom(heroPos + new Vector2(-28f, 26f)));
+		RoomUnit vanguard = CreateRoomUnit(true, false, true, false, false, "前锋测试机", ClampToRoom(heroPos + new Vector2(-28f, 26f)));
 		vanguard.Hp = 300;
 		vanguard.MaxHp = 300;
 		vanguard.DamageMin = 2;
@@ -899,13 +901,14 @@ private sealed class RoomProjectileEffect
 		_roomUnits.Add(vanguard);
 	}
 
-	private RoomUnit CreateRoomUnit(bool isPlayerSide, bool isHero, bool isElite, bool isRanged, string name, Vector2 position)
+	private RoomUnit CreateRoomUnit(bool isPlayerSide, bool isHero, bool isElite, bool isAiSquad, bool isRanged, string name, Vector2 position)
 	{
 		return new RoomUnit
 		{
 			IsPlayerSide = isPlayerSide,
 			IsHero = isHero,
 			IsElite = isElite,
+			IsAiSquad = isAiSquad,
 			IsRanged = isRanged,
 			Name = name,
 			Position = position,
@@ -956,7 +959,7 @@ private sealed class RoomProjectileEffect
 	private void SpawnDebugEnemies()
 	{
 		Rect2 rect = GetRoomArenaRect();
-		RoomUnit ranger = CreateRoomUnit(false, false, true, true, "赤眼试射手", ClampToRoom(new Vector2(rect.End.X - 120f, rect.GetCenter().Y - 26f)));
+		RoomUnit ranger = CreateRoomUnit(false, false, true, false, true, "赤眼试射手", ClampToRoom(new Vector2(rect.End.X - 120f, rect.GetCenter().Y - 26f)));
 		ranger.Hp = 260;
 		ranger.MaxHp = 260;
 		ranger.DamageMin = 2;
@@ -966,7 +969,7 @@ private sealed class RoomProjectileEffect
 		ranger.AttackCycleScale = 2f;
 		_roomUnits.Add(ranger);
 
-		RoomUnit raider = CreateRoomUnit(false, false, true, false, "斩刃试作体", ClampToRoom(new Vector2(rect.End.X - 148f, rect.GetCenter().Y + 28f)));
+		RoomUnit raider = CreateRoomUnit(false, false, true, false, false, "斩刃试作体", ClampToRoom(new Vector2(rect.End.X - 148f, rect.GetCenter().Y + 28f)));
 		raider.Hp = 300;
 		raider.MaxHp = 300;
 		raider.DamageMin = 2;
@@ -984,7 +987,7 @@ private sealed class RoomProjectileEffect
 		for (int i = 0; i < count; i++)
 		{
 			Vector2 p = ClampToRoom(new Vector2(rect.End.X - 74f - (i % 3) * 20f, rect.GetCenter().Y + (i / 3) * 28f - 28f));
-			RoomUnit enemy = CreateRoomUnit(false, false, false, i % 3 == 0, "守军", p);
+			RoomUnit enemy = CreateRoomUnit(false, false, false, false, i % 3 == 0, "守军", p);
 			enemy.Hp = 6 + threat;
 			enemy.MaxHp = enemy.Hp;
 			enemy.DamageMin = 1 + threat / 3;
@@ -997,7 +1000,7 @@ private sealed class RoomProjectileEffect
 	private void SpawnSquadEnemies(AiSquad squad)
 	{
 		Rect2 rect = GetRoomArenaRect();
-		RoomUnit elite = CreateRoomUnit(false, false, true, true, $"{squad.Name} 队长", ClampToRoom(new Vector2(rect.End.X - 76f, rect.GetCenter().Y - 26f)));
+		RoomUnit elite = CreateRoomUnit(false, false, true, true, true, $"{squad.Name} 队长", ClampToRoom(new Vector2(rect.End.X - 76f, rect.GetCenter().Y - 26f)));
 		elite.Hp = 12 + squad.Strength / 2;
 		elite.MaxHp = elite.Hp;
 		elite.DamageMin = 3;
@@ -1009,7 +1012,7 @@ private sealed class RoomProjectileEffect
 		for (int i = 0; i < count; i++)
 		{
 			Vector2 p = ClampToRoom(new Vector2(rect.End.X - 98f - (i % 4) * 20f, rect.GetCenter().Y + (i / 4) * 28f + 8f));
-			RoomUnit enemy = CreateRoomUnit(false, false, false, i % 3 == 1, "敌兵", p);
+			RoomUnit enemy = CreateRoomUnit(false, false, false, true, i % 3 == 1, "敌兵", p);
 			enemy.Hp = 7;
 			enemy.MaxHp = 7;
 			enemy.DamageMin = 1;
@@ -1851,6 +1854,7 @@ private sealed class RoomProjectileEffect
 				IsPlayerSide = dead.IsPlayerSide,
 				IsElite = dead.IsElite,
 				IsHero = dead.IsHero,
+				IsAiSquad = dead.IsAiSquad,
 				Position = dead.Position,
 			});
 		}
@@ -2100,9 +2104,7 @@ private sealed class RoomProjectileEffect
 				continue;
 			}
 
-			Color body = unit.IsPlayerSide
-				? (unit.IsHero ? new Color(0.34f, 0.84f, 1f) : new Color(0.5f, 0.92f, 0.72f))
-				: (unit.IsElite ? new Color(0.86f, 0.84f, 0.8f) : new Color(0.72f, 0.74f, 0.78f));
+			Color body = GetRoomUnitBaseColor(unit);
 			if (unit.HitFlash > 0f)
 			{
 				float flash = Mathf.Clamp(unit.HitFlash * 5f, 0f, 1f);
@@ -2129,7 +2131,7 @@ private sealed class RoomProjectileEffect
 			Rect2 hpBg = new(unit.Position + new Vector2(-20f, 18f), new Vector2(40f, 4f));
 			DrawRect(hpBg, new Color(0.14f, 0.14f, 0.16f), true);
 			float ratio = unit.MaxHp > 0 ? (float)unit.Hp / unit.MaxHp : 0f;
-			DrawRect(new Rect2(hpBg.Position, new Vector2(hpBg.Size.X * ratio, hpBg.Size.Y)), unit.IsPlayerSide ? new Color(0.46f, 0.95f, 0.58f) : new Color(0.8f, 0.82f, 0.86f), true);
+			DrawRect(new Rect2(hpBg.Position, new Vector2(hpBg.Size.X * ratio, hpBg.Size.Y)), GetRoomUnitHealthColor(unit), true);
 			DrawRect(hpBg, Colors.White, false, 1f);
 			if (!unit.IsRanged && unit.MaxStamina > 0f)
 			{
@@ -2153,12 +2155,58 @@ private sealed class RoomProjectileEffect
 			RoomCorpseMarker corpse = node.Corpses[i];
 			float corpseSize = corpse.IsHero || corpse.IsElite ? 16f : 8f;
 			float lineWidth = corpse.IsHero || corpse.IsElite ? 4.4f : 2.8f;
-			Color corpseColor = corpse.IsPlayerSide
-				? new Color(0.42f, 0.96f, 0.52f, 0.62f)
-				: (corpse.IsElite ? new Color(1f, 0.34f, 0.34f, 0.66f) : new Color(0.94f, 0.94f, 0.96f, 0.56f));
+			Color corpseColor = GetRoomCorpseColor(corpse);
 			DrawLine(corpse.Position + new Vector2(-corpseSize, -corpseSize), corpse.Position + new Vector2(corpseSize, corpseSize), corpseColor, lineWidth);
 			DrawLine(corpse.Position + new Vector2(-corpseSize, corpseSize), corpse.Position + new Vector2(corpseSize, -corpseSize), corpseColor, lineWidth);
 		}
+	}
+
+	private Color GetRoomUnitBaseColor(RoomUnit unit)
+	{
+		if (unit.IsPlayerSide)
+		{
+			return unit.IsHero ? new Color(0.34f, 0.84f, 1f) : new Color(0.5f, 0.92f, 0.72f);
+		}
+
+		if (unit.IsAiSquad)
+		{
+			return unit.IsElite ? new Color(0.98f, 0.64f, 0.26f) : new Color(0.92f, 0.5f, 0.22f);
+		}
+
+		return unit.IsElite ? new Color(0.86f, 0.84f, 0.8f) : new Color(0.72f, 0.74f, 0.78f);
+	}
+
+	private Color GetRoomUnitHealthColor(RoomUnit unit)
+	{
+		if (unit.IsPlayerSide)
+		{
+			return new Color(0.46f, 0.95f, 0.58f);
+		}
+
+		return unit.IsAiSquad
+			? new Color(0.96f, 0.66f, 0.24f)
+			: new Color(0.8f, 0.82f, 0.86f);
+	}
+
+	private Color GetRoomCorpseColor(RoomCorpseMarker corpse)
+	{
+		if (corpse.IsPlayerSide)
+		{
+			return corpse.IsHero
+				? new Color(0.34f, 0.84f, 1f, 0.66f)
+				: new Color(0.5f, 0.92f, 0.72f, 0.62f);
+		}
+
+		if (corpse.IsAiSquad)
+		{
+			return corpse.IsElite
+				? new Color(0.98f, 0.64f, 0.26f, 0.72f)
+				: new Color(0.92f, 0.5f, 0.22f, 0.66f);
+		}
+
+		return corpse.IsElite
+			? new Color(0.86f, 0.84f, 0.8f, 0.66f)
+			: new Color(0.72f, 0.74f, 0.78f, 0.56f);
 	}
 
 	private void DrawRoomUnitFigure(RoomUnit unit, Color bodyColor)
