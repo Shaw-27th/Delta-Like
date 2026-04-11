@@ -2904,16 +2904,28 @@ private sealed class RoomProjectileEffect
 				Vector2 tipBase = endPos - tangent * (effect.Heavy ? 6f : 5f);
 				Vector2 tipNormal = new(-tangent.Y, tangent.X);
 				float tipWidth = (effect.Heavy ? 2.6f : 2.2f) * visibleStrength;
-				Vector2[] tip =
-				[
-					endPos,
-					tipBase + tipNormal * tipWidth,
-					tipBase - tipNormal * tipWidth,
-				];
-				DrawColoredPolygon(tip, new Color(1f, 1f, 1f, alpha * 0.92f));
+				if (tipWidth > 0.08f)
+				{
+					Vector2[] tip =
+					[
+						endPos,
+						tipBase + tipNormal * tipWidth,
+						tipBase - tipNormal * tipWidth,
+					];
+					if (IsTriangleDrawable(tip[0], tip[1], tip[2]))
+					{
+						DrawColoredPolygon(tip, new Color(1f, 1f, 1f, alpha * 0.92f));
+					}
+				}
 			}
 		}
 
+	}
+
+	private static bool IsTriangleDrawable(Vector2 a, Vector2 b, Vector2 c)
+	{
+		float twiceArea = Mathf.Abs((b.X - a.X) * (c.Y - a.Y) - (b.Y - a.Y) * (c.X - a.X));
+		return twiceArea > 0.02f;
 	}
 
 	private void TryMoveToNode(int nodeId)
