@@ -532,6 +532,11 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
+		if (!_inHideout && !_runEnded && _hasDraggedBackpackItem && HandleOpenContainerPopupClick(click))
+		{
+			return;
+		}
+
 		for (int i = _buttons.Count - 1; i >= 0; i--)
 		{
 			if (_buttons[i].Rect.HasPoint(click))
@@ -606,6 +611,7 @@ private sealed class RoomProjectileEffect
 		{
 			DrawContainerPopup();
 		}
+		DrawDraggedBackpackOverlay();
 		if (_runEnded)
 		{
 			DrawEndOverlay();
@@ -3846,6 +3852,10 @@ private sealed class RoomProjectileEffect
 				case "move_loadout_to_stash":
 					MoveSelectedLoadoutItemToStash();
 					return;
+				case "auto_pack_hideout":
+					RepackHideoutLoadout();
+					_status = "已整理局外背包。";
+					return;
 				case "buy_shop":
 					BuyShopItem(button.Index);
 					return;
@@ -3887,6 +3897,15 @@ private sealed class RoomProjectileEffect
 			{
 				InitHideout();
 				_status = "已完成结算，返回局外整备。";
+			}
+			else if (button.Action == "auto_pack_settlement" && !_runFailed)
+			{
+				RepackHideoutLoadout();
+				_status = "已整理局外背包。";
+			}
+			else if (button.Action == "settlement_all_to_stash" && !_runFailed)
+			{
+				MoveAllSettlementItemsToStash();
 			}
 			else if (button.Action == "select_settlement")
 			{
@@ -5454,6 +5473,36 @@ private sealed class RoomProjectileEffect
 		_status = $"已将 {moved.Label} 放回仓库。";
 	}
 
+	private void MoveAllSettlementItemsToStash()
+	{
+		if (_hideoutLoadout.Count == 0)
+		{
+			_status = "局外背包当前没有可转移的物品。";
+			return;
+		}
+
+		List<BackpackItem> movedItems = new();
+		for (int i = 0; i < _hideoutLoadout.Count; i++)
+		{
+			movedItems.Add(CloneBackpackItem(_hideoutLoadout[i]));
+		}
+
+		if (!CanFitItemsInStash(movedItems))
+		{
+			_status = "仓库空间不足，无法全部转入。";
+			return;
+		}
+
+		for (int i = 0; i < movedItems.Count; i++)
+		{
+			TryAddToStash(movedItems[i]);
+		}
+
+		_hideoutLoadout.Clear();
+		_selectedSettlementIndex = -1;
+		_status = "已将局外背包全部转入仓库。";
+	}
+
 	private void RepackHideoutLoadout()
 	{
 		List<BackpackItem> items = new();
@@ -5796,6 +5845,9 @@ private sealed class RoomProjectileEffect
 		DrawRect(loadoutRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
 		DrawString(ThemeDB.FallbackFont, loadoutRect.Position + new Vector2(Ui(14f), Ui(24f)), "预备携行", HorizontalAlignment.Left, -1f, UiFont(18), Colors.White);
 		DrawString(ThemeDB.FallbackFont, loadoutRect.Position + new Vector2(Ui(118f), Ui(24f)), "入局时这些物品会直接进入队伍背包。", HorizontalAlignment.Left, loadoutRect.Size.X - Ui(220f), UiFont(12), new Color(0.82f, 0.88f, 0.94f));
+		Rect2 autoPackRect = new(new Vector2(loadoutRect.End.X - Ui(108f), loadoutRect.Position.Y + Ui(12f)), new Vector2(Ui(92f), Ui(28f)));
+		DrawButton(autoPackRect, "整理背包", new Color(0.28f, 0.42f, 0.26f));
+		_buttons.Add(new ButtonDef(autoPackRect, "auto_pack_hideout"));
 
 		Vector2 loadoutCellSize = new(Ui(18f), Ui(18f));
 		Vector2 loadoutGridOrigin = loadoutRect.Position + new Vector2(Ui(14f), Ui(42f));
@@ -5847,17 +5899,13 @@ private sealed class RoomProjectileEffect
 		{
 			BackpackItem selectedStash = _stash[_selectedStashIndex];
 			DrawString(ThemeDB.FallbackFont, new Vector2(loadoutInfoX, loadoutInfoY + Ui(22f)), $"仓库选中：{selectedStash.Label}  {selectedStash.Size.X}x{selectedStash.Size.Y}", HorizontalAlignment.Left, loadoutRect.Size.X - Ui(280f), UiFont(12), Colors.White);
-			Rect2 carryRect = new(new Vector2(loadoutRect.End.X - Ui(108f), loadoutRect.Position.Y + Ui(16f)), new Vector2(Ui(92f), Ui(28f)));
-			DrawButton(carryRect, "带入行动", new Color(0.26f, 0.42f, 0.58f));
-			_buttons.Add(new ButtonDef(carryRect, "move_stash_to_loadout"));
+			DrawString(ThemeDB.FallbackFont, new Vector2(loadoutInfoX, loadoutInfoY + Ui(42f)), "再次点击同一物品即可拿起，然后放到右侧网格。", HorizontalAlignment.Left, loadoutRect.Size.X - Ui(280f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
 		}
 		else if (_selectedLoadoutIndex >= 0 && _selectedLoadoutIndex < _hideoutLoadout.Count)
 		{
 			BackpackItem selectedLoadout = _hideoutLoadout[_selectedLoadoutIndex];
 			DrawString(ThemeDB.FallbackFont, new Vector2(loadoutInfoX, loadoutInfoY + Ui(22f)), $"预备携行选中：{selectedLoadout.Label}  {selectedLoadout.Size.X}x{selectedLoadout.Size.Y}", HorizontalAlignment.Left, loadoutRect.Size.X - Ui(280f), UiFont(12), Colors.White);
-			Rect2 returnRect = new(new Vector2(loadoutRect.End.X - Ui(108f), loadoutRect.Position.Y + Ui(16f)), new Vector2(Ui(92f), Ui(28f)));
-			DrawButton(returnRect, "放回仓库", new Color(0.46f, 0.25f, 0.19f));
-			_buttons.Add(new ButtonDef(returnRect, "move_loadout_to_stash"));
+			DrawString(ThemeDB.FallbackFont, new Vector2(loadoutInfoX, loadoutInfoY + Ui(42f)), "再次点击同一物品即可拿起，然后放回左侧仓库网格。", HorizontalAlignment.Left, loadoutRect.Size.X - Ui(280f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
 		}
 	}
 
@@ -6789,17 +6837,25 @@ private sealed class RoomProjectileEffect
 			DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f)), hoveredItemLabel);
 		}
 
-		if (_hasDraggedBackpackItem && _draggedBackpackItem != null)
+		return Ui(36f) + Mathf.Max(gridHeight * cellSize.Y, overflowRect.Size.Y);
+	}
+
+	private void DrawDraggedBackpackOverlay()
+	{
+		if (!_hasDraggedBackpackItem || _draggedBackpackItem == null || _inHideout || _runEnded)
 		{
-			Vector2 dragSize = new(_draggedBackpackItem.Size.X * cellSize.X - Ui(2f), _draggedBackpackItem.Size.Y * cellSize.Y - Ui(2f));
-			Vector2 drawPos = mouse - dragSize * 0.5f - new Vector2(Ui(8f), Ui(8f));
-			Rect2 dragRect = new(drawPos, new Vector2(_draggedBackpackItem.Size.X * cellSize.X - Ui(2f), _draggedBackpackItem.Size.Y * cellSize.Y - Ui(2f)));
-			DrawRect(dragRect, new Color(GetGridRarityColor(_draggedBackpackItem.Rarity).R, GetGridRarityColor(_draggedBackpackItem.Rarity).G, GetGridRarityColor(_draggedBackpackItem.Rarity).B, 0.82f), true);
-			DrawRect(dragRect, new Color(1f, 1f, 1f, 0.9f), false, 1f);
-			DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f) + dragRect.Size.Y + Ui(4f)), _draggedBackpackItem.Label);
+			return;
 		}
 
-		return Ui(36f) + Mathf.Max(gridHeight * cellSize.Y, overflowRect.Size.Y);
+		Vector2 mouse = GetViewport().GetMousePosition();
+		Vector2 cellSize = new(Ui(18f), Ui(18f));
+		Vector2 dragSize = new(_draggedBackpackItem.Size.X * cellSize.X - Ui(2f), _draggedBackpackItem.Size.Y * cellSize.Y - Ui(2f));
+		Vector2 drawPos = mouse - dragSize * 0.5f - new Vector2(Ui(8f), Ui(8f));
+		Rect2 dragRect = new(drawPos, dragSize);
+		Color dragColor = GetGridRarityColor(_draggedBackpackItem.Rarity);
+		DrawRect(dragRect, new Color(dragColor.R, dragColor.G, dragColor.B, 0.84f), true);
+		DrawRect(dragRect, new Color(1f, 1f, 1f, 0.9f), false, 1f);
+		DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f) + dragRect.Size.Y + Ui(4f)), _draggedBackpackItem.Label);
 	}
 
 	private float GetContainerCardHeight(LootContainer container)
@@ -6977,7 +7033,7 @@ private sealed class RoomProjectileEffect
 		}
 		if (_hasDraggedBackpackItem && _draggedBackpackItem != null)
 		{
-			DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(14f, 38f), "Drag-held backpack item: click the container grid to store it here.", HorizontalAlignment.Left, panel.Size.X - 28f, 11, new Color(0.92f, 0.94f, 0.78f));
+			DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(14f, 38f), "背包物品已拿起：点击下方容器网格即可放回。", HorizontalAlignment.Left, panel.Size.X - 28f, 11, new Color(0.92f, 0.94f, 0.78f));
 		}
 		float rowY = panel.Position.Y + (_hasDraggedBackpackItem && _draggedBackpackItem != null ? 56f : 42f);
 		if (container.Kind == ContainerKind.EliteCorpse)
@@ -7220,6 +7276,12 @@ private sealed class RoomProjectileEffect
 		Rect2 finishRect = new(new Vector2(panel.End.X - Ui(156f), panel.Position.Y + Ui(18f)), new Vector2(Ui(132f), Ui(32f)));
 		DrawButton(finishRect, "完成结算", new Color(0.28f, 0.48f, 0.34f));
 		_buttons.Add(new ButtonDef(finishRect, "finish_settlement"));
+		Rect2 autoPackRect = new(new Vector2(panel.End.X - Ui(264f), panel.Position.Y + Ui(18f)), new Vector2(Ui(92f), Ui(32f)));
+		DrawButton(autoPackRect, "整理背包", new Color(0.28f, 0.42f, 0.26f));
+		_buttons.Add(new ButtonDef(autoPackRect, "auto_pack_settlement"));
+		Rect2 transferAllRect = new(new Vector2(panel.End.X - Ui(382f), panel.Position.Y + Ui(18f)), new Vector2(Ui(108f), Ui(32f)));
+		DrawButton(transferAllRect, "全部入仓", new Color(0.26f, 0.42f, 0.58f));
+		_buttons.Add(new ButtonDef(transferAllRect, "settlement_all_to_stash"));
 
 		DrawRect(stashRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(backpackRect, new Color(0.09f, 0.1f, 0.12f), true);

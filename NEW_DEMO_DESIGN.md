@@ -178,6 +178,8 @@
 - grid-based item representation.
 - Hideout stash and the outside-run backpack now share a bidirectional drag-style transfer flow.
 - The hideout layout was reworked so the stash, shop, and outside-run backpack fit inside separate panels.
+- The old explicit `Bring Into Run` / `Return To Stash` buttons are no longer required for the main flow.
+- Hideout preparation now expects direct grid-to-grid movement between stash and the outside-run backpack area.
 - Container-to-backpack transfer is active.
 - Backpack-to-container return is now also active for the currently open container popup.
 - Backpack-to-container return now tries:
@@ -189,6 +191,7 @@
 - Successful extraction no longer auto-dumps run loot into the stash.
 - Instead, extracted items are carried back into the persistent outside-run backpack first.
 - A post-result settlement transfer screen is now the intended path for stash transfer after extraction.
+- The settlement transfer screen now includes outside-run backpack repacking and a quick `move all to stash` action.
 
 ### Full target for the current inventory push
 
