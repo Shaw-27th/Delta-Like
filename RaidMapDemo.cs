@@ -11,6 +11,8 @@ public partial class RaidMapDemo : Node2D
 	private const int SfxSampleRate = 22050;
 	private const int TeamBackpackMaxWidth = 12;
 	private const int TeamBackpackMaxRows = 12;
+	private const int StashGridWidth = 12;
+	private const int StashGridHeight = 10;
 	private static readonly Rect2 DesignMapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
 
 	private enum NodeType
@@ -310,7 +312,7 @@ private sealed class RoomProjectileEffect
 	private readonly List<ButtonDef> _buttons = new();
 	private readonly List<BackpackItem> _runBackpack = new();
 	private readonly List<BackpackItem> _overflowBackpackItems = new();
-	private readonly List<string> _stash = new();
+	private readonly List<BackpackItem> _stash = new();
 	private readonly List<ShopEntry> _shopStock = new();
 	private readonly List<SoldierRecord> _soldierRoster = new();
 	private readonly List<SoldierRecord> _runSoldiers = new();
@@ -347,6 +349,7 @@ private sealed class RoomProjectileEffect
 	private bool _showSearchConfirm;
 	private bool _confirmSkipChecked;
 	private int _selectedContainerIndex = -1;
+	private int _selectedStashIndex = -1;
 	private int _pendingRevealContainerIndex = -1;
 	private bool _showMapOverlay;
 	private int _plannedExitNodeId = -1;
@@ -745,8 +748,8 @@ private sealed class RoomProjectileEffect
 		if (_money == 0 && _stash.Count == 0)
 		{
 			_money = 3000;
-			_stash.Add("旧军刀");
-			_stash.Add("草药包");
+			TryAddToStash("旧军刀");
+			TryAddToStash("草药包");
 		}
 		if (_soldierRoster.Count == 0 && _nextSoldierId == 1)
 		{
@@ -3773,6 +3776,9 @@ private sealed class RoomProjectileEffect
 				case "sell_stash":
 					SellStashItem(button.Index);
 					return;
+				case "select_stash":
+					_selectedStashIndex = button.Index;
+					return;
 				case "buy_shop":
 					BuyShopItem(button.Index);
 					return;
@@ -4121,14 +4127,27 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
-		foreach (BackpackItem item in _runBackpack)
+		List<BackpackItem> extractedItems = new();
+		for (int i = 0; i < _runBackpack.Count; i++)
 		{
-			_stash.Add(item.Label);
+			extractedItems.Add(CloneBackpackItem(_runBackpack[i]));
 		}
-		foreach (BackpackItem item in _overflowBackpackItems)
+		for (int i = 0; i < _overflowBackpackItems.Count; i++)
 		{
-			_stash.Add(item.Label);
+			extractedItems.Add(CloneBackpackItem(_overflowBackpackItems[i]));
 		}
+
+		if (!CanFitItemsInStash(extractedItems))
+		{
+			_status = "仓库空间不足，当前无法撤离。";
+			return;
+		}
+
+		for (int i = 0; i < extractedItems.Count; i++)
+		{
+			TryAddToStash(extractedItems[i]);
+		}
+
 		_runBackpack.Clear();
 		_overflowBackpackItems.Clear();
 		_hasDraggedBackpackItem = false;
@@ -4147,6 +4166,45 @@ private sealed class RoomProjectileEffect
 	private bool AddLoot(string item)
 	{
 		return AddLoot(item, GetBackpackItemSize(item));
+	}
+
+	private bool TryAddToStash(string item)
+	{
+		return TryAddToStash(CreateBackpackItem(item, GetBackpackItemSize(item)));
+	}
+
+	private bool TryAddToStash(BackpackItem item)
+	{
+		BackpackItem stashItem = CloneBackpackItem(item);
+		if (!TryPlaceStorageItem(stashItem, _stash, StashGridWidth, StashGridHeight))
+		{
+			return false;
+		}
+
+		_stash.Add(stashItem);
+		return true;
+	}
+
+	private bool CanFitItemsInStash(List<BackpackItem> items)
+	{
+		List<BackpackItem> staged = new();
+		for (int i = 0; i < _stash.Count; i++)
+		{
+			staged.Add(CloneBackpackItem(_stash[i]));
+		}
+
+		for (int i = 0; i < items.Count; i++)
+		{
+			BackpackItem item = CloneBackpackItem(items[i]);
+			if (!TryPlaceStorageItem(item, staged, StashGridWidth, StashGridHeight))
+			{
+				return false;
+			}
+
+			staged.Add(item);
+		}
+
+		return true;
 	}
 
 	private bool AddLoot(string item, Vector2I size)
@@ -4198,6 +4256,62 @@ private sealed class RoomProjectileEffect
 		}
 
 		return new Vector2I(1, 1);
+	}
+
+	private bool TryPlaceStorageItem(BackpackItem item, List<BackpackItem> items, int gridWidth, int gridHeight)
+	{
+		if (TryPlaceStorageItemWithSize(item, item.Size, items, gridWidth, gridHeight))
+		{
+			return true;
+		}
+
+		if (item.Size.X != item.Size.Y)
+		{
+			Vector2I rotated = new(item.Size.Y, item.Size.X);
+			if (TryPlaceStorageItemWithSize(item, rotated, items, gridWidth, gridHeight))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool TryPlaceStorageItemWithSize(BackpackItem item, Vector2I size, List<BackpackItem> items, int gridWidth, int gridHeight)
+	{
+		for (int y = 0; y <= gridHeight - size.Y; y++)
+		{
+			for (int x = 0; x <= gridWidth - size.X; x++)
+			{
+				Vector2I cell = new(x, y);
+				if (!IsStorageAreaFree(cell, size, items))
+				{
+					continue;
+				}
+
+				item.Size = size;
+				item.Cell = cell;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool IsStorageAreaFree(Vector2I cell, Vector2I size, List<BackpackItem> items)
+	{
+		for (int i = 0; i < items.Count; i++)
+		{
+			BackpackItem existing = items[i];
+			bool overlapX = cell.X < existing.Cell.X + existing.Size.X && cell.X + size.X > existing.Cell.X;
+			bool overlapY = cell.Y < existing.Cell.Y + existing.Size.Y && cell.Y + size.Y > existing.Cell.Y;
+			if (overlapX && overlapY)
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	private bool TryPlaceBackpackItem(BackpackItem item)
@@ -4968,9 +5082,10 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
-		string item = _stash[index];
+		string item = _stash[index].Label;
 		_money += GetItemValue(item);
 		_stash.RemoveAt(index);
+		_selectedStashIndex = -1;
 	}
 
 	private void BuyShopItem(int index)
@@ -4987,7 +5102,14 @@ private sealed class RoomProjectileEffect
 		}
 
 		_money -= entry.Price;
-		_stash.Add(entry.Label);
+		if (!TryAddToStash(entry.Label))
+		{
+			_money += entry.Price;
+			_status = "仓库空间不足，无法买入。";
+			return;
+		}
+
+		_status = $"已购入 {entry.Label}。";
 	}
 
 	private void RecruitSoldierInternal()
@@ -5217,23 +5339,64 @@ private sealed class RoomProjectileEffect
 		DrawString(ThemeDB.FallbackFont, stashRect.Position + new Vector2(14f, 24f), "仓库", HorizontalAlignment.Left, -1f, UiFont(20), Colors.White);
 		DrawString(ThemeDB.FallbackFont, shopRect.Position + new Vector2(14f, 24f), "商店", HorizontalAlignment.Left, -1f, UiFont(20), Colors.White);
 
-		float stashY = stashRect.Position.Y + Ui(46f);
-		if (_stash.Count == 0)
+		Vector2 stashCellSize = new(Ui(22f), Ui(22f));
+		Vector2 stashGridOrigin = stashRect.Position + new Vector2(Ui(14f), Ui(46f));
+		Vector2 stashGridSize = new(StashGridWidth * stashCellSize.X, StashGridHeight * stashCellSize.Y);
+		Rect2 stashGridRect = new(stashGridOrigin, stashGridSize);
+		DrawRect(stashGridRect, new Color(0.07f, 0.08f, 0.1f), true);
+		for (int yCell = 0; yCell < StashGridHeight; yCell++)
 		{
-			DrawString(ThemeDB.FallbackFont, new Vector2(stashRect.Position.X + 14f, stashY), "仓库为空", HorizontalAlignment.Left, -1f, 14, new Color(0.72f, 0.76f, 0.82f));
+			for (int xCell = 0; xCell < StashGridWidth; xCell++)
+			{
+				Rect2 cellRect = new(
+					stashGridOrigin + new Vector2(xCell * stashCellSize.X, yCell * stashCellSize.Y),
+					stashCellSize - new Vector2(Ui(2f), Ui(2f)));
+				DrawRect(cellRect, new Color(0.11f, 0.12f, 0.15f), true);
+				DrawRect(cellRect, new Color(0.24f, 0.27f, 0.32f), false, 1f);
+			}
 		}
+
+		Vector2 mouse = GetViewport().GetMousePosition();
+		string stashHoverLabel = "";
 		for (int i = 0; i < _stash.Count; i++)
 		{
-			Rect2 row = new(new Vector2(stashRect.Position.X + 14f, stashY), new Vector2(stashRect.Size.X - 28f, 28f));
-			DrawRect(row, new Color(0.12f, 0.13f, 0.16f), true);
-			DrawRect(row, new Color(0.34f, 0.37f, 0.42f), false, 1f);
-			DrawString(ThemeDB.FallbackFont, row.Position + new Vector2(10f, 19f), _stash[i], HorizontalAlignment.Left, 220f, 12, Colors.White);
-			DrawString(ThemeDB.FallbackFont, row.Position + new Vector2(250f, 19f), $"售价 {GetItemValue(_stash[i])}", HorizontalAlignment.Left, 70f, 12, new Color(0.95f, 0.86f, 0.48f));
-			Rect2 sellRect = new(new Vector2(row.End.X - 68f, row.Position.Y + 2f), new Vector2(56f, 24f));
-			DrawButton(sellRect, "出售", new Color(0.46f, 0.25f, 0.19f));
-			_buttons.Add(new ButtonDef(sellRect, "sell_stash", i));
-			stashY += 34f;
-			if (stashY > stashRect.End.Y - 34f) break;
+			BackpackItem item = _stash[i];
+			Rect2 itemRect = new(
+				stashGridOrigin + new Vector2(item.Cell.X * stashCellSize.X, item.Cell.Y * stashCellSize.Y),
+				new Vector2(item.Size.X * stashCellSize.X - Ui(2f), item.Size.Y * stashCellSize.Y - Ui(2f)));
+			DrawRect(itemRect, GetGridRarityColor(item.Rarity), true);
+			DrawRect(itemRect, i == _selectedStashIndex ? new Color(1f, 0.94f, 0.62f, 0.96f) : new Color(1f, 1f, 1f, 0.8f), false, i == _selectedStashIndex ? 2f : 1f);
+			if (itemRect.Size.X >= Ui(42f))
+			{
+				DrawString(ThemeDB.FallbackFont, itemRect.Position + new Vector2(Ui(3f), Ui(14f)), item.Label, HorizontalAlignment.Left, itemRect.Size.X - Ui(4f), UiFont(10), Colors.Black);
+			}
+
+			if (itemRect.HasPoint(mouse))
+			{
+				stashHoverLabel = item.Label;
+			}
+
+			_buttons.Add(new ButtonDef(itemRect, "select_stash", i));
+		}
+
+		float stashInfoY = stashGridRect.End.Y + Ui(12f);
+		if (_stash.Count == 0)
+		{
+			DrawString(ThemeDB.FallbackFont, new Vector2(stashRect.Position.X + Ui(14f), stashInfoY), "Stash is empty.", HorizontalAlignment.Left, -1f, UiFont(13), new Color(0.72f, 0.76f, 0.82f));
+		}
+		else if (_selectedStashIndex >= 0 && _selectedStashIndex < _stash.Count)
+		{
+			BackpackItem selectedItem = _stash[_selectedStashIndex];
+			DrawString(ThemeDB.FallbackFont, new Vector2(stashRect.Position.X + Ui(14f), stashInfoY), selectedItem.Label, HorizontalAlignment.Left, stashRect.Size.X - Ui(120f), UiFont(13), Colors.White);
+			DrawString(ThemeDB.FallbackFont, new Vector2(stashRect.Position.X + Ui(14f), stashInfoY + Ui(18f)), $"Sell value {GetItemValue(selectedItem.Label)}   Size {selectedItem.Size.X}x{selectedItem.Size.Y}", HorizontalAlignment.Left, stashRect.Size.X - Ui(120f), UiFont(12), new Color(0.95f, 0.86f, 0.48f));
+			Rect2 sellRect = new(new Vector2(stashRect.End.X - Ui(92f), stashInfoY - Ui(4f)), new Vector2(Ui(76f), Ui(28f)));
+			DrawButton(sellRect, "Sell", new Color(0.46f, 0.25f, 0.19f));
+			_buttons.Add(new ButtonDef(sellRect, "sell_stash", _selectedStashIndex));
+		}
+
+		if (!string.IsNullOrEmpty(stashHoverLabel))
+		{
+			DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f)), stashHoverLabel);
 		}
 
 		float shopY = shopRect.Position.Y + 44f;
