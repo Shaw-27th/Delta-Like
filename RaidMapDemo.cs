@@ -4540,8 +4540,8 @@ private sealed class RoomProjectileEffect
 		}
 
 		MapNode node = _nodes[_playerNodeId];
-		RoomUnit hero = GetHero();
-		Vector2 dropPosition = hero != null ? ClampToRoom(hero.Position + new Vector2(22f, 0f)) : RoomCenter;
+		RoomUnit hero = FindHeroUnit();
+		Vector2 dropPosition = hero != null ? ClampToRoom(hero.Position + new Vector2(22f, 0f)) : GetRoomArenaRect().GetCenter();
 		LootContainer discard = null;
 		for (int i = 0; i < node.Containers.Count; i++)
 		{
