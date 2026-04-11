@@ -744,7 +744,7 @@ private sealed class RoomProjectileEffect
 		}
 		if (_money == 0 && _stash.Count == 0)
 		{
-			_money = 300;
+			_money = 3000;
 			_stash.Add("旧军刀");
 			_stash.Add("草药包");
 		}
@@ -4357,6 +4357,10 @@ private sealed class RoomProjectileEffect
 	{
 		int maxX = originX + groupSize - block.Size.X;
 		int maxY = originY + groupSize - block.Size.Y;
+		Vector2I bestCell = new(-1, -1);
+		int bestPrimaryScore = int.MaxValue;
+		int bestSecondaryScore = int.MaxValue;
+		int bestTertiaryScore = int.MaxValue;
 		for (int y = originY; y <= maxY; y++)
 		{
 			for (int x = originX; x <= maxX; x++)
@@ -4366,13 +4370,79 @@ private sealed class RoomProjectileEffect
 					continue;
 				}
 
-				block.Cell = new Vector2I(x, y);
-				MarkCapacityBlockArea(occupied, block.Cell, block.Size);
-				return true;
+				GetCapacityPlacementScores(occupied, x, y, block.Size, originX, originY, groupSize,
+					out int primaryScore, out int secondaryScore, out int tertiaryScore);
+				if (primaryScore > bestPrimaryScore)
+				{
+					continue;
+				}
+
+				if (primaryScore == bestPrimaryScore && secondaryScore > bestSecondaryScore)
+				{
+					continue;
+				}
+
+				if (primaryScore == bestPrimaryScore && secondaryScore == bestSecondaryScore && tertiaryScore >= bestTertiaryScore)
+				{
+					continue;
+				}
+
+				bestCell = new Vector2I(x, y);
+				bestPrimaryScore = primaryScore;
+				bestSecondaryScore = secondaryScore;
+				bestTertiaryScore = tertiaryScore;
 			}
 		}
 
-		return false;
+		if (bestCell.X < 0)
+		{
+			return false;
+		}
+
+		block.Cell = bestCell;
+		MarkCapacityBlockArea(occupied, block.Cell, block.Size);
+		return true;
+	}
+
+	private void GetCapacityPlacementScores(bool[,] occupied, int startX, int startY, Vector2I size, int originX, int originY, int groupSize,
+		out int primaryScore, out int secondaryScore, out int tertiaryScore)
+	{
+		int minUsedX = int.MaxValue;
+		int minUsedY = int.MaxValue;
+		int maxUsedX = int.MinValue;
+		int maxUsedY = int.MinValue;
+
+		for (int y = originY; y < originY + groupSize && y < TeamBackpackMaxRows; y++)
+		{
+			for (int x = originX; x < originX + groupSize && x < TeamBackpackMaxWidth; x++)
+			{
+				bool used = occupied[x, y]
+					|| (x >= startX && x < startX + size.X && y >= startY && y < startY + size.Y);
+				if (!used)
+				{
+					continue;
+				}
+
+				minUsedX = Mathf.Min(minUsedX, x);
+				minUsedY = Mathf.Min(minUsedY, y);
+				maxUsedX = Mathf.Max(maxUsedX, x);
+				maxUsedY = Mathf.Max(maxUsedY, y);
+			}
+		}
+
+		if (maxUsedX < minUsedX || maxUsedY < minUsedY)
+		{
+			primaryScore = int.MaxValue;
+			secondaryScore = int.MaxValue;
+			tertiaryScore = int.MaxValue;
+			return;
+		}
+
+		int usedWidth = maxUsedX - minUsedX + 1;
+		int usedHeight = maxUsedY - minUsedY + 1;
+		primaryScore = Mathf.Max(usedWidth, usedHeight);
+		secondaryScore = Mathf.Abs(usedWidth - usedHeight);
+		tertiaryScore = (startY - originY) * groupSize + (startX - originX);
 	}
 
 	private int CountCapacityGroupOccupiedCells(bool[,] occupied, int originX, int originY, int groupSize)
