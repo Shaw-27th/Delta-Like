@@ -482,7 +482,7 @@ private sealed class RoomProjectileEffect
 			}
 		}
 
-		if (_inHideout || _runEnded || _selectedContainerIndex >= 0)
+		if (_inHideout || _runEnded)
 		{
 			return;
 		}
@@ -1533,14 +1533,21 @@ private sealed class RoomProjectileEffect
 
 		if (hasHostiles)
 		{
-			if (_selectedContainerIndex >= 0 && !IsSelectedContainerSearchLocked())
-			{
-				_selectedContainerIndex = -1;
-			}
+			CloseSelectedContainer(true);
 			return;
 		}
 
 		MapNode node = _nodes[_playerNodeId];
+		if (IsHeroInSelectedContainerRange(hero, node))
+		{
+			return;
+		}
+
+		if (_selectedContainerIndex >= 0)
+		{
+			CloseSelectedContainer(true);
+		}
+
 		int bestIndex = -1;
 		float bestDistance = float.MaxValue;
 		for (int i = 0; i < node.Containers.Count; i++)
@@ -1563,29 +1570,48 @@ private sealed class RoomProjectileEffect
 
 		if (bestIndex < 0)
 		{
-			if (!IsSelectedContainerSearchLocked())
-			{
-				_selectedContainerIndex = -1;
-			}
 			return;
 		}
 
-		if (!IsSelectedContainerSearchLocked() && _selectedContainerIndex != bestIndex)
+		if (_selectedContainerIndex != bestIndex)
 		{
 			OpenContainer(bestIndex);
 		}
 	}
 
-	private bool IsSelectedContainerSearchLocked()
+	private bool IsHeroInSelectedContainerRange(RoomUnit hero, MapNode node)
 	{
-		MapNode node = _nodes[_playerNodeId];
 		if (_selectedContainerIndex < 0 || _selectedContainerIndex >= node.Containers.Count)
 		{
 			return false;
 		}
 
 		LootContainer container = node.Containers[_selectedContainerIndex];
-		return container.ActiveSearchItemIndex >= 0;
+		if (container.IsEmpty)
+		{
+			return false;
+		}
+
+		return hero.Position.DistanceTo(container.Position) <= container.AutoOpenRange;
+	}
+
+	private void CloseSelectedContainer(bool interruptSearch)
+	{
+		MapNode node = _nodes[_playerNodeId];
+		if (_selectedContainerIndex >= 0 && _selectedContainerIndex < node.Containers.Count && interruptSearch)
+		{
+			LootContainer container = node.Containers[_selectedContainerIndex];
+			if (container.ActiveSearchItemIndex >= 0 && container.ActiveSearchItemIndex < container.GridItems.Count)
+			{
+				GridLootItem item = container.GridItems[container.ActiveSearchItemIndex];
+				item.SearchProgress = 0f;
+			}
+
+			container.ActiveSearchItemIndex = -1;
+		}
+
+		_selectedContainerIndex = -1;
+		_showSearchConfirm = false;
 	}
 
 	private float GetRoomUnitCollisionRadius(RoomUnit unit)
@@ -3701,13 +3727,6 @@ private sealed class RoomProjectileEffect
 			case "open_container":
 				OpenContainer(button.Index);
 				break;
-			case "close_container":
-				if (!IsSelectedContainerSearchLocked())
-				{
-					_selectedContainerIndex = -1;
-					RefreshStatus();
-				}
-				break;
 			case "extract":
 				TryExtract();
 				break;
@@ -4951,18 +4970,12 @@ private sealed class RoomProjectileEffect
 		float gridWidth = container.GridSize.X * cellSize.X + 26f;
 		Vector2 panelSize = new(Mathf.Max(gridWidth + 28f, 356f), container.GridSize.Y * cellSize.Y + 96f + equipmentHeight);
 		Rect2 panel = new((GetViewportRect().Size - panelSize) / 2f, panelSize);
-		DrawRect(new Rect2(Vector2.Zero, GetViewportRect().Size), new Color(0f, 0f, 0f, 0.38f), true);
-		DrawRect(panel, new Color(0.08f, 0.09f, 0.11f), true);
-		DrawRect(panel, Colors.White, false, 2f);
+		DrawRect(panel, new Color(0.08f, 0.09f, 0.11f, 0.7f), true);
+		DrawRect(panel, new Color(1f, 1f, 1f, 0.82f), false, 2f);
 		Rect2 titleBar = new(panel.Position + new Vector2(1f, 1f), new Vector2(panel.Size.X - 2f, 30f));
-		DrawRect(titleBar, new Color(0.12f, 0.13f, 0.16f), true);
+		DrawRect(titleBar, new Color(0.12f, 0.13f, 0.16f, 0.72f), true);
 		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(14f, 21f), container.Label, HorizontalAlignment.Left, 190f, 14, Colors.White);
 		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(panel.Size.X - 102f, 21f), GetContainerKindLabel(container.Kind), HorizontalAlignment.Left, 68f, 12, new Color(0.93f, 0.84f, 0.58f));
-		Rect2 closeRect = new(new Vector2(panel.End.X - 28f, panel.Position.Y + 5f), new Vector2(20f, 20f));
-		DrawRect(closeRect, new Color(0.26f, 0.14f, 0.14f), true);
-		DrawRect(closeRect, Colors.White, false, 1.2f);
-		DrawString(ThemeDB.FallbackFont, closeRect.Position + new Vector2(6f, 15f), "X", HorizontalAlignment.Left, -1f, 12, Colors.White);
-		_buttons.Add(new ButtonDef(closeRect, "close_container"));
 		float rowY = panel.Position.Y + 42f;
 		if (container.Kind == ContainerKind.EliteCorpse)
 		{
