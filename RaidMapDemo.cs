@@ -376,6 +376,9 @@ private sealed class RoomProjectileEffect
 	private bool _hasDraggedHideoutItem;
 	private Vector2I _draggedHideoutOriginalCell;
 	private bool _draggedHideoutFromLoadout;
+	private bool _pendingHideoutDrag;
+	private bool _pendingHideoutDragFromLoadout;
+	private int _pendingHideoutDragIndex = -1;
 	private int _selectedSettlementIndex = -1;
 	private int _sfxCursor;
 	private AudioStreamWav _sfxMeleeLight;
@@ -521,13 +524,43 @@ private sealed class RoomProjectileEffect
 			}
 		}
 
-		if (@event is not InputEventMouseButton mouse || !mouse.Pressed || mouse.ButtonIndex != MouseButton.Left)
+		if (@event is InputEventMouseMotion mouseMotion)
+		{
+			if ((_inHideout || (_runEnded && _showSettlementTransfer))
+				&& _pendingHideoutDrag
+				&& (((int)mouseMotion.ButtonMask & (int)MouseButtonMask.Left) != 0))
+			{
+				TryBeginPendingHideoutDrag();
+			}
+
+			return;
+		}
+
+		if (@event is not InputEventMouseButton mouse || mouse.ButtonIndex != MouseButton.Left)
 		{
 			return;
 		}
 
 		Vector2 click = mouse.Position;
-		if ((_inHideout || (_runEnded && _showSettlementTransfer)) && HandleHideoutStorageClick(click))
+		if ((_inHideout || (_runEnded && _showSettlementTransfer)))
+		{
+			if (mouse.Pressed)
+			{
+				if (HandleHideoutStoragePress(click))
+				{
+					return;
+				}
+			}
+			else
+			{
+				if (HandleHideoutStorageRelease(click))
+				{
+					return;
+				}
+			}
+		}
+
+		if (!mouse.Pressed)
 		{
 			return;
 		}
@@ -652,6 +685,8 @@ private sealed class RoomProjectileEffect
 		_draggedBackpackItem = null;
 		_hasDraggedHideoutItem = false;
 		_draggedHideoutItem = null;
+		_pendingHideoutDrag = false;
+		_pendingHideoutDragIndex = -1;
 
 		_playerMaxHp = 24;
 		_playerHp = 24;
@@ -797,6 +832,8 @@ private sealed class RoomProjectileEffect
 		_selectedSettlementIndex = -1;
 		_hasDraggedHideoutItem = false;
 		_draggedHideoutItem = null;
+		_pendingHideoutDrag = false;
+		_pendingHideoutDragIndex = -1;
 		_battleSim = null;
 		_eventLog.Clear();
 		if (_shopStock.Count == 0)
@@ -6427,7 +6464,7 @@ private sealed class RoomProjectileEffect
 		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(6f), Ui(16f)), label, HorizontalAlignment.Left, rect.Size.X - Ui(8f), UiFont(11), Colors.White);
 	}
 
-	private bool HandleHideoutStorageClick(Vector2 click)
+	private bool HandleHideoutStoragePress(Vector2 click)
 	{
 		GetHideoutStashGridLayout(out Rect2 stashGridRect, out Vector2 stashGridOrigin, out Vector2 stashCellSize);
 		GetSecondaryStorageGridLayout(out Rect2 secondaryGridRect, out Vector2 secondaryGridOrigin, out Vector2 secondaryCellSize);
@@ -6436,33 +6473,11 @@ private sealed class RoomProjectileEffect
 
 		if (!clickedStash && !clickedSecondary)
 		{
-			if (_hasDraggedHideoutItem)
-			{
-				RestoreDraggedHideoutItem();
-				return true;
-			}
-
 			return false;
 		}
 
 		if (_hasDraggedHideoutItem)
 		{
-			Vector2 local = click - (clickedStash ? stashGridOrigin : secondaryGridOrigin);
-			Vector2 cellSize = clickedStash ? stashCellSize : secondaryCellSize;
-			Vector2I cell = new(Mathf.FloorToInt(local.X / cellSize.X), Mathf.FloorToInt(local.Y / cellSize.Y));
-			if (clickedStash)
-			{
-				if (TryPlaceDraggedHideoutItemInStash(cell))
-				{
-					return true;
-				}
-			}
-			else if (TryPlaceDraggedHideoutItemInSecondary(cell))
-			{
-				return true;
-			}
-
-			RestoreDraggedHideoutItem();
 			return true;
 		}
 
@@ -6475,21 +6490,13 @@ private sealed class RoomProjectileEffect
 				return true;
 			}
 
-			if (_selectedStashIndex == itemIndex)
-			{
-				_draggedHideoutItem = _stash[itemIndex];
-				_draggedHideoutOriginalCell = _draggedHideoutItem.Cell;
-				_draggedHideoutFromLoadout = false;
-				_hasDraggedHideoutItem = true;
-				_stash.RemoveAt(itemIndex);
-				_selectedStashIndex = -1;
-				return true;
-			}
-
 			_selectedStashIndex = itemIndex;
 			_selectedShopIndex = -1;
 			_selectedLoadoutIndex = -1;
 			_selectedSettlementIndex = -1;
+			_pendingHideoutDrag = true;
+			_pendingHideoutDragFromLoadout = false;
+			_pendingHideoutDragIndex = itemIndex;
 			return true;
 		}
 
@@ -6508,18 +6515,6 @@ private sealed class RoomProjectileEffect
 			return true;
 		}
 
-		if ((_inHideout && _selectedLoadoutIndex == secondaryIndex) || (_showSettlementTransfer && _selectedSettlementIndex == secondaryIndex))
-		{
-			_draggedHideoutItem = _hideoutLoadout[secondaryIndex];
-			_draggedHideoutOriginalCell = _draggedHideoutItem.Cell;
-			_draggedHideoutFromLoadout = true;
-			_hasDraggedHideoutItem = true;
-			_hideoutLoadout.RemoveAt(secondaryIndex);
-			_selectedLoadoutIndex = -1;
-			_selectedSettlementIndex = -1;
-			return true;
-		}
-
 		_selectedStashIndex = -1;
 		_selectedShopIndex = -1;
 		if (_inHideout)
@@ -6533,7 +6528,92 @@ private sealed class RoomProjectileEffect
 			_selectedLoadoutIndex = -1;
 		}
 
+		_pendingHideoutDrag = true;
+		_pendingHideoutDragFromLoadout = true;
+		_pendingHideoutDragIndex = secondaryIndex;
+
 		return true;
+	}
+
+	private bool HandleHideoutStorageRelease(Vector2 click)
+	{
+		if (_hasDraggedHideoutItem)
+		{
+			GetHideoutStashGridLayout(out Rect2 stashGridRect, out Vector2 stashGridOrigin, out Vector2 stashCellSize);
+			GetSecondaryStorageGridLayout(out Rect2 secondaryGridRect, out Vector2 secondaryGridOrigin, out Vector2 secondaryCellSize);
+			bool clickedStash = stashGridRect.HasPoint(click);
+			bool clickedSecondary = secondaryGridRect.HasPoint(click);
+
+			if (clickedStash || clickedSecondary)
+			{
+				Vector2 local = click - (clickedStash ? stashGridOrigin : secondaryGridOrigin);
+				Vector2 cellSize = clickedStash ? stashCellSize : secondaryCellSize;
+				Vector2I cell = new(Mathf.FloorToInt(local.X / cellSize.X), Mathf.FloorToInt(local.Y / cellSize.Y));
+				if (clickedStash)
+				{
+					if (TryPlaceDraggedHideoutItemInStash(cell))
+					{
+						return true;
+					}
+				}
+				else if (TryPlaceDraggedHideoutItemInSecondary(cell))
+				{
+					return true;
+				}
+			}
+
+			RestoreDraggedHideoutItem();
+			return true;
+		}
+
+		_pendingHideoutDrag = false;
+		_pendingHideoutDragIndex = -1;
+		return false;
+	}
+
+	private void TryBeginPendingHideoutDrag()
+	{
+		if (!_pendingHideoutDrag || _pendingHideoutDragIndex < 0 || _hasDraggedHideoutItem)
+		{
+			return;
+		}
+
+		if (_pendingHideoutDragFromLoadout)
+		{
+			if (_pendingHideoutDragIndex >= _hideoutLoadout.Count)
+			{
+				_pendingHideoutDrag = false;
+				_pendingHideoutDragIndex = -1;
+				return;
+			}
+
+			_draggedHideoutItem = _hideoutLoadout[_pendingHideoutDragIndex];
+			_draggedHideoutOriginalCell = _draggedHideoutItem.Cell;
+			_draggedHideoutFromLoadout = true;
+			_hasDraggedHideoutItem = true;
+			_hideoutLoadout.RemoveAt(_pendingHideoutDragIndex);
+			_selectedLoadoutIndex = -1;
+			_selectedSettlementIndex = -1;
+		}
+		else
+		{
+			if (_pendingHideoutDragIndex >= _stash.Count)
+			{
+				_pendingHideoutDrag = false;
+				_pendingHideoutDragIndex = -1;
+				return;
+			}
+
+			_draggedHideoutItem = _stash[_pendingHideoutDragIndex];
+			_draggedHideoutOriginalCell = _draggedHideoutItem.Cell;
+			_draggedHideoutFromLoadout = false;
+			_hasDraggedHideoutItem = true;
+			_stash.RemoveAt(_pendingHideoutDragIndex);
+			_selectedStashIndex = -1;
+		}
+
+		_pendingHideoutDrag = false;
+		_pendingHideoutDragIndex = -1;
 	}
 
 	private void RestoreDraggedHideoutItem()
@@ -6555,6 +6635,8 @@ private sealed class RoomProjectileEffect
 
 		_hasDraggedHideoutItem = false;
 		_draggedHideoutItem = null;
+		_pendingHideoutDrag = false;
+		_pendingHideoutDragIndex = -1;
 	}
 
 	private bool TryPlaceDraggedHideoutItemInStash(Vector2I cell)
@@ -6576,6 +6658,8 @@ private sealed class RoomProjectileEffect
 		_stash.Add(_draggedHideoutItem);
 		_hasDraggedHideoutItem = false;
 		_draggedHideoutItem = null;
+		_pendingHideoutDrag = false;
+		_pendingHideoutDragIndex = -1;
 		return true;
 	}
 
@@ -6596,6 +6680,8 @@ private sealed class RoomProjectileEffect
 		_hideoutLoadout.Add(_draggedHideoutItem);
 		_hasDraggedHideoutItem = false;
 		_draggedHideoutItem = null;
+		_pendingHideoutDrag = false;
+		_pendingHideoutDragIndex = -1;
 		return true;
 	}
 
