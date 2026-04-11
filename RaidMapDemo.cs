@@ -71,6 +71,15 @@ public partial class RaidMapDemo : Node2D
 		public bool Visited;
 		public bool SearchRewardClaimed;
 		public readonly List<LootContainer> Containers = new();
+		public readonly List<RoomCorpseMarker> Corpses = new();
+	}
+
+	private sealed class RoomCorpseMarker
+	{
+		public bool IsPlayerSide;
+		public bool IsElite;
+		public bool IsHero;
+		public Vector2 Position;
 	}
 
 	private sealed class LootContainer
@@ -1844,6 +1853,17 @@ private sealed class RoomProjectileEffect
 
 	private void HandleUnitDeath(RoomUnit dead)
 	{
+		if (!dead.IsHero || !HasLivingPlayerAlliesExcludingHero())
+		{
+			_nodes[_playerNodeId].Corpses.Add(new RoomCorpseMarker
+			{
+				IsPlayerSide = dead.IsPlayerSide,
+				IsElite = dead.IsElite,
+				IsHero = dead.IsHero,
+				Position = dead.Position,
+			});
+		}
+
 		if (!dead.IsPlayerSide)
 		{
 			MapNode node = _nodes[_playerNodeId];
@@ -1898,6 +1918,20 @@ private sealed class RoomProjectileEffect
 				}
 			}
 		}
+	}
+
+	private bool HasLivingPlayerAlliesExcludingHero()
+	{
+		for (int i = 0; i < _roomUnits.Count; i++)
+		{
+			RoomUnit unit = _roomUnits[i];
+			if (unit.IsPlayerSide && !unit.IsHero && unit.IsAlive)
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private void RelayoutAlliesAroundHero()
@@ -2016,6 +2050,7 @@ private sealed class RoomProjectileEffect
 		}
 
 		DrawRoomExitsUnified(node);
+		DrawRoomCorpses(node);
 		DrawRoomImpactEffects();
 		DrawRoomUnits();
 	}
@@ -2046,12 +2081,6 @@ private sealed class RoomProjectileEffect
 			RoomUnit unit = _roomUnits[i];
 			if (!unit.IsAlive)
 			{
-				float corpseSize = unit.IsHero || unit.IsElite ? 16f : 8f;
-				Color corpseColor = unit.IsPlayerSide
-					? new Color(0.42f, 0.96f, 0.52f, 0.62f)
-					: (unit.IsElite ? new Color(1f, 0.34f, 0.34f, 0.66f) : new Color(0.94f, 0.94f, 0.96f, 0.56f));
-				DrawLine(unit.Position + new Vector2(-corpseSize, -corpseSize), unit.Position + new Vector2(corpseSize, corpseSize), corpseColor, unit.IsHero || unit.IsElite ? 4.4f : 2.8f);
-				DrawLine(unit.Position + new Vector2(-corpseSize, corpseSize), unit.Position + new Vector2(corpseSize, -corpseSize), corpseColor, unit.IsHero || unit.IsElite ? 4.4f : 2.8f);
 				continue;
 			}
 
@@ -2098,6 +2127,21 @@ private sealed class RoomProjectileEffect
 				DrawRect(staminaBg, new Color(1f, 0.96f, 0.72f, 0.7f), false, 0.8f);
 			}
 			DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-28f, -20f), unit.Name, HorizontalAlignment.Left, 110f, UiFont(12), Colors.White);
+		}
+	}
+
+	private void DrawRoomCorpses(MapNode node)
+	{
+		for (int i = 0; i < node.Corpses.Count; i++)
+		{
+			RoomCorpseMarker corpse = node.Corpses[i];
+			float corpseSize = corpse.IsHero || corpse.IsElite ? 16f : 8f;
+			float lineWidth = corpse.IsHero || corpse.IsElite ? 4.4f : 2.8f;
+			Color corpseColor = corpse.IsPlayerSide
+				? new Color(0.42f, 0.96f, 0.52f, 0.62f)
+				: (corpse.IsElite ? new Color(1f, 0.34f, 0.34f, 0.66f) : new Color(0.94f, 0.94f, 0.96f, 0.56f));
+			DrawLine(corpse.Position + new Vector2(-corpseSize, -corpseSize), corpse.Position + new Vector2(corpseSize, corpseSize), corpseColor, lineWidth);
+			DrawLine(corpse.Position + new Vector2(-corpseSize, corpseSize), corpse.Position + new Vector2(corpseSize, -corpseSize), corpseColor, lineWidth);
 		}
 	}
 
@@ -3754,10 +3798,10 @@ private sealed class RoomProjectileEffect
 			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
 		}
 
-		float contentTop = panel.Position.Y + Ui(236f);
+		float contentTop = panel.Position.Y + Ui(272f);
 		float contentGap = Ui(30f);
 		float contentWidth = (panel.Size.X - 18f - 18f - contentGap) * 0.5f;
-		float contentHeight = Mathf.Max(Ui(250f), panel.Size.Y - Ui(390f));
+		float contentHeight = Mathf.Max(Ui(210f), panel.Size.Y - Ui(474f));
 		Rect2 stashRect = new(new Vector2(panel.Position.X + Ui(18f), contentTop), new Vector2(contentWidth, contentHeight));
 		Rect2 shopRect = new(new Vector2(stashRect.End.X + contentGap, contentTop), new Vector2(contentWidth, contentHeight));
 		DrawRect(stashRect, new Color(0.09f, 0.1f, 0.12f), true);
@@ -3804,7 +3848,7 @@ private sealed class RoomProjectileEffect
 			shopY += 34f;
 		}
 
-		float soldierY = stashRect.End.Y + Ui(28f);
+		float soldierY = stashRect.End.Y + Ui(34f);
 		float soldierX = panel.Position.X + Ui(24f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(soldierX, soldierY), "士兵名单", HorizontalAlignment.Left, -1f, UiFont(19), Colors.White);
 		soldierY += Ui(24f);
