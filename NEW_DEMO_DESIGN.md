@@ -52,6 +52,105 @@
 - Normal enemy monsters and enemy soldiers also have a low-probability special container drop.
 - Elite / boss deaths continue to use their own dedicated container flow.
 
+### Proposed Backpack / Stash Direction
+
+- Containers, team backpack, and stash should all use the same width x height grid logic.
+- Search loot should enter the team backpack first.
+- Successful extraction should move carried items from the team backpack into stash storage.
+- Supplies and carried utility items should also consume team backpack space.
+
+- Team backpack should be modeled as squad carry capacity, not one hero wearing one giant bag.
+- Carry capacity should come from multiple sources at once.
+
+- Carry capacity sources:
+- Hero base carry capacity is the main stable source.
+- Hero skills, traits, and equipment can add more carry capacity.
+- Soldiers also add carry capacity, but usually much less per unit.
+- Advanced or special soldiers can add more than standard troops.
+- Special non-combat logistics units such as pack mules / transport carriers are allowed as future unit types.
+- Pre-run logistics loadout can add fixed or scaling carry bonuses for the whole squad.
+
+- Current recommended capacity structure:
+- `Total carry limit = stable base capacity + unit contribution + logistics bonus + equipment / trait bonus`.
+- Stable base capacity should come mostly from heroes and logistics.
+- Soldier contribution should feel meaningful, but should not be the only thing preventing the run from functioning.
+
+- Current recommended implementation direction:
+- Do not start with a literal hero-only Tarkov backpack.
+- Start with a squad carry-capacity panel that still uses grid space and item footprint.
+- The fiction should be expedition pack load, salvage drag bags, haul frames, or squad logistics support.
+
+- Current stash target:
+- Main stash tab is always present.
+- Main stash width is fixed at `12`.
+- Level 1 stash starts with `10` rows.
+- Stash upgrades can grant two separate benefits:
+- Increase base stash rows.
+- Increase storage-box slots.
+
+- Storage boxes are special stash items.
+- A storage box occupies one stash-box slot and opens as its own stash tab.
+- Main stash stays as tab 1.
+- Additional storage-box tabs appear after the main stash tab.
+- Storage-box tab selectors should live on the left side of the stash UI.
+
+- Each storage box has:
+- A fixed capacity.
+- A fixed grid shape derived from that capacity.
+- An optional item-type restriction.
+
+- Example storage-box behavior:
+- A `72`-slot storage box could provide a `12 x 6` sub-tab.
+- A typed storage box such as materials / collectibles / equipment can only hold that category.
+- An untyped storage box can hold all item categories.
+
+### Overload Rules
+
+- Carried items should always occupy actual team backpack space.
+- The panel should clearly display current usage and current limit.
+- Example display: `携行占用 34 / 28`.
+- If current usage exceeds current limit, the squad enters an `overloaded` state.
+
+- Overloaded state should not instantly destroy or auto-drop loot.
+- Overloaded state should not prevent movement inside the current room.
+- Overloaded state should prevent room-to-room movement.
+- Overloaded state should prevent extraction at extraction points.
+- Attempting to move through a door or extract while overloaded should show a clear overload warning.
+
+- If hero or soldier deaths reduce carry capacity, the run should transition into overload instead of deleting items.
+- The player should then resolve overload manually.
+- Required player-side solutions include:
+- Dropping items on the ground.
+- Leaving items in the current room container or a temporary floor container.
+- Reorganizing carried space.
+
+- This keeps death-linked carry pressure without creating unfair hard-fail situations.
+
+### Team Backpack Inspiration Options
+
+- Option A: Wagon / expedition pack.
+- The backpack is not the hero's personal bag.
+- It represents the squad's hauled field storage: mule packs, drag bags, folded crates, salvage rolls.
+- Better versions increase run carry capacity in a believable squad-level way.
+
+- Option B: Deployment logistics slot.
+- Before a run, the player chooses one logistics rig for the squad.
+- Example choices:
+- Light pack: smaller storage, more speed.
+- Standard pack: balanced storage.
+- Heavy haul kit: larger storage, but worse mobility / extraction pressure.
+- This keeps the Tarkov-like “capacity must be bought” concept while fitting a squad better.
+
+- Option C: Quartermaster support level.
+- Capacity is not a literal backpack item.
+- The hideout buys expedition support upgrades: handlers, pack frames, hauling nets, transport crates.
+- Mechanically it still works like backpack tiers, but fictionally it belongs to the whole team.
+
+- Current recommended direction:
+- Start with Option A or B as the presentation layer.
+- Mechanically use the multi-source capacity model above.
+- They preserve the strong loot-space economy without making the whole system feel like one hero carrying an unrealistic amount alone.
+
 ## 文档目的
 
 - 这份文档以当前代码实现为准。

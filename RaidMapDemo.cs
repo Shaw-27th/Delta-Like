@@ -3724,6 +3724,9 @@ private sealed class RoomProjectileEffect
 			case "take":
 				TakeVisible(button.Index);
 				break;
+			case "take_all":
+				TakeAllFromContainer(button.Index);
+				break;
 			case "open_container":
 				OpenContainer(button.Index);
 				break;
@@ -3893,6 +3896,71 @@ private sealed class RoomProjectileEffect
 		container.VisibleItems.RemoveAt(itemIndex);
 		AddLoot(item);
 		LogEvent($"从 {container.Label} 取走了 {item}。");
+		RefreshStatus();
+	}
+
+	private void TakeAllFromContainer(int containerIndex)
+	{
+		MapNode node = _nodes[_playerNodeId];
+		if (!CanSearch(node))
+		{
+			_status = "房间仍然危险，暂时不能搜刮。";
+			return;
+		}
+
+		if (containerIndex < 0 || containerIndex >= node.Containers.Count)
+		{
+			return;
+		}
+
+		LootContainer container = node.Containers[containerIndex];
+		int takenCount = 0;
+
+		for (int equipIndex = 0; equipIndex < container.EquippedItems.Count; equipIndex++)
+		{
+			EquippedLoot equipped = container.EquippedItems[equipIndex];
+			if (equipped.Taken || string.IsNullOrEmpty(equipped.Label))
+			{
+				continue;
+			}
+
+			equipped.Taken = true;
+			AddLoot(equipped.Label);
+			takenCount++;
+		}
+
+		if (container.GridItems.Count > 0)
+		{
+			for (int itemIndex = 0; itemIndex < container.GridItems.Count; itemIndex++)
+			{
+				GridLootItem item = container.GridItems[itemIndex];
+				if (!item.Revealed || item.Taken)
+				{
+					continue;
+				}
+
+				item.Taken = true;
+				AddLoot(item.Label);
+				takenCount++;
+			}
+		}
+		else
+		{
+			takenCount += container.VisibleItems.Count;
+			for (int i = 0; i < container.VisibleItems.Count; i++)
+			{
+				AddLoot(container.VisibleItems[i]);
+			}
+			container.VisibleItems.Clear();
+		}
+
+		if (takenCount <= 0)
+		{
+			_status = $"{container.Label} 当前没有可一键拿取的物品。";
+			return;
+		}
+
+		LogEvent($"从 {container.Label} 一次取走了 {takenCount} 件物品。");
 		RefreshStatus();
 	}
 
@@ -4956,6 +5024,34 @@ private sealed class RoomProjectileEffect
 		}
 		return count;
 	}
+
+	private int CountTakeableContainerItems(LootContainer container)
+	{
+		int count = 0;
+		foreach (EquippedLoot equipped in container.EquippedItems)
+		{
+			if (!equipped.Taken && !string.IsNullOrEmpty(equipped.Label))
+			{
+				count++;
+			}
+		}
+
+		if (container.GridItems.Count > 0)
+		{
+			foreach (GridLootItem item in container.GridItems)
+			{
+				if (item.Revealed && !item.Taken)
+				{
+					count++;
+				}
+			}
+
+			return count;
+		}
+
+		return count + container.VisibleItems.Count;
+	}
+
 	private void DrawContainerPopup()
 	{
 		MapNode node = _nodes[_playerNodeId];
@@ -4976,6 +5072,13 @@ private sealed class RoomProjectileEffect
 		DrawRect(titleBar, new Color(0.12f, 0.13f, 0.16f, 0.72f), true);
 		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(14f, 21f), container.Label, HorizontalAlignment.Left, 190f, 14, Colors.White);
 		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(panel.Size.X - 102f, 21f), GetContainerKindLabel(container.Kind), HorizontalAlignment.Left, 68f, 12, new Color(0.93f, 0.84f, 0.58f));
+		int takeableCount = CountTakeableContainerItems(container);
+		if (takeableCount > 0)
+		{
+			Rect2 takeAllRect = new(new Vector2(panel.End.X - 92f, panel.Position.Y + 4f), new Vector2(78f, 22f));
+			DrawButton(takeAllRect, "拾取全部", new Color(0.28f, 0.46f, 0.62f));
+			_buttons.Add(new ButtonDef(takeAllRect, "take_all", _selectedContainerIndex));
+		}
 		float rowY = panel.Position.Y + 42f;
 		if (container.Kind == ContainerKind.EliteCorpse)
 		{
