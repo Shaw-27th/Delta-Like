@@ -1087,22 +1087,32 @@ private sealed class RoomProjectileEffect
 		TickRoomUnitState(hero, delta);
 		if (!hero.IsAlive)
 		{
-			return;
+			if (!HasLivingPlayerRoomUnits())
+			{
+				_playerHp = 0;
+				_runBackpack.Clear();
+				_runEnded = true;
+				_runFailed = true;
+				_selectedContainerIndex = -1;
+				_showSearchConfirm = false;
+				_status = "全队失去作战能力。";
+				return;
+			}
 		}
 
-		if (hero.HitPauseTime > 0f)
+		if (hero.IsAlive && hero.HitPauseTime > 0f)
 		{
 			hero.Facing = hero.Facing == Vector2.Zero ? Vector2.Right : hero.Facing.Normalized();
 		}
-		else if (hero.KnockbackTime > 0f)
+		else if (hero.IsAlive && hero.KnockbackTime > 0f)
 		{
 			AdvanceKnockback(hero, delta);
 		}
-		else if (hero.StaggerTime > 0f || hero.AttackWindupTime > 0f || hero.RecoveryTime > 0f)
+		else if (hero.IsAlive && (hero.StaggerTime > 0f || hero.AttackWindupTime > 0f || hero.RecoveryTime > 0f))
 		{
 			hero.Facing = hero.Facing == Vector2.Zero ? Vector2.Right : hero.Facing.Normalized();
 		}
-		else if (_heroHasMoveTarget)
+		else if (hero.IsAlive && _heroHasMoveTarget)
 		{
 			Vector2 toTarget = _heroMoveTarget - hero.Position;
 			if (toTarget.Length() <= 6f)
@@ -1150,7 +1160,7 @@ private sealed class RoomProjectileEffect
 			}
 			else
 			{
-				Vector2 follow = hero.Position + new Vector2(-24f, 0f);
+				Vector2 follow = GetAllyFollowAnchor(hero, unit);
 				Vector2 dir = follow - unit.Position;
 				if (dir.Length() > 14f)
 				{
@@ -1192,7 +1202,7 @@ private sealed class RoomProjectileEffect
 			}
 		}
 
-		if (HasHostilesInRoom())
+		if (hero.IsAlive && HasHostilesInRoom())
 		{
 			RoomUnit heroTarget = FindNearestTarget(hero, false);
 			if (heroTarget != null && !_heroHasMoveTarget)
@@ -1221,6 +1231,8 @@ private sealed class RoomProjectileEffect
 			_runBackpack.Clear();
 			_runEnded = true;
 			_runFailed = true;
+			_selectedContainerIndex = -1;
+			_showSearchConfirm = false;
 			_status = "全队失去作战能力。";
 			return;
 		}
@@ -1256,6 +1268,51 @@ private sealed class RoomProjectileEffect
 		}
 
 		return false;
+	}
+
+	private Vector2 GetAllyFollowAnchor(RoomUnit hero, RoomUnit unit)
+	{
+		int followIndex = 0;
+		for (int i = 0; i < _roomUnits.Count; i++)
+		{
+			RoomUnit candidate = _roomUnits[i];
+			if (!candidate.IsPlayerSide || candidate.IsHero || !candidate.IsAlive)
+			{
+				continue;
+			}
+
+			if (candidate == unit)
+			{
+				break;
+			}
+
+			followIndex++;
+		}
+
+		Vector2[] slots =
+		[
+			new Vector2(-32f, -34f),
+			new Vector2(-58f, 0f),
+			new Vector2(-32f, 34f),
+			new Vector2(-84f, -24f),
+			new Vector2(-84f, 24f),
+			new Vector2(-110f, 0f),
+		];
+
+		Vector2 offset;
+		if (followIndex < slots.Length)
+		{
+			offset = slots[followIndex];
+		}
+		else
+		{
+			int extra = followIndex - slots.Length;
+			int row = extra / 3;
+			int col = extra % 3;
+			offset = new Vector2(-132f - row * 22f, (col - 1) * 28f);
+		}
+
+		return ClampToRoom(hero.Position + offset);
 	}
 
 	private void ResolveRoomUnitCollisions(RoomUnit hero)
@@ -1860,8 +1917,7 @@ private sealed class RoomProjectileEffect
 				continue;
 			}
 
-			Vector2 offset = new Vector2(-24f - (index % 3) * 20f, (index / 3) * 24f - 24f);
-			unit.Position = ClampToRoom(hero.Position + offset);
+			unit.Position = GetAllyFollowAnchor(hero, unit);
 			index++;
 		}
 	}
@@ -1992,10 +2048,10 @@ private sealed class RoomProjectileEffect
 			{
 				float corpseSize = unit.IsHero || unit.IsElite ? 16f : 8f;
 				Color corpseColor = unit.IsPlayerSide
-					? new Color(0.42f, 0.96f, 0.52f, 0.92f)
-					: (unit.IsElite ? new Color(1f, 0.34f, 0.34f, 0.96f) : new Color(0.94f, 0.94f, 0.96f, 0.88f));
-				DrawLine(unit.Position + new Vector2(-corpseSize, -corpseSize), unit.Position + new Vector2(corpseSize, corpseSize), corpseColor, unit.IsHero || unit.IsElite ? 3.8f : 2.4f);
-				DrawLine(unit.Position + new Vector2(-corpseSize, corpseSize), unit.Position + new Vector2(corpseSize, -corpseSize), corpseColor, unit.IsHero || unit.IsElite ? 3.8f : 2.4f);
+					? new Color(0.42f, 0.96f, 0.52f, 0.62f)
+					: (unit.IsElite ? new Color(1f, 0.34f, 0.34f, 0.66f) : new Color(0.94f, 0.94f, 0.96f, 0.56f));
+				DrawLine(unit.Position + new Vector2(-corpseSize, -corpseSize), unit.Position + new Vector2(corpseSize, corpseSize), corpseColor, unit.IsHero || unit.IsElite ? 4.4f : 2.8f);
+				DrawLine(unit.Position + new Vector2(-corpseSize, corpseSize), unit.Position + new Vector2(corpseSize, -corpseSize), corpseColor, unit.IsHero || unit.IsElite ? 4.4f : 2.8f);
 				continue;
 			}
 
