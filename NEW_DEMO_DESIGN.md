@@ -1,5 +1,48 @@
 # New Demo Design
 
+## Latest Progress
+
+### 2026-04 Recent Changes
+
+- Room-to-room traversal now uses continuous geometric door placement.
+- Each linked room projects its direction onto the current room boundary, so room doors align with node-map direction instead of only snapping to fixed 4-way slots.
+- Entering a room now uses the opposite of the previous exit direction, so cross-room entry and exit are consistent.
+
+- The overlay node map and backdrop map now scale against the current viewport-derived map rect.
+- Backdrop district labels stay hidden on the floor map. Node labels remain on node markers only.
+
+- AI squads and generic monsters are now visually separated.
+- AI squads use warm orange/yellow accents.
+- Monsters and threat units use gray-white tones.
+- Death X markers inherit the corresponding unit color family.
+
+- Hero movement speed inside rooms now doubles while there are no hostile units in the room.
+- This only affects exploration movement, not active combat behavior.
+
+- Room containers were moved out of the right sidebar and into the room scene itself.
+- Static room containers now spawn at preset scene anchors with a simple in-room model.
+- Containers can auto-open at close range during non-combat.
+- If auto-search is enabled, opening a nearby container will also auto-start the existing search flow.
+
+- Unit deaths now feed scene containers directly.
+- Both player-side and enemy-side deaths can generate container loot.
+- Normal deaths try to merge into an existing nearby corpse pile.
+- Elite / boss deaths always create a separate elite container.
+- The current death-loot contribution is intentionally simple and randomized for now; the merge mechanism exists and can be expanded later.
+
+### Current Container/Search Direction
+
+- Sidebar container listing is no longer the main interaction path.
+- Search is currently intended for non-combat only.
+- The existing grid-based reveal/search/take flow is still in use after a container is opened.
+- Container scene presentation is currently functional placeholder art, not final visual design.
+
+### Current Known Follow-up
+
+- Static room container placement still uses preset anchor points, not per-room handcrafted dressing.
+- Some old container/sidebar helper code may still remain in the file even though the main interaction path has moved to in-room containers.
+- Death-generated container visuals are usable but not yet final and can still be polished.
+
 ## 文档目的
 
 - 这份文档以当前代码实现为准。
