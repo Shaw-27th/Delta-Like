@@ -186,18 +186,6 @@ public partial class RaidMapDemo : Node2D
 		public string PromptText = "";
 	}
 
-	private enum RoomDoorSide
-	{
-		West,
-		NorthWest,
-		North,
-		NorthEast,
-		East,
-		SouthEast,
-		South,
-		SouthWest,
-	}
-
 	private enum RoomCombatState
 	{
 		Idle,
@@ -336,7 +324,7 @@ private sealed class RoomProjectileEffect
 	private Vector2 _heroMoveTarget;
 	private bool _heroHasMoveTarget;
 	private int _pendingExitNodeId = -1;
-	private RoomDoorSide _pendingExitSide = RoomDoorSide.East;
+	private Vector2 _pendingExitDirection = Vector2.Right;
 	private bool _roomDirty;
 	private string _status = "点击相邻节点移动。";
 
@@ -508,7 +496,7 @@ private sealed class RoomProjectileEffect
 			ApplyCombatFxDebugOpening();
 			ApplyDifficultyToRun();
 			LogEvent("行动开始，其他小队已经进入边境堡寨。");
-			EnterNodeRoom(_playerNodeId, RoomDoorSide.West, false);
+			EnterNodeRoom(_playerNodeId, Vector2.Left, false);
 			RefreshStatus();
 			return;
 		}
@@ -570,7 +558,7 @@ private sealed class RoomProjectileEffect
 		ApplyCombatFxDebugOpening();
 		ApplyDifficultyToRun();
 		LogEvent("行动开始，其他小队已经进入地图。");
-		EnterNodeRoom(_playerNodeId, RoomDoorSide.West, false);
+		EnterNodeRoom(_playerNodeId, Vector2.Left, false);
 		RefreshStatus();
 	}
 
@@ -807,7 +795,7 @@ private sealed class RoomProjectileEffect
 			Mathf.Clamp(position.Y, rect.Position.Y + 18f, rect.End.Y - 18f));
 	}
 
-	private void EnterNodeRoom(int nodeId, RoomDoorSide entrySide, bool advanceTurn)
+	private void EnterNodeRoom(int nodeId, Vector2 entryDirection, bool advanceTurn)
 	{
 		int previousNodeId = _playerNodeId;
 		_playerNodeId = nodeId;
@@ -816,10 +804,16 @@ private sealed class RoomProjectileEffect
 		_pendingExitNodeId = -1;
 		_heroHasMoveTarget = false;
 
-		Vector2 heroSpawn = GetDoorSpawnPoint(entrySide);
+		Vector2 heroSpawn = GetDoorSpawnPoint(entryDirection);
+		Vector2 inwardFacing = entryDirection == Vector2.Zero ? Vector2.Right : -entryDirection.Normalized();
 		if (_roomUnits.Count == 0)
 		{
 			SpawnAlliesAt(heroSpawn);
+			RoomUnit spawnedHero = FindHeroUnit();
+			if (spawnedHero != null)
+			{
+				spawnedHero.Facing = inwardFacing;
+			}
 		}
 		else
 		{
@@ -827,7 +821,7 @@ private sealed class RoomProjectileEffect
 			if (hero != null)
 			{
 				hero.Position = heroSpawn;
-				hero.Facing = Vector2.Right;
+				hero.Facing = inwardFacing;
 				hero.KnockbackTime = 0f;
 				hero.KnockbackVelocity = Vector2.Zero;
 			}
@@ -845,14 +839,9 @@ private sealed class RoomProjectileEffect
 		RefreshStatus();
 	}
 
-	private Vector2 GetDoorSpawnPoint(RoomDoorSide side)
+	private Vector2 GetDoorSpawnPoint(Vector2 direction)
 	{
-		Rect2 rect = GetRoomArenaRect();
-		Vector2 center = rect.GetCenter();
-		Vector2 half = rect.Size * 0.5f;
-		Vector2 direction = GetDoorDirection(side);
-		Vector2 p = center + new Vector2(direction.X * (half.X - 34f), direction.Y * (half.Y - 34f));
-		return ClampToRoom(p);
+		return ClampToRoom(GetRoomExitRect(direction).GetCenter());
 	}
 
 	private void SpawnAlliesAt(Vector2 heroPos)
@@ -1229,10 +1218,10 @@ private sealed class RoomProjectileEffect
 			Rect2 door = GetRoomExitRect(_nodes[_playerNodeId], _pendingExitNodeId).Grow(8f);
 			if (door.HasPoint(hero.Position))
 			{
-				RoomDoorSide entrySide = GetOppositeSide(_pendingExitSide);
+				Vector2 entryDirection = GetOppositeDirection(_pendingExitDirection);
 				int nextNodeId = _pendingExitNodeId;
 				_pendingExitNodeId = -1;
-				EnterNodeRoom(nextNodeId, entrySide, true);
+				EnterNodeRoom(nextNodeId, entryDirection, true);
 			}
 		}
 
@@ -1958,22 +1947,20 @@ private sealed class RoomProjectileEffect
 		}
 	}
 
-	private RoomDoorSide GetExitSide(MapNode fromNode, int linkedNodeId)
+	private Vector2 GetExitDirection(MapNode fromNode, int linkedNodeId)
 	{
 		if (linkedNodeId < 0 || linkedNodeId >= _nodes.Count)
 		{
-			return RoomDoorSide.East;
+			return Vector2.Right;
 		}
 
 		Vector2 delta = _nodes[linkedNodeId].Position - fromNode.Position;
-		float angle = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(delta.Y, delta.X)) + 360f, 360f);
-		int octant = Mathf.PosMod(Mathf.RoundToInt(angle / 45f), 8);
-		return (RoomDoorSide)octant;
+		return delta == Vector2.Zero ? Vector2.Right : delta.Normalized();
 	}
 
-	private RoomDoorSide GetOppositeSide(RoomDoorSide side)
+	private Vector2 GetOppositeDirection(Vector2 direction)
 	{
-		return (RoomDoorSide)(((int)side + 4) % 8);
+		return direction == Vector2.Zero ? Vector2.Left : -direction.Normalized();
 	}
 
 	private Rect2 GetMapCanvasRect()
@@ -2015,42 +2002,24 @@ private sealed class RoomProjectileEffect
 		return new Rect2(min, max - min);
 	}
 
-	private Vector2 GetDoorDirection(RoomDoorSide side)
-	{
-		return side switch
-		{
-			RoomDoorSide.West => Vector2.Left,
-			RoomDoorSide.NorthWest => new Vector2(-1f, -1f).Normalized(),
-			RoomDoorSide.North => Vector2.Up,
-			RoomDoorSide.NorthEast => new Vector2(1f, -1f).Normalized(),
-			RoomDoorSide.East => Vector2.Right,
-			RoomDoorSide.SouthEast => new Vector2(1f, 1f).Normalized(),
-			RoomDoorSide.South => Vector2.Down,
-			_ => new Vector2(-1f, 1f).Normalized(),
-		};
-	}
-
 	private Rect2 GetRoomExitRect(MapNode node, int linkedNodeId)
 	{
-		RoomDoorSide side = GetExitSide(node, linkedNodeId);
-		int slotIndex = 0;
-		int slotCount = 0;
-		foreach (int neighborId in node.Links)
-		{
-			if (GetExitSide(node, neighborId) != side)
-			{
-				continue;
-			}
+		return GetRoomExitRect(GetExitDirection(node, linkedNodeId));
+	}
 
-			if (neighborId == linkedNodeId)
-			{
-				slotIndex = slotCount;
-			}
-
-			slotCount++;
-		}
-
-		return GetRoomExitRect(side, slotIndex, Mathf.Max(slotCount, 1));
+	private Rect2 GetRoomExitRect(Vector2 rawDirection)
+	{
+		Vector2 size = new(112f, 46f);
+		Rect2 arena = GetRoomArenaRect();
+		Vector2 center = arena.GetCenter();
+		Vector2 direction = rawDirection == Vector2.Zero ? Vector2.Right : rawDirection.Normalized();
+		float insetX = arena.Size.X * 0.5f - size.X * 0.5f - 22f;
+		float insetY = arena.Size.Y * 0.5f - size.Y * 0.5f - 22f;
+		float tx = Mathf.Abs(direction.X) > 0.001f ? insetX / Mathf.Abs(direction.X) : float.MaxValue;
+		float ty = Mathf.Abs(direction.Y) > 0.001f ? insetY / Mathf.Abs(direction.Y) : float.MaxValue;
+		float distance = Mathf.Min(tx, ty);
+		Vector2 doorCenter = center + direction * distance;
+		return new Rect2(doorCenter - size * 0.5f, size);
 	}
 
 	private void DrawRoomViewUnified()
@@ -2109,14 +2078,13 @@ private sealed class RoomProjectileEffect
 		{
 			int linkedNodeId = node.Links[i];
 			MapNode linkedNode = _nodes[linkedNodeId];
-			RoomDoorSide side = GetExitSide(node, linkedNodeId);
 			Rect2 exitRect = GetRoomExitRect(node, linkedNodeId);
 			bool pending = linkedNodeId == _pendingExitNodeId;
 			Color fill = pending ? new Color(0.3f, 0.62f, 0.82f, 0.92f) : new Color(0.28f, 0.34f, 0.44f, 0.9f);
 			Color border = pending ? new Color(1f, 0.92f, 0.58f, 1f) : new Color(0.85f, 0.92f, 1f, 0.96f);
 			DrawRect(exitRect, fill, true);
 			DrawRect(exitRect, border, false, 2f);
-			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(Ui(8f), Ui(19f)), GetCleanExitDirectionLabel(side), HorizontalAlignment.Left, exitRect.Size.X - Ui(16f), UiFont(13), Colors.White);
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(Ui(8f), Ui(19f)), GetCleanExitDirectionLabel(GetExitDirection(node, linkedNodeId)), HorizontalAlignment.Left, exitRect.Size.X - Ui(16f), UiFont(13), Colors.White);
 			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(Ui(8f), Ui(38f)), linkedNode.Name, HorizontalAlignment.Left, exitRect.Size.X - Ui(16f), UiFont(12), new Color(0.9f, 0.95f, 1f));
 			_buttons.Add(new ButtonDef(exitRect, "use_exit", linkedNodeId));
 		}
@@ -2491,10 +2459,10 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
-		RoomDoorSide side = GetExitSide(node, nodeId);
+		Vector2 direction = GetExitDirection(node, nodeId);
 		Rect2 doorRect = GetRoomExitRect(node, nodeId);
 		_pendingExitNodeId = nodeId;
-		_pendingExitSide = side;
+		_pendingExitDirection = direction;
 		_heroMoveTarget = ClampToRoom(doorRect.GetCenter());
 		_heroHasMoveTarget = true;
 		_status = $"前往 {_nodes[nodeId].Name} 的门口。";
@@ -4040,7 +4008,7 @@ private sealed class RoomProjectileEffect
 		{
 			int linkedNodeId = node.Links[i];
 			MapNode linkedNode = _nodes[linkedNodeId];
-			string exitLabel = $"{GetExitDirectionLabel(GetExitSide(node, linkedNodeId))} -> {linkedNode.Name}";
+			string exitLabel = $"{GetExitDirectionLabel(GetExitDirection(node, linkedNodeId))} -> {linkedNode.Name}";
 			DrawString(ThemeDB.FallbackFont, new Vector2(_mapRect.Position.X + 24f, exitY), exitLabel, HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.76f, 0.8f, 0.86f));
 			exitY += 18f;
 		}
@@ -4072,38 +4040,33 @@ private sealed class RoomProjectileEffect
 			Color border = planned ? new Color(0.92f, 0.84f, 0.58f, 0.98f) : new Color(0.62f, 0.68f, 0.76f, 0.95f);
 			DrawRect(exitRect, fill, true);
 			DrawRect(exitRect, border, false, 2f);
-			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(10f, 18f), GetExitDirectionLabel(GetExitSide(node, linkedNodeId)), HorizontalAlignment.Left, exitRect.Size.X - 20f, UiFont(13), Colors.White);
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(10f, 18f), GetExitDirectionLabel(GetExitDirection(node, linkedNodeId)), HorizontalAlignment.Left, exitRect.Size.X - 20f, UiFont(13), Colors.White);
 			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(10f, 38f), linkedNode.Name, HorizontalAlignment.Left, exitRect.Size.X - 20f, UiFont(13), new Color(0.88f, 0.92f, 0.98f));
 			_buttons.Add(new ButtonDef(exitRect, "use_exit", linkedNodeId));
 		}
 	}
 
-private Rect2 GetRoomExitRect(RoomDoorSide side, int slotIndex = 0, int slotCount = 1)
-{
-	Vector2 size = new(112f, 46f);
-	Rect2 arena = GetRoomArenaRect();
-	Vector2 center = arena.GetCenter();
-	Vector2 direction = GetDoorDirection(side);
-	Vector2 half = arena.Size * 0.5f;
-	Vector2 anchor = center + new Vector2(direction.X * (half.X - size.X * 0.5f - 22f), direction.Y * (half.Y - size.Y * 0.5f - 22f));
-	Vector2 tangent = new(-direction.Y, direction.X);
-	float spacing = Mathf.Min(size.X, size.Y) * 0.72f;
-	float offset = (slotIndex - (slotCount - 1) * 0.5f) * spacing;
-	Vector2 position = anchor + tangent * offset - size * 0.5f;
-	return new Rect2(position, size);
-}
-
-	private string GetExitDirectionLabel(RoomDoorSide side) => side switch
+	private string GetExitDirectionLabel(Vector2 direction)
 	{
-		RoomDoorSide.West => "W",
-		RoomDoorSide.NorthWest => "NW",
-		RoomDoorSide.North => "N",
-		RoomDoorSide.NorthEast => "NE",
-		RoomDoorSide.East => "E",
-		RoomDoorSide.SouthEast => "SE",
-		RoomDoorSide.South => "S",
-		_ => "SW",
-	};
+		Vector2 dir = direction == Vector2.Zero ? Vector2.Right : direction.Normalized();
+		float angle = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(dir.Y, dir.X)) + 360f, 360f);
+		string horizontal = dir.X switch
+		{
+			> 0.38f => "E",
+			< -0.38f => "W",
+			_ => ""
+		};
+		string vertical = dir.Y switch
+		{
+			> 0.38f => "S",
+			< -0.38f => "N",
+			_ => ""
+		};
+		string label = $"{vertical}{horizontal}";
+		return string.IsNullOrEmpty(label) ? $"{Mathf.RoundToInt(angle)}°" : label;
+	}
+
+	private string GetCleanExitDirectionLabel(Vector2 direction) => GetExitDirectionLabel(direction);
 
 	private string GetExitDirectionLabel(int index, int totalCount) => totalCount switch
 	{
@@ -4124,17 +4087,6 @@ private Rect2 GetRoomExitRect(RoomDoorSide side, int slotIndex = 0, int slotCoun
 		},
 	};
 
-	private string GetCleanExitDirectionLabel(RoomDoorSide side) => side switch
-	{
-		RoomDoorSide.West => "W",
-		RoomDoorSide.NorthWest => "NW",
-		RoomDoorSide.North => "N",
-		RoomDoorSide.NorthEast => "NE",
-		RoomDoorSide.East => "E",
-		RoomDoorSide.SouthEast => "SE",
-		RoomDoorSide.South => "S",
-		_ => "SW",
-	};
 
 	private void DrawMonasteryBackdrop()
 	{
