@@ -9,7 +9,8 @@ public partial class RaidMapDemo : Node2D
 	private const int DifficultyCount = 3;
 	private const bool EnableCombatFxDebugOpening = false;
 	private const int SfxSampleRate = 22050;
-	private static readonly Vector2I TeamBackpackGridSize = new(5, 8);
+	private const int TeamBackpackMaxWidth = 12;
+	private const int TeamBackpackMaxRows = 12;
 	private static readonly Rect2 DesignMapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
 
 	private enum NodeType
@@ -168,6 +169,13 @@ public partial class RaidMapDemo : Node2D
 	{
 		public string Label = "";
 		public ItemRarity Rarity;
+		public Vector2I Size;
+		public Vector2I Cell;
+	}
+
+	private sealed class BackpackCapacityBlock
+	{
+		public string SourceLabel = "";
 		public Vector2I Size;
 		public Vector2I Cell;
 	}
@@ -353,6 +361,9 @@ private sealed class RoomProjectileEffect
 	private Vector2 _pendingExitDirection = Vector2.Right;
 	private bool _roomDirty;
 	private string _status = "点击相邻节点移动。";
+	private BackpackItem _draggedBackpackItem;
+	private bool _hasDraggedBackpackItem;
+	private Vector2I _draggedBackpackOriginalCell;
 	private int _sfxCursor;
 	private AudioStreamWav _sfxMeleeLight;
 	private AudioStreamWav _sfxMeleeHeavy;
@@ -470,10 +481,19 @@ private sealed class RoomProjectileEffect
 	public override void _UnhandledInput(InputEvent @event)
 	{
 		UpdateLayoutRects();
-		if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo && keyEvent.Keycode == Key.M)
+		if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo)
 		{
-			ToggleMapOverlay();
-			return;
+			if (keyEvent.Keycode == Key.M)
+			{
+				ToggleMapOverlay();
+				return;
+			}
+
+			if (_hasDraggedBackpackItem && keyEvent.Keycode == Key.R)
+			{
+				_draggedBackpackItem.Size = new Vector2I(_draggedBackpackItem.Size.Y, _draggedBackpackItem.Size.X);
+				return;
+			}
 		}
 
 		if (@event is not InputEventMouseButton mouse || !mouse.Pressed || mouse.ButtonIndex != MouseButton.Left)
@@ -492,6 +512,11 @@ private sealed class RoomProjectileEffect
 		}
 
 		if (_inHideout || _runEnded)
+		{
+			return;
+		}
+
+		if (HandleBackpackPreviewClick(click))
 		{
 			return;
 		}
@@ -574,6 +599,8 @@ private sealed class RoomProjectileEffect
 		_aiSquads.Clear();
 		_eventLog.Clear();
 		_runBackpack.Clear();
+		_hasDraggedBackpackItem = false;
+		_draggedBackpackItem = null;
 
 		_playerMaxHp = 24;
 		_playerHp = 24;
@@ -1242,6 +1269,8 @@ private sealed class RoomProjectileEffect
 			{
 				_playerHp = 0;
 				_runBackpack.Clear();
+				_hasDraggedBackpackItem = false;
+				_draggedBackpackItem = null;
 				_runEnded = true;
 				_runFailed = true;
 				_selectedContainerIndex = -1;
@@ -1383,6 +1412,8 @@ private sealed class RoomProjectileEffect
 		{
 			_playerHp = 0;
 			_runBackpack.Clear();
+			_hasDraggedBackpackItem = false;
+			_draggedBackpackItem = null;
 			_runEnded = true;
 			_runFailed = true;
 			_selectedContainerIndex = -1;
@@ -3038,6 +3069,8 @@ private sealed class RoomProjectileEffect
 		{
 			_playerHp = 0;
 			_runBackpack.Clear();
+			_hasDraggedBackpackItem = false;
+			_draggedBackpackItem = null;
 			_runEnded = true;
 			_runFailed = true;
 			_status = "全队死亡，本局物资全部丢失。";
@@ -3899,7 +3932,7 @@ private sealed class RoomProjectileEffect
 				return;
 			}
 
-			if (!AddLoot(gridItem.Label))
+			if (!AddLoot(gridItem.Label, gridItem.Size))
 			{
 				return;
 			}
@@ -3970,7 +4003,7 @@ private sealed class RoomProjectileEffect
 					continue;
 				}
 
-				if (!AddLoot(item.Label))
+				if (!AddLoot(item.Label, item.Size))
 				{
 					break;
 				}
@@ -4037,6 +4070,8 @@ private sealed class RoomProjectileEffect
 			_stash.Add(item.Label);
 		}
 		_runBackpack.Clear();
+		_hasDraggedBackpackItem = false;
+		_draggedBackpackItem = null;
 		_runEnded = true;
 		_runFailed = false;
 		_status = "撤离成功。";
@@ -4050,7 +4085,12 @@ private sealed class RoomProjectileEffect
 
 	private bool AddLoot(string item)
 	{
-		BackpackItem backpackItem = CreateBackpackItem(item);
+		return AddLoot(item, GetBackpackItemSize(item));
+	}
+
+	private bool AddLoot(string item, Vector2I size)
+	{
+		BackpackItem backpackItem = CreateBackpackItem(item, size);
 		if (!TryPlaceBackpackItem(backpackItem))
 		{
 			_status = "队伍背包空间不足。";
@@ -4062,13 +4102,13 @@ private sealed class RoomProjectileEffect
 		return true;
 	}
 
-	private BackpackItem CreateBackpackItem(string item)
+	private BackpackItem CreateBackpackItem(string item, Vector2I size)
 	{
 		return new BackpackItem
 		{
 			Label = item,
 			Rarity = GetItemRarityByLabel(item),
-			Size = GetBackpackItemSize(item),
+			Size = size,
 		};
 	}
 
@@ -4099,17 +4139,47 @@ private sealed class RoomProjectileEffect
 
 	private bool TryPlaceBackpackItem(BackpackItem item)
 	{
-		for (int y = 0; y <= TeamBackpackGridSize.Y - item.Size.Y; y++)
+		for (int y = 0; y <= TeamBackpackMaxRows - item.Size.Y; y++)
 		{
-			for (int x = 0; x <= TeamBackpackGridSize.X - item.Size.X; x++)
+			for (int x = 0; x <= TeamBackpackMaxWidth - item.Size.X; x++)
 			{
 				Vector2I cell = new(x, y);
-				if (!IsBackpackAreaFree(cell, item.Size))
+				if (!IsBackpackAreaEnabled(cell, item.Size) || !IsBackpackAreaFree(cell, item.Size))
 				{
 					continue;
 				}
 
 				item.Cell = cell;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool IsBackpackAreaEnabled(Vector2I cell, Vector2I size)
+	{
+		for (int y = cell.Y; y < cell.Y + size.Y; y++)
+		{
+			for (int x = cell.X; x < cell.X + size.X; x++)
+			{
+				if (!IsBackpackCellEnabled(new Vector2I(x, y)))
+				{
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	private bool IsBackpackCellEnabled(Vector2I cell)
+	{
+		foreach (BackpackCapacityBlock block in BuildCurrentBackpackCapacityBlocks())
+		{
+			if (cell.X >= block.Cell.X && cell.X < block.Cell.X + block.Size.X
+				&& cell.Y >= block.Cell.Y && cell.Y < block.Cell.Y + block.Size.Y)
+			{
 				return true;
 			}
 		}
@@ -4145,8 +4215,18 @@ private sealed class RoomProjectileEffect
 
 	private int GetCurrentCarryLimit()
 	{
-		int heroCapacity = 0;
-		int soldierCapacity = 0;
+		int total = 0;
+		foreach (BackpackCapacityBlock block in BuildCurrentBackpackCapacityBlocks())
+		{
+			total += block.Size.X * block.Size.Y;
+		}
+
+		return total;
+	}
+
+	private List<BackpackCapacityBlock> BuildCurrentBackpackCapacityBlocks()
+	{
+		List<BackpackCapacityBlock> blocks = new();
 		foreach (RoomUnit unit in _roomUnits)
 		{
 			if (!unit.IsAlive || !unit.IsPlayerSide)
@@ -4154,29 +4234,158 @@ private sealed class RoomProjectileEffect
 				continue;
 			}
 
-			if (unit.IsHero)
+			BackpackCapacityBlock block = new()
 			{
-				heroCapacity += 16;
-			}
-			else
-			{
-				soldierCapacity += 2;
-			}
+				SourceLabel = unit.Name,
+				Size = unit.IsHero ? new Vector2I(4, 4) : new Vector2I(1, 2),
+			};
+			blocks.Add(block);
 		}
 
-		if (heroCapacity <= 0 && !_inHideout)
+		int cursorX = 0;
+		int cursorY = 0;
+		int rowHeight = 0;
+		for (int i = 0; i < blocks.Count; i++)
 		{
-			heroCapacity = 16;
+			BackpackCapacityBlock block = blocks[i];
+			if (cursorX + block.Size.X > TeamBackpackMaxWidth)
+			{
+				cursorX = 0;
+				cursorY += rowHeight;
+				rowHeight = 0;
+			}
+
+			block.Cell = new Vector2I(cursorX, cursorY);
+			cursorX += block.Size.X;
+			rowHeight = Mathf.Max(rowHeight, block.Size.Y);
 		}
 
-		return heroCapacity + soldierCapacity + GetFlatLogisticsCarryBonus();
+		return blocks;
 	}
 
-	private int GetFlatLogisticsCarryBonus() => 0;
+	private int GetBackpackPreviewGridHeight()
+	{
+		int maxHeight = 0;
+		foreach (BackpackCapacityBlock block in BuildCurrentBackpackCapacityBlocks())
+		{
+			maxHeight = Mathf.Max(maxHeight, block.Cell.Y + block.Size.Y);
+		}
+
+		foreach (BackpackItem item in _runBackpack)
+		{
+			maxHeight = Mathf.Max(maxHeight, item.Cell.Y + item.Size.Y);
+		}
+
+		return Mathf.Clamp(Mathf.Max(1, maxHeight), 1, TeamBackpackMaxRows);
+	}
 
 	private bool IsOverloaded()
 	{
 		return GetCurrentCarryUsage() > GetCurrentCarryLimit();
+	}
+
+	private bool HandleBackpackPreviewClick(Vector2 click)
+	{
+		GetBackpackPreviewLayout(out Vector2 gridOrigin, out Vector2 cellSize, out int gridHeight);
+		Rect2 gridRect = new(gridOrigin, new Vector2(TeamBackpackMaxWidth * cellSize.X, gridHeight * cellSize.Y));
+		if (!gridRect.HasPoint(click))
+		{
+			if (_hasDraggedBackpackItem)
+			{
+				RevertDraggedBackpackItem();
+				return true;
+			}
+
+			return false;
+		}
+
+		if (_hasDraggedBackpackItem)
+		{
+			Vector2I cell = GetBackpackCellAtPoint(click, gridOrigin, cellSize);
+			if (TryPlaceDraggedBackpackItem(cell))
+			{
+				return true;
+			}
+
+			RevertDraggedBackpackItem();
+			return true;
+		}
+
+		int itemIndex = GetBackpackItemIndexAtPoint(click, gridOrigin, cellSize);
+		if (itemIndex < 0)
+		{
+			return false;
+		}
+
+		_draggedBackpackItem = _runBackpack[itemIndex];
+		_draggedBackpackOriginalCell = _draggedBackpackItem.Cell;
+		_hasDraggedBackpackItem = true;
+		_runBackpack.RemoveAt(itemIndex);
+		return true;
+	}
+
+	private bool TryPlaceDraggedBackpackItem(Vector2I cell)
+	{
+		if (!_hasDraggedBackpackItem)
+		{
+			return false;
+		}
+
+		if (cell.X < 0 || cell.Y < 0
+			|| cell.X + _draggedBackpackItem.Size.X > TeamBackpackMaxWidth
+			|| cell.Y + _draggedBackpackItem.Size.Y > TeamBackpackMaxRows)
+		{
+			return false;
+		}
+
+		if (!IsBackpackAreaEnabled(cell, _draggedBackpackItem.Size) || !IsBackpackAreaFree(cell, _draggedBackpackItem.Size))
+		{
+			return false;
+		}
+
+		_draggedBackpackItem.Cell = cell;
+		_runBackpack.Add(_draggedBackpackItem);
+		_hasDraggedBackpackItem = false;
+		_draggedBackpackItem = null;
+		return true;
+	}
+
+	private void RevertDraggedBackpackItem()
+	{
+		if (!_hasDraggedBackpackItem)
+		{
+			return;
+		}
+
+		_draggedBackpackItem.Cell = _draggedBackpackOriginalCell;
+		_runBackpack.Add(_draggedBackpackItem);
+		_hasDraggedBackpackItem = false;
+		_draggedBackpackItem = null;
+	}
+
+	private int GetBackpackItemIndexAtPoint(Vector2 point, Vector2 gridOrigin, Vector2 cellSize)
+	{
+		for (int i = _runBackpack.Count - 1; i >= 0; i--)
+		{
+			BackpackItem item = _runBackpack[i];
+			Rect2 itemRect = new(
+				gridOrigin + new Vector2(item.Cell.X * cellSize.X, item.Cell.Y * cellSize.Y),
+				new Vector2(item.Size.X * cellSize.X - Ui(2f), item.Size.Y * cellSize.Y - Ui(2f)));
+			if (itemRect.HasPoint(point))
+			{
+				return i;
+			}
+		}
+
+		return -1;
+	}
+
+	private Vector2I GetBackpackCellAtPoint(Vector2 point, Vector2 gridOrigin, Vector2 cellSize)
+	{
+		Vector2 local = point - gridOrigin;
+		return new Vector2I(
+			Mathf.FloorToInt(local.X / cellSize.X),
+			Mathf.FloorToInt(local.Y / cellSize.Y));
 	}
 
 	private int GetItemValue(string item)
@@ -5053,9 +5262,6 @@ private sealed class RoomProjectileEffect
 			DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "超载：无法过门或撤离", HorizontalAlignment.Left, -1f, UiFont(13), new Color(0.96f, 0.52f, 0.48f));
 			y += Ui(20f);
 		}
-		DrawTeamBackpackPreview(new Vector2(x, y));
-		y += Ui(136f);
-		y += Ui(18f);
 		float actionWidth = (_sideRect.Size.X - Ui(60f)) * 0.5f;
 		Rect2 mapRect = new(new Vector2(x, y), new Vector2(actionWidth, Ui(34f)));
 		DrawButton(mapRect, _showMapOverlay ? "战略地图：开" : "战略地图：关", _showMapOverlay ? new Color(0.24f, 0.48f, 0.62f) : new Color(0.18f, 0.2f, 0.24f));
@@ -5070,7 +5276,10 @@ private sealed class RoomProjectileEffect
 			_buttons.Add(new ButtonDef(rect, "extract"));
 		}
 		y += node.Type == NodeType.Extract ? Ui(88f) : Ui(50f);
-		float logTop = panelBottom - Ui(144f);
+		float backpackTop = y + Ui(8f);
+		float backpackHeight = DrawTeamBackpackPreview(new Vector2(x, backpackTop));
+		float logTop = backpackTop + backpackHeight + Ui(26f);
+		logTop = Mathf.Max(logTop, panelBottom - Ui(144f));
 		DrawLine(new Vector2(x, logTop - 10f), new Vector2(_sideRect.End.X - 18f, logTop - 10f), new Color(0.24f, 0.27f, 0.31f), 1f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, logTop), "\u4e16\u754c\u52a8\u6001", HorizontalAlignment.Left, -1f, UiFont(18), Colors.White);
 		float logY = logTop + Ui(24f);
@@ -5089,25 +5298,89 @@ private sealed class RoomProjectileEffect
 		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), rect.Size.Y - Ui(8f)), text, HorizontalAlignment.Left, rect.Size.X - Ui(16f), UiFont(13), Colors.White);
 	}
 
-	private void DrawTeamBackpackPreview(Vector2 origin)
+	private void DrawDashedRect(Rect2 rect, Color color)
+	{
+		float dash = Ui(6f);
+		for (float x = rect.Position.X; x < rect.End.X; x += dash * 2f)
+		{
+			DrawLine(new Vector2(x, rect.Position.Y), new Vector2(Mathf.Min(x + dash, rect.End.X), rect.Position.Y), color, 1f);
+			DrawLine(new Vector2(x, rect.End.Y), new Vector2(Mathf.Min(x + dash, rect.End.X), rect.End.Y), color, 1f);
+		}
+
+		for (float y = rect.Position.Y; y < rect.End.Y; y += dash * 2f)
+		{
+			DrawLine(new Vector2(rect.Position.X, y), new Vector2(rect.Position.X, Mathf.Min(y + dash, rect.End.Y)), color, 1f);
+			DrawLine(new Vector2(rect.End.X, y), new Vector2(rect.End.X, Mathf.Min(y + dash, rect.End.Y)), color, 1f);
+		}
+	}
+
+	private void DrawInventoryTooltip(Vector2 position, string label)
+	{
+		Vector2 size = new(Mathf.Max(Ui(96f), label.Length * Ui(9f)), Ui(24f));
+		Rect2 rect = new(position, size);
+		DrawRect(rect, new Color(0.04f, 0.05f, 0.06f, 0.96f), true);
+		DrawRect(rect, new Color(0.9f, 0.92f, 0.96f, 0.92f), false, 1f);
+		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(6f), Ui(16f)), label, HorizontalAlignment.Left, rect.Size.X - Ui(8f), UiFont(11), Colors.White);
+	}
+
+	private void GetBackpackPreviewLayout(out Vector2 gridOrigin, out Vector2 cellSize, out int gridHeight)
+	{
+		float x = _sideRect.Position.X + Ui(22f);
+		float y = _sideRect.Position.Y + Ui(34f);
+		y += Ui(34f);
+		y += Ui(28f);
+		y += Ui(26f);
+		y += Ui(24f);
+		y += Ui(38f);
+		y += Ui(64f);
+		y += Ui(28f);
+		y += Ui(22f);
+		y += Ui(22f);
+		y += Ui(22f);
+		y += Ui(20f);
+		if (IsOverloaded())
+		{
+			y += Ui(20f);
+		}
+
+		float actionWidth = (_sideRect.Size.X - Ui(60f)) * 0.5f;
+		y += _nodes[_playerNodeId].Type == NodeType.Extract ? Ui(88f) : Ui(50f);
+		Vector2 origin = new(x, y + Ui(8f));
+		cellSize = new Vector2(Ui(16f), Ui(16f));
+		gridOrigin = origin + new Vector2(0f, Ui(12f));
+		gridHeight = GetBackpackPreviewGridHeight();
+	}
+
+	private float DrawTeamBackpackPreview(Vector2 origin)
 	{
 		Vector2 cellSize = new(Ui(16f), Ui(16f));
 		DrawString(ThemeDB.FallbackFont, origin, "队伍背包", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.9f, 0.92f, 0.96f));
 		Vector2 gridOrigin = origin + new Vector2(0f, Ui(12f));
-		int carryLimit = GetCurrentCarryLimit();
-		int allowedCells = Mathf.Clamp(carryLimit, 0, TeamBackpackGridSize.X * TeamBackpackGridSize.Y);
-		for (int y = 0; y < TeamBackpackGridSize.Y; y++)
+		List<BackpackCapacityBlock> blocks = BuildCurrentBackpackCapacityBlocks();
+		int gridHeight = GetBackpackPreviewGridHeight();
+		for (int y = 0; y < gridHeight; y++)
 		{
-			for (int x = 0; x < TeamBackpackGridSize.X; x++)
+			for (int x = 0; x < TeamBackpackMaxWidth; x++)
 			{
-				int cellIndex = y * TeamBackpackGridSize.X + x;
-				bool withinLimit = cellIndex < allowedCells;
 				Rect2 cellRect = new(gridOrigin + new Vector2(x * cellSize.X, y * cellSize.Y), cellSize - new Vector2(Ui(2f), Ui(2f)));
-				DrawRect(cellRect, withinLimit ? new Color(0.1f, 0.12f, 0.15f) : new Color(0.08f, 0.05f, 0.05f), true);
-				DrawRect(cellRect, withinLimit ? new Color(0.24f, 0.28f, 0.34f) : new Color(0.34f, 0.16f, 0.16f), false, 1f);
+				DrawRect(cellRect, new Color(0.08f, 0.09f, 0.11f), true);
+				DrawRect(cellRect, new Color(0.18f, 0.2f, 0.24f), false, 1f);
 			}
 		}
 
+		for (int i = 0; i < blocks.Count; i++)
+		{
+			BackpackCapacityBlock block = blocks[i];
+			Color blockTint = i % 2 == 0 ? new Color(0.16f, 0.19f, 0.24f, 0.55f) : new Color(0.19f, 0.17f, 0.23f, 0.55f);
+			Rect2 blockRect = new(
+				gridOrigin + new Vector2(block.Cell.X * cellSize.X, block.Cell.Y * cellSize.Y),
+				new Vector2(block.Size.X * cellSize.X - Ui(2f), block.Size.Y * cellSize.Y - Ui(2f)));
+			DrawRect(blockRect, blockTint, true);
+			DrawDashedRect(blockRect, new Color(0.82f, 0.86f, 0.94f, 0.45f));
+		}
+
+		Vector2 mouse = GetViewport().GetMousePosition();
+		string hoveredItemLabel = "";
 		foreach (BackpackItem item in _runBackpack)
 		{
 			Rect2 itemRect = new(
@@ -5115,7 +5388,32 @@ private sealed class RoomProjectileEffect
 				new Vector2(item.Size.X * cellSize.X - Ui(2f), item.Size.Y * cellSize.Y - Ui(2f)));
 			DrawRect(itemRect, GetGridRarityColor(item.Rarity), true);
 			DrawRect(itemRect, new Color(1f, 1f, 1f, 0.82f), false, 1f);
+			if (itemRect.Size.X >= Ui(44f))
+			{
+				DrawString(ThemeDB.FallbackFont, itemRect.Position + new Vector2(Ui(3f), Ui(13f)), item.Label, HorizontalAlignment.Left, itemRect.Size.X - Ui(4f), UiFont(9), Colors.Black);
+			}
+
+			if (itemRect.HasPoint(mouse))
+			{
+				hoveredItemLabel = item.Label;
+			}
 		}
+
+		if (!string.IsNullOrEmpty(hoveredItemLabel))
+		{
+			DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f)), hoveredItemLabel);
+		}
+
+		if (_hasDraggedBackpackItem && _draggedBackpackItem != null)
+		{
+			Vector2 drawPos = mouse + new Vector2(Ui(8f), Ui(8f));
+			Rect2 dragRect = new(drawPos, new Vector2(_draggedBackpackItem.Size.X * cellSize.X - Ui(2f), _draggedBackpackItem.Size.Y * cellSize.Y - Ui(2f)));
+			DrawRect(dragRect, new Color(GetGridRarityColor(_draggedBackpackItem.Rarity).R, GetGridRarityColor(_draggedBackpackItem.Rarity).G, GetGridRarityColor(_draggedBackpackItem.Rarity).B, 0.82f), true);
+			DrawRect(dragRect, new Color(1f, 1f, 1f, 0.9f), false, 1f);
+			DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f) + dragRect.Size.Y + Ui(4f)), _draggedBackpackItem.Label);
+		}
+
+		return Ui(18f) + gridHeight * cellSize.Y;
 	}
 
 	private float GetContainerCardHeight(LootContainer container)
