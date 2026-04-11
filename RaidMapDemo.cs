@@ -8,6 +8,7 @@ public partial class RaidMapDemo : Node2D
 	private const int MapTemplateCount = 2;
 	private const int DifficultyCount = 3;
 	private const bool EnableCombatFxDebugOpening = false;
+	private const int SfxSampleRate = 22050;
 	private static readonly Rect2 DesignMapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
 
 	private enum NodeType
@@ -299,6 +300,7 @@ private sealed class RoomProjectileEffect
 	private readonly List<RoomProjectileEffect> _roomProjectileEffects = new();
 	private readonly List<RoomMeleeArcEffect> _roomMeleeArcEffects = new();
 	private readonly List<RoomResourceOrb> _roomResourceOrbs = new();
+	private readonly List<AudioStreamPlayer> _sfxPlayers = new();
 	private readonly RandomNumberGenerator _rng = new();
 
 	private Rect2 _mapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
@@ -342,12 +344,106 @@ private sealed class RoomProjectileEffect
 	private Vector2 _pendingExitDirection = Vector2.Right;
 	private bool _roomDirty;
 	private string _status = "点击相邻节点移动。";
+	private int _sfxCursor;
+	private AudioStreamWav _sfxMeleeLight;
+	private AudioStreamWav _sfxMeleeHeavy;
+	private AudioStreamWav _sfxRangedLight;
+	private AudioStreamWav _sfxRangedHeavy;
+	private AudioStreamWav _sfxHitLight;
+	private AudioStreamWav _sfxHitHeavy;
+	private AudioStreamWav _sfxDeath;
 
 	public override void _Ready()
 	{
 		_rng.Randomize();
+		InitializeSfx();
 		UpdateLayoutRects();
 		InitHideout();
+	}
+
+	private void InitializeSfx()
+	{
+		_sfxMeleeLight = CreateProceduralSfx(220f, 120f, 0.075f, 0.42f, 0.08f, 0.18f);
+		_sfxMeleeHeavy = CreateProceduralSfx(170f, 82f, 0.11f, 0.56f, 0.12f, 0.28f);
+		_sfxRangedLight = CreateProceduralSfx(760f, 520f, 0.04f, 0.26f, 0.02f, 0.04f);
+		_sfxRangedHeavy = CreateProceduralSfx(620f, 360f, 0.055f, 0.32f, 0.03f, 0.08f);
+		_sfxHitLight = CreateProceduralSfx(150f, 72f, 0.06f, 0.36f, 0.18f, 0.16f);
+		_sfxHitHeavy = CreateProceduralSfx(120f, 48f, 0.09f, 0.5f, 0.24f, 0.22f);
+		_sfxDeath = CreateProceduralSfx(200f, 44f, 0.18f, 0.38f, 0.14f, 0.12f);
+
+		for (int i = 0; i < 8; i++)
+		{
+			AudioStreamPlayer player = new()
+			{
+				Bus = "Master",
+				Autoplay = false,
+				VolumeDb = -9f,
+			};
+			AddChild(player);
+			_sfxPlayers.Add(player);
+		}
+	}
+
+	private AudioStreamWav CreateProceduralSfx(float startFrequency, float endFrequency, float duration, float peak, float noiseMix, float squareMix)
+	{
+		int sampleCount = Mathf.Max(1, Mathf.RoundToInt(duration * SfxSampleRate));
+		byte[] pcm = new byte[sampleCount * 2];
+		float phase = 0f;
+		uint noiseState = (uint)(startFrequency * 31f + endFrequency * 17f + duration * 1000f + 1f);
+		for (int i = 0; i < sampleCount; i++)
+		{
+			float t = sampleCount <= 1 ? 1f : i / (float)(sampleCount - 1);
+			float frequency = Mathf.Lerp(startFrequency, endFrequency, t);
+			phase += Mathf.Tau * frequency / SfxSampleRate;
+			noiseState = noiseState * 1664525u + 1013904223u;
+			float noise = ((noiseState >> 9) & 1023) / 511.5f - 1f;
+			float sine = Mathf.Sin(phase);
+			float square = sine >= 0f ? 1f : -1f;
+			float bodyMix = Mathf.Max(0f, 1f - noiseMix - squareMix);
+			float envelope = t < 0.08f
+				? t / 0.08f
+				: Mathf.Pow(Mathf.Max(0f, 1f - t), 1.6f);
+			float sample = (sine * bodyMix + square * squareMix + noise * noiseMix) * envelope * peak;
+			short pcmValue = (short)Mathf.Clamp(Mathf.RoundToInt(sample * short.MaxValue), short.MinValue, short.MaxValue);
+			pcm[i * 2] = (byte)(pcmValue & 0xff);
+			pcm[i * 2 + 1] = (byte)((pcmValue >> 8) & 0xff);
+		}
+
+		return new AudioStreamWav
+		{
+			Data = pcm,
+			Format = AudioStreamWav.FormatEnum.Format16Bits,
+			MixRate = SfxSampleRate,
+			Stereo = false,
+		};
+	}
+
+	private void PlayAttackSfx(bool ranged, bool heavy)
+	{
+		PlaySfx(ranged
+			? (heavy ? _sfxRangedHeavy : _sfxRangedLight)
+			: (heavy ? _sfxMeleeHeavy : _sfxMeleeLight), heavy ? -7f : -9f);
+	}
+
+	private void PlayHitSfx(bool heavy, bool killingBlow)
+	{
+		PlaySfx(killingBlow ? _sfxDeath : (heavy ? _sfxHitHeavy : _sfxHitLight), killingBlow ? -8f : (heavy ? -7f : -9f));
+	}
+
+	private void PlaySfx(AudioStream stream, float volumeDb)
+	{
+		if (stream == null || _sfxPlayers.Count == 0)
+		{
+			return;
+		}
+
+		AudioStreamPlayer player = _sfxPlayers[_sfxCursor];
+		_sfxCursor = (_sfxCursor + 1) % _sfxPlayers.Count;
+		player.Stop();
+		player.Stream = stream;
+		player.VolumeDb = volumeDb;
+		player.PitchScale = 1f + _rng.RandfRange(-0.04f, 0.04f);
+		player.Play();
 	}
 
 	public override void _Process(double delta)
@@ -1792,6 +1888,7 @@ private sealed class RoomProjectileEffect
 
 		Vector2 dir = distance > 0.001f ? toTarget / distance : (attacker.IsPlayerSide ? Vector2.Right : Vector2.Left);
 		attacker.Facing = dir;
+		PlayAttackSfx(attacker.IsRanged, heavy);
 		if (attacker.IsRanged)
 		{
 			SpawnRoomProjectileEffect(attacker.Position + dir * 10f, target, damage, attacker.IsPlayerSide, heavy);
@@ -1929,6 +2026,7 @@ private sealed class RoomProjectileEffect
 		target.StaggerTime = Mathf.Max(target.StaggerTime, rangedHit ? 0.14f : (heavy ? 0.24f : 0.18f));
 		target.HitPauseTime = Mathf.Max(target.HitPauseTime, heavy ? 0.08f : 0.055f);
 		ApplyRoomKnockback(target, dir, rangedHit, heavy);
+		PlayHitSfx(heavy, target.Hp <= 0);
 
 		if (target.Hp <= 0)
 		{
