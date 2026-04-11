@@ -594,11 +594,13 @@ private sealed class RoomProjectileEffect
 		if (_inHideout)
 		{
 			DrawHideout();
+			DrawDraggedHideoutOverlay();
 			return;
 		}
 		if (_runEnded && _showSettlementTransfer)
 		{
 			DrawSettlementTransfer();
+			DrawDraggedHideoutOverlay();
 			return;
 		}
 		DrawRoomViewUnified();
@@ -3846,12 +3848,6 @@ private sealed class RoomProjectileEffect
 					_selectedStashIndex = -1;
 					_selectedShopIndex = -1;
 					return;
-				case "move_stash_to_loadout":
-					MoveSelectedStashItemToLoadout();
-					return;
-				case "move_loadout_to_stash":
-					MoveSelectedLoadoutItemToStash();
-					return;
 				case "auto_pack_hideout":
 					RepackHideoutLoadout();
 					_status = "已整理局外背包。";
@@ -5788,17 +5784,6 @@ private sealed class RoomProjectileEffect
 		{
 			DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f)), stashHoverLabel);
 		}
-		if (_hasDraggedHideoutItem && _draggedHideoutItem != null)
-		{
-			Vector2 dragSize = new(_draggedHideoutItem.Size.X * stashCellSize.X - Ui(2f), _draggedHideoutItem.Size.Y * stashCellSize.Y - Ui(2f));
-			Vector2 drawPos = mouse - dragSize * 0.5f - new Vector2(Ui(8f), Ui(8f));
-			Rect2 dragRect = new(drawPos, dragSize);
-			Color dragColor = GetGridRarityColor(_draggedHideoutItem.Rarity);
-			DrawRect(dragRect, new Color(dragColor.R, dragColor.G, dragColor.B, 0.84f), true);
-			DrawRect(dragRect, new Color(1f, 1f, 1f, 0.9f), false, 1f);
-			DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f) + dragRect.Size.Y + Ui(4f)), _draggedHideoutItem.Label);
-		}
-
 		Vector2 shopCellSize = new(Ui(18f), Ui(18f));
 		float shopY = shopRect.Position.Y + Ui(44f);
 		for (int i = 0; i < _shopStock.Count; i++)
@@ -6858,6 +6843,24 @@ private sealed class RoomProjectileEffect
 		DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f) + dragRect.Size.Y + Ui(4f)), _draggedBackpackItem.Label);
 	}
 
+	private void DrawDraggedHideoutOverlay()
+	{
+		if (!_hasDraggedHideoutItem || _draggedHideoutItem == null)
+		{
+			return;
+		}
+
+		Vector2 mouse = GetViewport().GetMousePosition();
+		Vector2 cellSize = new(Ui(18f), Ui(18f));
+		Vector2 dragSize = new(_draggedHideoutItem.Size.X * cellSize.X - Ui(2f), _draggedHideoutItem.Size.Y * cellSize.Y - Ui(2f));
+		Vector2 drawPos = mouse - dragSize * 0.5f - new Vector2(Ui(8f), Ui(8f));
+		Rect2 dragRect = new(drawPos, dragSize);
+		Color dragColor = GetGridRarityColor(_draggedHideoutItem.Rarity);
+		DrawRect(dragRect, new Color(dragColor.R, dragColor.G, dragColor.B, 0.84f), true);
+		DrawRect(dragRect, new Color(1f, 1f, 1f, 0.9f), false, 1f);
+		DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f) + dragRect.Size.Y + Ui(4f)), _draggedHideoutItem.Label);
+	}
+
 	private float GetContainerCardHeight(LootContainer container)
 	{
 		int visibleRows = container.VisibleItems.Count;
@@ -7380,12 +7383,6 @@ private sealed class RoomProjectileEffect
 
 		if (_hasDraggedHideoutItem && _draggedHideoutItem != null)
 		{
-			Vector2 dragSize = new(_draggedHideoutItem.Size.X * cellSize.X - Ui(2f), _draggedHideoutItem.Size.Y * cellSize.Y - Ui(2f));
-			Vector2 drawPos = mouse - dragSize * 0.5f - new Vector2(Ui(8f), Ui(8f));
-			Rect2 dragRect = new(drawPos, dragSize);
-			Color dragColor = GetGridRarityColor(_draggedHideoutItem.Rarity);
-			DrawRect(dragRect, new Color(dragColor.R, dragColor.G, dragColor.B, 0.84f), true);
-			DrawRect(dragRect, new Color(1f, 1f, 1f, 0.9f), false, 1f);
 			hoverLabel = _draggedHideoutItem.Label;
 		}
 

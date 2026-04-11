@@ -180,6 +180,7 @@
 - The hideout layout was reworked so the stash, shop, and outside-run backpack fit inside separate panels.
 - The old explicit `Bring Into Run` / `Return To Stash` buttons are no longer required for the main flow.
 - Hideout preparation now expects direct grid-to-grid movement between stash and the outside-run backpack area.
+- Dragged hideout items are rendered as a top-layer overlay so they do not disappear under later UI panels.
 - Container-to-backpack transfer is active.
 - Backpack-to-container return is now also active for the currently open container popup.
 - Backpack-to-container return now tries:
