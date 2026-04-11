@@ -3973,14 +3973,6 @@ private sealed class RoomProjectileEffect
 				_selectedShopIndex = -1;
 				_selectedLoadoutIndex = -1;
 			}
-			else if (button.Action == "move_stash_to_settlement")
-			{
-				MoveSelectedStashItemToLoadout();
-			}
-			else if (button.Action == "move_settlement_to_stash")
-			{
-				MoveSelectedLoadoutItemToStash();
-			}
 			return;
 		}
 
@@ -5562,48 +5554,6 @@ private sealed class RoomProjectileEffect
 
 		_selectedShopIndex = -1;
 		_status = $"已购入 {entry.Label}。";
-	}
-
-	private void MoveSelectedStashItemToLoadout()
-	{
-		if (_selectedStashIndex < 0 || _selectedStashIndex >= _stash.Count)
-		{
-			return;
-		}
-
-		BackpackItem moved = CloneBackpackItem(_stash[_selectedStashIndex]);
-		if (!TryPlaceHideoutLoadoutItem(moved))
-		{
-			_status = "预备携行空间不足。";
-			return;
-		}
-
-		_stash.RemoveAt(_selectedStashIndex);
-		_hideoutLoadout.Add(moved);
-		_selectedStashIndex = -1;
-		_selectedLoadoutIndex = _hideoutLoadout.Count - 1;
-		_status = $"已将 {moved.Label} 加入预备携行。";
-	}
-
-	private void MoveSelectedLoadoutItemToStash()
-	{
-		if (_selectedLoadoutIndex < 0 || _selectedLoadoutIndex >= _hideoutLoadout.Count)
-		{
-			return;
-		}
-
-		BackpackItem moved = CloneBackpackItem(_hideoutLoadout[_selectedLoadoutIndex]);
-		if (!TryAddToStash(moved))
-		{
-			_status = "仓库空间不足，无法放回。";
-			return;
-		}
-
-		_hideoutLoadout.RemoveAt(_selectedLoadoutIndex);
-		RepackHideoutLoadout();
-		_selectedLoadoutIndex = -1;
-		RefreshLootValueFromCurrentInventory();
-		_status = $"已将 {moved.Label} 放回仓库。";
 	}
 
 	private void MoveAllSettlementItemsToStash()

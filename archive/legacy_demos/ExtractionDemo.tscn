@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://doinweh411rt8"]
 
-[ext_resource type="Script" uid="uid://cjmcfkh7m1epc" path="res://ExtractionDemo.cs" id="1"]
+[ext_resource type="Script" uid="uid://cjmcfkh7m1epc" path="res://archive/legacy_demos/ExtractionDemo.cs" id="1"]
 
 [node name="ExtractionDemo" type="Node2D" unique_id=1354971623]
 script = ExtResource("1")

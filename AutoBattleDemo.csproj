@@ -5,7 +5,6 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="NodeRaidDemo.cs" />
-    <Compile Remove="RaidMapDemoV2.cs" />
+    <Compile Remove="archive\**\*.cs" />
   </ItemGroup>
 </Project>
