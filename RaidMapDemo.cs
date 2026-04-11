@@ -4264,20 +4264,6 @@ private sealed class RoomProjectileEffect
 		RefreshStatus();
 	}
 
-	private void BuySearchActions()
-	{
-		MapNode node = _nodes[_playerNodeId];
-		if (!CanSearch(node))
-		{
-			_status = "这里无法安心停下来搜索。";
-			return;
-		}
-
-		AdvanceTurn($"在 {node.Name} 花费时间搜索。");
-		_searchActions += 4;
-		_status = $"在 {node.Name} 获得了 4 次搜索机会。";
-	}
-
 	private void TryExtract()
 	{
 		if (_nodes[_playerNodeId].Type != NodeType.Extract)
@@ -4616,11 +4602,6 @@ private sealed class RoomProjectileEffect
 		}
 
 		return true;
-	}
-
-	private bool TryPlaceHideoutLoadoutItem(BackpackItem item)
-	{
-		return TryPlaceHideoutLoadoutItemInList(item, _hideoutLoadout);
 	}
 
 	private bool TryPlaceHideoutLoadoutItemInList(BackpackItem item, List<BackpackItem> items)
@@ -7059,80 +7040,6 @@ private sealed class RoomProjectileEffect
 		DrawRect(dragRect, new Color(dragColor.R, dragColor.G, dragColor.B, 0.84f), true);
 		DrawRect(dragRect, new Color(1f, 1f, 1f, 0.9f), false, 1f);
 		DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f) + dragRect.Size.Y + Ui(4f)), _draggedHideoutItem.Label);
-	}
-
-	private float GetContainerCardHeight(LootContainer container)
-	{
-		int visibleRows = container.VisibleItems.Count;
-		int hiddenRows = container.HiddenRemaining > 0 ? 1 : 0;
-		int equipmentRows = container.Kind == ContainerKind.EliteCorpse ? 3 : 0;
-		return 48f + equipmentRows * 34f + visibleRows * 34f + hiddenRows * 38f;
-	}
-
-	private void DrawContainerCard(LootContainer container, int containerIndex, float x, ref float y)
-	{
-		float width = 320f;
-		float height = GetContainerCardHeight(container);
-		Rect2 card = new(new Vector2(x, y), new Vector2(width, height));
-		DrawRect(card, new Color(0.08f, 0.09f, 0.11f), true);
-		DrawRect(card, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
-
-		DrawString(ThemeDB.FallbackFont, card.Position + new Vector2(12f, 20f), container.Label, HorizontalAlignment.Left, 200f, 14, Colors.White);
-		DrawString(ThemeDB.FallbackFont, card.Position + new Vector2(210f, 20f), GetContainerKindLabel(container.Kind), HorizontalAlignment.Left, 100f, 12, new Color(0.93f, 0.84f, 0.58f));
-
-		float rowY = card.Position.Y + 30f;
-		if (container.Kind == ContainerKind.EliteCorpse)
-		{
-			for (int equipIndex = 0; equipIndex < container.EquippedItems.Count; equipIndex++)
-			{
-				EquippedLoot equipped = container.EquippedItems[equipIndex];
-				Rect2 slot = new(new Vector2(x + 12f, rowY), new Vector2(304f, 28f));
-				DrawRect(slot, new Color(0.14f, 0.16f, 0.2f), true);
-				DrawRect(slot, new Color(0.5f, 0.66f, 0.86f), false, 1f);
-
-				string label = string.IsNullOrEmpty(equipped.Label) || equipped.Taken
-					? $"{GetEquipmentSlotLabel(equipped.Slot)}：空"
-					: $"{GetEquipmentSlotLabel(equipped.Slot)}：{equipped.Label}";
-				DrawString(ThemeDB.FallbackFont, slot.Position + new Vector2(10f, 19f), label, HorizontalAlignment.Left, 180f, 12, Colors.White);
-
-				if (!equipped.Taken && !string.IsNullOrEmpty(equipped.Label))
-				{
-					Rect2 takeRect = new(new Vector2(slot.End.X - 70f, slot.Position.Y + 2f), new Vector2(58f, 24f));
-					DrawButton(takeRect, "拿取", new Color(0.26f, 0.42f, 0.58f));
-					_buttons.Add(new ButtonDef(takeRect, "take", containerIndex * 100 + 50 + equipIndex));
-				}
-
-				rowY += 34f;
-			}
-		}
-
-		for (int itemIndex = 0; itemIndex < container.VisibleItems.Count; itemIndex++)
-		{
-			string item = container.VisibleItems[itemIndex];
-			Rect2 slot = new(new Vector2(x + 12f, rowY), new Vector2(304f, 28f));
-			DrawRect(slot, new Color(0.12f, 0.17f, 0.23f), true);
-			DrawRect(slot, new Color(0.5f, 0.66f, 0.86f), false, 1f);
-			DrawString(ThemeDB.FallbackFont, slot.Position + new Vector2(10f, 19f), item, HorizontalAlignment.Left, 160f, 12, Colors.White);
-
-			Rect2 takeRect = new(new Vector2(slot.End.X - 70f, slot.Position.Y + 2f), new Vector2(58f, 24f));
-			DrawButton(takeRect, "拿取", new Color(0.26f, 0.42f, 0.58f));
-			_buttons.Add(new ButtonDef(takeRect, "take", containerIndex * 100 + itemIndex));
-			rowY += 34f;
-		}
-
-		if (container.HiddenRemaining > 0)
-		{
-			Rect2 slot = new(new Vector2(x + 12f, rowY), new Vector2(304f, 32f));
-			DrawRect(slot, new Color(0.24f, 0.2f, 0.12f), true);
-			DrawRect(slot, new Color(0.76f, 0.63f, 0.28f), false, 1f);
-			DrawString(ThemeDB.FallbackFont, slot.Position + new Vector2(10f, 21f), $"未明物品 x{container.HiddenRemaining}", HorizontalAlignment.Left, 150f, 12, Colors.White);
-
-			Rect2 searchRect = new(new Vector2(slot.End.X - 94f, slot.Position.Y + 4f), new Vector2(82f, 24f));
-			DrawButton(searchRect, "检视", new Color(0.54f, 0.42f, 0.18f));
-			_buttons.Add(new ButtonDef(searchRect, "search", containerIndex));
-		}
-
-		y += height;
 	}
 
 	private int CountAvailableEquipped(LootContainer container)
