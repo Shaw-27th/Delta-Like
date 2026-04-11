@@ -9,6 +9,7 @@ public partial class RaidMapDemo : Node2D
 	private const int DifficultyCount = 3;
 	private const bool EnableCombatFxDebugOpening = false;
 	private const int SfxSampleRate = 22050;
+	private static readonly Vector2I TeamBackpackGridSize = new(5, 8);
 	private static readonly Rect2 DesignMapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
 
 	private enum NodeType
@@ -163,6 +164,14 @@ public partial class RaidMapDemo : Node2D
 		public float SearchProgress;
 	}
 
+	private sealed class BackpackItem
+	{
+		public string Label = "";
+		public ItemRarity Rarity;
+		public Vector2I Size;
+		public Vector2I Cell;
+	}
+
 	private sealed class ShopEntry
 	{
 		public string Label = "";
@@ -291,7 +300,7 @@ private sealed class RoomProjectileEffect
 	private readonly List<AiSquad> _aiSquads = new();
 	private readonly List<string> _eventLog = new();
 	private readonly List<ButtonDef> _buttons = new();
-	private readonly List<string> _runBackpack = new();
+	private readonly List<BackpackItem> _runBackpack = new();
 	private readonly List<string> _stash = new();
 	private readonly List<ShopEntry> _shopStock = new();
 	private readonly List<SoldierRecord> _soldierRoster = new();
@@ -2892,6 +2901,12 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
+		if (IsOverloaded())
+		{
+			_status = "队伍当前超载，无法离开这个房间。";
+			return;
+		}
+
 		Vector2 direction = GetExitDirection(node, nodeId);
 		Rect2 doorRect = GetRoomExitRect(node, nodeId);
 		_pendingExitNodeId = nodeId;
@@ -3860,8 +3875,12 @@ private sealed class RoomProjectileEffect
 				return;
 			}
 
+			if (!AddLoot(equipped.Label))
+			{
+				return;
+			}
+
 			equipped.Taken = true;
-			AddLoot(equipped.Label);
 			LogEvent($"从 {container.Label} 取走了 {equipped.Label}。");
 			RefreshStatus();
 			return;
@@ -3880,8 +3899,12 @@ private sealed class RoomProjectileEffect
 				return;
 			}
 
+			if (!AddLoot(gridItem.Label))
+			{
+				return;
+			}
+
 			gridItem.Taken = true;
-			AddLoot(gridItem.Label);
 			LogEvent($"从 {container.Label} 取走了 {gridItem.Label}。");
 			RefreshStatus();
 			return;
@@ -3893,8 +3916,12 @@ private sealed class RoomProjectileEffect
 		}
 
 		string item = container.VisibleItems[itemIndex];
+		if (!AddLoot(item))
+		{
+			return;
+		}
+
 		container.VisibleItems.RemoveAt(itemIndex);
-		AddLoot(item);
 		LogEvent($"从 {container.Label} 取走了 {item}。");
 		RefreshStatus();
 	}
@@ -3924,8 +3951,12 @@ private sealed class RoomProjectileEffect
 				continue;
 			}
 
+			if (!AddLoot(equipped.Label))
+			{
+				break;
+			}
+
 			equipped.Taken = true;
-			AddLoot(equipped.Label);
 			takenCount++;
 		}
 
@@ -3939,19 +3970,28 @@ private sealed class RoomProjectileEffect
 					continue;
 				}
 
+				if (!AddLoot(item.Label))
+				{
+					break;
+				}
+
 				item.Taken = true;
-				AddLoot(item.Label);
 				takenCount++;
 			}
 		}
 		else
 		{
-			takenCount += container.VisibleItems.Count;
-			for (int i = 0; i < container.VisibleItems.Count; i++)
+			for (int i = container.VisibleItems.Count - 1; i >= 0; i--)
 			{
-				AddLoot(container.VisibleItems[i]);
+				string item = container.VisibleItems[i];
+				if (!AddLoot(item))
+				{
+					break;
+				}
+
+				container.VisibleItems.RemoveAt(i);
+				takenCount++;
 			}
-			container.VisibleItems.Clear();
 		}
 
 		if (takenCount <= 0)
@@ -3986,10 +4026,17 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
-		foreach (string item in _runBackpack)
+		if (IsOverloaded())
 		{
-			_stash.Add(item);
+			_status = "队伍当前超载，无法执行撤离。";
+			return;
 		}
+
+		foreach (BackpackItem item in _runBackpack)
+		{
+			_stash.Add(item.Label);
+		}
+		_runBackpack.Clear();
 		_runEnded = true;
 		_runFailed = false;
 		_status = "撤离成功。";
@@ -4001,10 +4048,135 @@ private sealed class RoomProjectileEffect
 		return !_runEnded && !_inHideout && !HasHostilesInRoom();
 	}
 
-	private void AddLoot(string item)
+	private bool AddLoot(string item)
 	{
-		_runBackpack.Add(item);
+		BackpackItem backpackItem = CreateBackpackItem(item);
+		if (!TryPlaceBackpackItem(backpackItem))
+		{
+			_status = "队伍背包空间不足。";
+			return false;
+		}
+
+		_runBackpack.Add(backpackItem);
 		_lootValue += GetItemValue(item);
+		return true;
+	}
+
+	private BackpackItem CreateBackpackItem(string item)
+	{
+		return new BackpackItem
+		{
+			Label = item,
+			Rarity = GetItemRarityByLabel(item),
+			Size = GetBackpackItemSize(item),
+		};
+	}
+
+	private Vector2I GetBackpackItemSize(string item)
+	{
+		if (item.Contains("锁甲") || item.Contains("护甲") || item.Contains("武装"))
+		{
+			return new Vector2I(2, 2);
+		}
+
+		if (item.Contains("长枪"))
+		{
+			return new Vector2I(1, 3);
+		}
+
+		if (item.Contains("军刀") || item.Contains("佩刀"))
+		{
+			return new Vector2I(1, 2);
+		}
+
+		if (item.Contains("包") || item.Contains("口粮") || item.Contains("草药"))
+		{
+			return new Vector2I(2, 1);
+		}
+
+		return new Vector2I(1, 1);
+	}
+
+	private bool TryPlaceBackpackItem(BackpackItem item)
+	{
+		for (int y = 0; y <= TeamBackpackGridSize.Y - item.Size.Y; y++)
+		{
+			for (int x = 0; x <= TeamBackpackGridSize.X - item.Size.X; x++)
+			{
+				Vector2I cell = new(x, y);
+				if (!IsBackpackAreaFree(cell, item.Size))
+				{
+					continue;
+				}
+
+				item.Cell = cell;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool IsBackpackAreaFree(Vector2I cell, Vector2I size)
+	{
+		foreach (BackpackItem existing in _runBackpack)
+		{
+			bool overlapX = cell.X < existing.Cell.X + existing.Size.X && cell.X + size.X > existing.Cell.X;
+			bool overlapY = cell.Y < existing.Cell.Y + existing.Size.Y && cell.Y + size.Y > existing.Cell.Y;
+			if (overlapX && overlapY)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private int GetCurrentCarryUsage()
+	{
+		int used = 0;
+		foreach (BackpackItem item in _runBackpack)
+		{
+			used += item.Size.X * item.Size.Y;
+		}
+
+		return used;
+	}
+
+	private int GetCurrentCarryLimit()
+	{
+		int heroCapacity = 0;
+		int soldierCapacity = 0;
+		foreach (RoomUnit unit in _roomUnits)
+		{
+			if (!unit.IsAlive || !unit.IsPlayerSide)
+			{
+				continue;
+			}
+
+			if (unit.IsHero)
+			{
+				heroCapacity += 16;
+			}
+			else
+			{
+				soldierCapacity += 2;
+			}
+		}
+
+		if (heroCapacity <= 0 && !_inHideout)
+		{
+			heroCapacity = 16;
+		}
+
+		return heroCapacity + soldierCapacity + GetFlatLogisticsCarryBonus();
+	}
+
+	private int GetFlatLogisticsCarryBonus() => 0;
+
+	private bool IsOverloaded()
+	{
+		return GetCurrentCarryUsage() > GetCurrentCarryLimit();
 	}
 
 	private int GetItemValue(string item)
@@ -4014,6 +4186,8 @@ private sealed class RoomProjectileEffect
 		if (item.Contains("包") || item.Contains("口粮")) return 7;
 		return 5;
 	}
+
+	private ItemRarity GetItemRarityByLabel(string item) => RollGridRarity(item);
 
 	private string GetSelectedMapName() => _selectedMapTemplate switch
 	{
@@ -4868,7 +5042,20 @@ private sealed class RoomProjectileEffect
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u5a01\u80c1\uff1a{node.Threat}   \u6218\u5229\u54c1\uff1a{CountNodeLoot(node)}", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.75f, 0.78f, 0.82f));
 		y += Ui(22f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u62fe\u53d6\u8d44\u91d1\uff1a{_runMoneyLooted}", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.95f, 0.86f, 0.48f));
-		y += Ui(34f);
+		y += Ui(22f);
+		int carryUsage = GetCurrentCarryUsage();
+		int carryLimit = GetCurrentCarryLimit();
+		Color carryColor = carryUsage > carryLimit ? new Color(0.96f, 0.42f, 0.4f) : new Color(0.78f, 0.86f, 0.95f);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"携行占用：{carryUsage} / {carryLimit}", HorizontalAlignment.Left, -1f, UiFont(14), carryColor);
+		y += Ui(20f);
+		if (carryUsage > carryLimit)
+		{
+			DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "超载：无法过门或撤离", HorizontalAlignment.Left, -1f, UiFont(13), new Color(0.96f, 0.52f, 0.48f));
+			y += Ui(20f);
+		}
+		DrawTeamBackpackPreview(new Vector2(x, y));
+		y += Ui(136f);
+		y += Ui(18f);
 		float actionWidth = (_sideRect.Size.X - Ui(60f)) * 0.5f;
 		Rect2 mapRect = new(new Vector2(x, y), new Vector2(actionWidth, Ui(34f)));
 		DrawButton(mapRect, _showMapOverlay ? "战略地图：开" : "战略地图：关", _showMapOverlay ? new Color(0.24f, 0.48f, 0.62f) : new Color(0.18f, 0.2f, 0.24f));
@@ -4900,6 +5087,35 @@ private sealed class RoomProjectileEffect
 		DrawRect(rect, color, true);
 		DrawRect(rect, Colors.White, false, 1.5f);
 		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), rect.Size.Y - Ui(8f)), text, HorizontalAlignment.Left, rect.Size.X - Ui(16f), UiFont(13), Colors.White);
+	}
+
+	private void DrawTeamBackpackPreview(Vector2 origin)
+	{
+		Vector2 cellSize = new(Ui(16f), Ui(16f));
+		DrawString(ThemeDB.FallbackFont, origin, "队伍背包", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.9f, 0.92f, 0.96f));
+		Vector2 gridOrigin = origin + new Vector2(0f, Ui(12f));
+		int carryLimit = GetCurrentCarryLimit();
+		int allowedCells = Mathf.Clamp(carryLimit, 0, TeamBackpackGridSize.X * TeamBackpackGridSize.Y);
+		for (int y = 0; y < TeamBackpackGridSize.Y; y++)
+		{
+			for (int x = 0; x < TeamBackpackGridSize.X; x++)
+			{
+				int cellIndex = y * TeamBackpackGridSize.X + x;
+				bool withinLimit = cellIndex < allowedCells;
+				Rect2 cellRect = new(gridOrigin + new Vector2(x * cellSize.X, y * cellSize.Y), cellSize - new Vector2(Ui(2f), Ui(2f)));
+				DrawRect(cellRect, withinLimit ? new Color(0.1f, 0.12f, 0.15f) : new Color(0.08f, 0.05f, 0.05f), true);
+				DrawRect(cellRect, withinLimit ? new Color(0.24f, 0.28f, 0.34f) : new Color(0.34f, 0.16f, 0.16f), false, 1f);
+			}
+		}
+
+		foreach (BackpackItem item in _runBackpack)
+		{
+			Rect2 itemRect = new(
+				gridOrigin + new Vector2(item.Cell.X * cellSize.X, item.Cell.Y * cellSize.Y),
+				new Vector2(item.Size.X * cellSize.X - Ui(2f), item.Size.Y * cellSize.Y - Ui(2f)));
+			DrawRect(itemRect, GetGridRarityColor(item.Rarity), true);
+			DrawRect(itemRect, new Color(1f, 1f, 1f, 0.82f), false, 1f);
+		}
 	}
 
 	private float GetContainerCardHeight(LootContainer container)
