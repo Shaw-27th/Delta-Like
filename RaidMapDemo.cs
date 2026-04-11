@@ -161,6 +161,7 @@ public partial class RaidMapDemo : Node2D
 		public ItemRarity Rarity;
 		public Vector2I Size;
 		public Vector2I Cell;
+		public bool AcquiredInRun;
 		public bool Revealed;
 		public bool Taken;
 		public float SearchTime;
@@ -173,6 +174,7 @@ public partial class RaidMapDemo : Node2D
 		public ItemRarity Rarity;
 		public Vector2I Size;
 		public Vector2I Cell;
+		public bool AcquiredInRun;
 	}
 
 	private sealed class BackpackCapacityBlock
@@ -2436,6 +2438,7 @@ private sealed class RoomProjectileEffect
 			Label = backpackItem.Label,
 			Rarity = backpackItem.Rarity,
 			Size = backpackItem.Size,
+			AcquiredInRun = backpackItem.AcquiredInRun,
 			Revealed = true,
 			SearchTime = GetGridSearchTime(backpackItem.Rarity),
 		};
@@ -3392,6 +3395,7 @@ private sealed class RoomProjectileEffect
 			Label = label,
 			Rarity = rarity,
 			Size = size,
+			AcquiredInRun = true,
 			Revealed = revealed,
 			SearchTime = GetGridSearchTime(rarity),
 		};
@@ -4163,7 +4167,7 @@ private sealed class RoomProjectileEffect
 				return;
 			}
 
-			if (!AddLoot(gridItem.Label, gridItem.Size))
+				if (!AddLoot(gridItem.Label, gridItem.Size, gridItem.AcquiredInRun))
 			{
 				return;
 			}
@@ -4234,7 +4238,7 @@ private sealed class RoomProjectileEffect
 					continue;
 				}
 
-				if (!AddLoot(item.Label, item.Size))
+				if (!AddLoot(item.Label, item.Size, item.AcquiredInRun))
 				{
 					break;
 				}
@@ -4332,7 +4336,7 @@ private sealed class RoomProjectileEffect
 
 	private bool AddLoot(string item)
 	{
-		return AddLoot(item, GetBackpackItemSize(item));
+		return AddLoot(item, GetBackpackItemSize(item), true);
 	}
 
 	private bool TryAddToStash(string item)
@@ -4402,6 +4406,8 @@ private sealed class RoomProjectileEffect
 				_hideoutLoadout.Add(item);
 			}
 		}
+
+		RefreshLootValueFromCurrentInventory();
 	}
 
 	private bool HandleOpenContainerPopupClick(Vector2 click)
@@ -4452,6 +4458,7 @@ private sealed class RoomProjectileEffect
 			Rarity = _draggedBackpackItem.Rarity,
 			Size = _draggedBackpackItem.Size,
 			Cell = cell,
+			AcquiredInRun = _draggedBackpackItem.AcquiredInRun,
 			Revealed = true,
 			SearchTime = GetGridSearchTime(_draggedBackpackItem.Rarity),
 		};
@@ -4500,33 +4507,41 @@ private sealed class RoomProjectileEffect
 		LogEvent($"将 {_draggedBackpackItem.Label} 放回了 {container.Label}。");
 		_hasDraggedBackpackItem = false;
 		_draggedBackpackItem = null;
+		_draggedBackpackGrabOffset = Vector2.Zero;
+		RefreshLootValueFromCurrentInventory();
 		RefreshStatus();
 		return true;
 	}
 
 	private bool AddLoot(string item, Vector2I size)
 	{
-		BackpackItem backpackItem = CreateBackpackItem(item, size);
+		return AddLoot(item, size, true);
+	}
+
+	private bool AddLoot(string item, Vector2I size, bool acquiredInRun)
+	{
+		BackpackItem backpackItem = CreateBackpackItem(item, size, acquiredInRun);
 		if (TryPlaceBackpackItem(backpackItem))
 		{
 			_runBackpack.Add(backpackItem);
-			_lootValue += GetItemValue(item);
+			RefreshLootValueFromCurrentInventory();
 			return true;
 		}
 
 		_overflowBackpackItems.Add(backpackItem);
 		AutoOrganizeBackpack();
-		_lootValue += GetItemValue(item);
+		RefreshLootValueFromCurrentInventory();
 		return true;
 	}
 
-	private BackpackItem CreateBackpackItem(string item, Vector2I size)
+	private BackpackItem CreateBackpackItem(string item, Vector2I size, bool acquiredInRun = false)
 	{
 		return new BackpackItem
 		{
 			Label = item,
 			Rarity = GetItemRarityByLabel(item),
 			Size = size,
+			AcquiredInRun = acquiredInRun,
 		};
 	}
 
@@ -5085,6 +5100,8 @@ private sealed class RoomProjectileEffect
 		_runBackpack.Add(_draggedBackpackItem);
 		_hasDraggedBackpackItem = false;
 		_draggedBackpackItem = null;
+		_draggedBackpackGrabOffset = Vector2.Zero;
+		RefreshLootValueFromCurrentInventory();
 		return true;
 	}
 
@@ -5100,6 +5117,7 @@ private sealed class RoomProjectileEffect
 		_hasDraggedBackpackItem = false;
 		_draggedBackpackItem = null;
 		_draggedBackpackGrabOffset = Vector2.Zero;
+		RefreshLootValueFromCurrentInventory();
 	}
 
 	private Rect2 GetBackpackItemRect(BackpackItem item, Vector2 gridOrigin, Vector2 cellSize)
@@ -5203,6 +5221,7 @@ private sealed class RoomProjectileEffect
 		_runBackpack.AddRange(bestPlaced);
 		_overflowBackpackItems.Clear();
 		_overflowBackpackItems.AddRange(bestOverflow);
+		RefreshLootValueFromCurrentInventory();
 		_status = _overflowBackpackItems.Count > 0 ? "自动整理完成，仍有物品留在待整理区。" : "自动整理完成。";
 	}
 
@@ -5220,6 +5239,7 @@ private sealed class RoomProjectileEffect
 		}
 
 		_overflowBackpackItems.Clear();
+		RefreshLootValueFromCurrentInventory();
 		_selectedContainerIndex = _nodes[_playerNodeId].Containers.IndexOf(discard);
 		_status = "已将待整理物品丢到当前房间。";
 		RefreshStatus();
@@ -5236,6 +5256,7 @@ private sealed class RoomProjectileEffect
 		AddBackpackItemToContainer(discard, _draggedBackpackItem);
 		_hasDraggedBackpackItem = false;
 		_draggedBackpackItem = null;
+		RefreshLootValueFromCurrentInventory();
 		_selectedContainerIndex = _nodes[_playerNodeId].Containers.IndexOf(discard);
 		_status = "已将物品丢到当前房间。";
 		RefreshStatus();
@@ -5276,7 +5297,53 @@ private sealed class RoomProjectileEffect
 			Rarity = item.Rarity,
 			Size = item.Size,
 			Cell = item.Cell,
+			AcquiredInRun = item.AcquiredInRun,
 		};
+	}
+
+	private void RefreshLootValueFromCurrentInventory()
+	{
+		int total = 0;
+		if (_runEnded && !_runFailed)
+		{
+			for (int i = 0; i < _hideoutLoadout.Count; i++)
+			{
+				if (_hideoutLoadout[i].AcquiredInRun)
+				{
+					total += GetItemValue(_hideoutLoadout[i].Label);
+				}
+			}
+
+			if (_hasDraggedHideoutItem && _draggedHideoutItem != null && _draggedHideoutItem.AcquiredInRun)
+			{
+				total += GetItemValue(_draggedHideoutItem.Label);
+			}
+		}
+		else
+		{
+			for (int i = 0; i < _runBackpack.Count; i++)
+			{
+				if (_runBackpack[i].AcquiredInRun)
+				{
+					total += GetItemValue(_runBackpack[i].Label);
+				}
+			}
+
+			for (int i = 0; i < _overflowBackpackItems.Count; i++)
+			{
+				if (_overflowBackpackItems[i].AcquiredInRun)
+				{
+					total += GetItemValue(_overflowBackpackItems[i].Label);
+				}
+			}
+
+			if (_hasDraggedBackpackItem && _draggedBackpackItem != null && _draggedBackpackItem.AcquiredInRun)
+			{
+				total += GetItemValue(_draggedBackpackItem.Label);
+			}
+		}
+
+		_lootValue = total;
 	}
 
 	private static int CompareBackpackItemsByAreaDesc(BackpackItem a, BackpackItem b)
@@ -5535,6 +5602,7 @@ private sealed class RoomProjectileEffect
 		_hideoutLoadout.RemoveAt(_selectedLoadoutIndex);
 		RepackHideoutLoadout();
 		_selectedLoadoutIndex = -1;
+		RefreshLootValueFromCurrentInventory();
 		_status = $"已将 {moved.Label} 放回仓库。";
 	}
 
@@ -5565,6 +5633,7 @@ private sealed class RoomProjectileEffect
 
 		_hideoutLoadout.Clear();
 		_selectedSettlementIndex = -1;
+		RefreshLootValueFromCurrentInventory();
 		_status = "已将局外背包全部转入仓库。";
 	}
 
@@ -6671,9 +6740,11 @@ private sealed class RoomProjectileEffect
 
 		_hasDraggedHideoutItem = false;
 		_draggedHideoutItem = null;
+		_draggedHideoutGrabOffset = Vector2.Zero;
 		_pendingHideoutDrag = false;
 		_pendingHideoutDragIndex = -1;
 		_pendingHideoutGrabOffset = Vector2.Zero;
+		RefreshLootValueFromCurrentInventory();
 	}
 
 	private Rect2 GetStorageItemRect(BackpackItem item, Vector2 gridOrigin, Vector2 cellSize)
@@ -6714,6 +6785,7 @@ private sealed class RoomProjectileEffect
 		_draggedHideoutGrabOffset = Vector2.Zero;
 		_pendingHideoutDrag = false;
 		_pendingHideoutDragIndex = -1;
+		RefreshLootValueFromCurrentInventory();
 		return true;
 	}
 
@@ -6737,6 +6809,7 @@ private sealed class RoomProjectileEffect
 		_draggedHideoutGrabOffset = Vector2.Zero;
 		_pendingHideoutDrag = false;
 		_pendingHideoutDragIndex = -1;
+		RefreshLootValueFromCurrentInventory();
 		return true;
 	}
 
