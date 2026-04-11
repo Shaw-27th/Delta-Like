@@ -1126,7 +1126,8 @@ private sealed class RoomProjectileEffect
 			{
 				Vector2 dir = toTarget.Normalized();
 				hero.Facing = dir;
-				hero.Position = ClampToRoom(hero.Position + dir * hero.Speed * delta);
+				float exploreSpeedScale = HasHostilesInRoom() ? 1f : 2f;
+				hero.Position = ClampToRoom(hero.Position + dir * hero.Speed * exploreSpeedScale * delta);
 			}
 		}
 
