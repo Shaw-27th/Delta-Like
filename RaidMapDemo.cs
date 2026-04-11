@@ -2303,6 +2303,25 @@ private sealed class RoomProjectileEffect
 		}
 	}
 
+	private void AddBackpackItemToContainer(LootContainer container, BackpackItem backpackItem)
+	{
+		GridLootItem item = new()
+		{
+			Label = backpackItem.Label,
+			Rarity = backpackItem.Rarity,
+			Size = backpackItem.Size,
+			Revealed = true,
+			SearchTime = GetGridSearchTime(backpackItem.Rarity),
+		};
+
+		while (!TryPlaceGridItem(container, item))
+		{
+			container.GridSize = new Vector2I(container.GridSize.X, container.GridSize.Y + 1);
+		}
+
+		container.GridItems.Add(item);
+	}
+
 	private bool HasLivingPlayerAlliesExcludingHero()
 	{
 		for (int i = 0; i < _roomUnits.Count; i++)
@@ -3785,6 +3804,9 @@ private sealed class RoomProjectileEffect
 			case "take_all":
 				TakeAllFromContainer(button.Index);
 				break;
+			case "drop_overflow":
+				DropOverflowToGround();
+				break;
 			case "open_container":
 				OpenContainer(button.Index);
 				break;
@@ -4496,6 +4518,52 @@ private sealed class RoomProjectileEffect
 		_overflowBackpackItems.Clear();
 		_overflowBackpackItems.AddRange(bestOverflow);
 		_status = _overflowBackpackItems.Count > 0 ? "自动整理完成，仍有物品留在待整理区。" : "自动整理完成。";
+	}
+
+	private void DropOverflowToGround()
+	{
+		if (_overflowBackpackItems.Count == 0 || _inHideout || _runEnded)
+		{
+			return;
+		}
+
+		MapNode node = _nodes[_playerNodeId];
+		RoomUnit hero = GetHero();
+		Vector2 dropPosition = hero != null ? ClampToRoom(hero.Position + new Vector2(22f, 0f)) : RoomCenter;
+		LootContainer discard = null;
+		for (int i = 0; i < node.Containers.Count; i++)
+		{
+			LootContainer existing = node.Containers[i];
+			if (existing.Label == "临时弃置" && existing.Position.DistanceTo(dropPosition) <= 36f)
+			{
+				discard = existing;
+				break;
+			}
+		}
+
+		if (discard == null)
+		{
+			discard = new LootContainer
+			{
+				Label = "临时弃置",
+				Kind = ContainerKind.CorpsePile,
+				Position = dropPosition,
+				Tint = new Color(0.88f, 0.58f, 0.28f, 1f),
+				AutoOpenRange = 62f,
+				GridSize = new Vector2I(6, 4),
+			};
+			node.Containers.Add(discard);
+		}
+
+		for (int i = 0; i < _overflowBackpackItems.Count; i++)
+		{
+			AddBackpackItemToContainer(discard, _overflowBackpackItems[i]);
+		}
+
+		_overflowBackpackItems.Clear();
+		_selectedContainerIndex = node.Containers.IndexOf(discard);
+		_status = "已将待整理物品丢到当前房间。";
+		RefreshStatus();
 	}
 
 	private BackpackItem CloneBackpackItem(BackpackItem item)
@@ -5616,9 +5684,10 @@ private sealed class RoomProjectileEffect
 		float overflowWidth = Ui(132f);
 		Vector2 overflowOrigin = gridOrigin + new Vector2(gridWidth * cellSize.X + Ui(18f), 0f);
 		int overflowVisible = Mathf.Max(1, _overflowBackpackItems.Count);
+		float overflowButtonHeight = _overflowBackpackItems.Count > 0 ? Ui(28f) : 0f;
 		Rect2 overflowRect = new(
 			overflowOrigin,
-			new Vector2(overflowWidth, Mathf.Max(Ui(72f), overflowVisible * Ui(28f) + Ui(18f))));
+			new Vector2(overflowWidth, Mathf.Max(Ui(72f), overflowVisible * Ui(28f) + Ui(18f) + overflowButtonHeight + (_overflowBackpackItems.Count > 0 ? Ui(8f) : 0f))));
 		DrawRect(overflowRect, new Color(0.07f, 0.06f, 0.05f, 0.92f), true);
 		DrawRect(overflowRect, _overflowBackpackItems.Count > 0 ? new Color(0.8f, 0.44f, 0.4f, 0.95f) : new Color(0.3f, 0.32f, 0.36f, 0.85f), false, 1.5f);
 		DrawString(ThemeDB.FallbackFont, overflowRect.Position + new Vector2(Ui(8f), Ui(16f)), "待整理", HorizontalAlignment.Left, overflowRect.Size.X - Ui(12f), UiFont(12), Colors.White);
@@ -5643,6 +5712,12 @@ private sealed class RoomProjectileEffect
 					hoveredItemLabel = item.Label;
 				}
 			}
+
+			Rect2 dropRect = new(
+				new Vector2(overflowRect.Position.X + Ui(8f), overflowRect.End.Y - Ui(32f)),
+				new Vector2(overflowRect.Size.X - Ui(16f), Ui(24f)));
+			DrawButton(dropRect, "丢到地面", new Color(0.46f, 0.28f, 0.22f));
+			_buttons.Add(new ButtonDef(dropRect, "drop_overflow"));
 		}
 
 		if (!string.IsNullOrEmpty(hoveredItemLabel))
