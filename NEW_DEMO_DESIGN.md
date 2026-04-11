@@ -151,6 +151,78 @@
 - Mechanically use the multi-source capacity model above.
 - They preserve the strong loot-space economy without making the whole system feel like one hero carrying an unrealistic amount alone.
 
+### Phased Implementation Plan
+
+- Phase 1: Carry-capacity foundation.
+- Introduce a real team-backpack grid instead of the current unlimited run backpack list.
+- Route container loot into the team backpack instead of directly into an unbounded list.
+- Add visible carry usage and carry limit to the run UI.
+- Compute carry limit from a first-pass squad formula.
+- First-pass formula should be simple and stable:
+- Hero base capacity.
+- Soldier contribution.
+- Optional logistics-plan flat bonus.
+- Detect overload when carried usage exceeds current limit.
+- Block room-to-room movement and extraction while overloaded.
+- Allow staying in the current room while overloaded.
+- Add a basic way to drop items back into the current room when overloaded.
+
+- Phase 2: Stash foundation.
+- Replace the current simple stash list with a real stash grid.
+- Move extracted team-backpack contents into the stash grid on successful extraction.
+- Set main stash width to `12`.
+- Set level 1 stash height to `10` rows.
+- Add stash-space growth hooks so later upgrades can increase rows cleanly.
+
+- Phase 3: Shared inventory UI and transfer flow.
+- Use one consistent grid UI language for container, team backpack, and stash.
+- Add drag / move / swap behavior between grids.
+- Add room-container <-> team-backpack transfer flow.
+- Add stash <-> hideout transfer flow.
+- Surface item footprint clearly so run looting decisions become space-driven.
+
+- Phase 4: Overload recovery and logistics depth.
+- Improve overload presentation and warnings.
+- Add cleaner floor-drop / temporary room container behavior.
+- Add pre-run logistics-plan selection.
+- Add flat bonuses and tradeoffs such as movement penalty or health penalty.
+- Tune carry formulas so hero contribution is stable and soldier contribution is meaningful but not dominant.
+
+- Phase 5: Storage-box expansion.
+- Add stash box slots.
+- Add extra stash tabs from inserted storage boxes.
+- Support typed storage boxes and unrestricted storage boxes.
+- Add stash upgrades for more rows and more storage-box slots.
+
+- Phase 6: Advanced capacity sources.
+- Add equipment, traits, and skills that affect carry capacity.
+- Add special logistics units such as transport mules or non-combat carriers.
+- Decide whether these units can die and push the squad into overload during runs.
+- Tune death-linked capacity loss after the overload system is already proven stable.
+
+### Phase 1 Must-Do
+
+- Team backpack must stop being an unlimited list and become a real bounded grid.
+- Search/container loot must go into that bounded team backpack.
+- The run UI must show `current usage / current limit`.
+- The game must calculate a first-pass squad carry limit from hero + soldiers + optional flat logistics bonus.
+- The run must enter overload when usage exceeds limit.
+- Overload must block room transition.
+- Overload must block extraction.
+- The player must still be allowed to move inside the current room while overloaded.
+- The player must have at least one basic way to remove carried items from the team backpack in-room.
+
+### Phase 1 Explicitly Not Required
+
+- Storage-box tabs.
+- Typed storage restrictions.
+- Stash upgrades.
+- Equipment / skill carry modifiers.
+- Special transport units.
+- Logistics plans with negative side effects.
+- Fancy drag-and-drop polish.
+- Final art or final inventory UI layout.
+
 ## 文档目的
 
 - 这份文档以当前代码实现为准。
