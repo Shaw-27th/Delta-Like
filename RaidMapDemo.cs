@@ -8,6 +8,7 @@ public partial class RaidMapDemo : Node2D
 	private const int MapTemplateCount = 2;
 	private const int DifficultyCount = 3;
 	private const bool EnableCombatFxDebugOpening = false;
+	private static readonly Rect2 DesignMapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
 
 	private enum NodeType
 	{
@@ -187,10 +188,14 @@ public partial class RaidMapDemo : Node2D
 
 	private enum RoomDoorSide
 	{
-		Left,
-		Top,
-		Right,
-		Bottom,
+		West,
+		NorthWest,
+		North,
+		NorthEast,
+		East,
+		SouthEast,
+		South,
+		SouthWest,
 	}
 
 	private enum RoomCombatState
@@ -331,7 +336,7 @@ private sealed class RoomProjectileEffect
 	private Vector2 _heroMoveTarget;
 	private bool _heroHasMoveTarget;
 	private int _pendingExitNodeId = -1;
-	private RoomDoorSide _pendingExitSide = RoomDoorSide.Right;
+	private RoomDoorSide _pendingExitSide = RoomDoorSide.East;
 	private bool _roomDirty;
 	private string _status = "点击相邻节点移动。";
 
@@ -387,7 +392,7 @@ private sealed class RoomProjectileEffect
 		{
 			foreach (MapNode node in _nodes)
 			{
-				if (node.Position.DistanceTo(click) <= 24f)
+				if (MapToScreen(node.Position).DistanceTo(click) <= 24f * GetMapUnitScale())
 				{
 					TryPlanExitToNode(node.Id);
 					return;
@@ -503,7 +508,7 @@ private sealed class RoomProjectileEffect
 			ApplyCombatFxDebugOpening();
 			ApplyDifficultyToRun();
 			LogEvent("行动开始，其他小队已经进入边境堡寨。");
-			EnterNodeRoom(_playerNodeId, RoomDoorSide.Left, false);
+			EnterNodeRoom(_playerNodeId, RoomDoorSide.West, false);
 			RefreshStatus();
 			return;
 		}
@@ -565,7 +570,7 @@ private sealed class RoomProjectileEffect
 		ApplyCombatFxDebugOpening();
 		ApplyDifficultyToRun();
 		LogEvent("行动开始，其他小队已经进入地图。");
-		EnterNodeRoom(_playerNodeId, RoomDoorSide.Left, false);
+		EnterNodeRoom(_playerNodeId, RoomDoorSide.West, false);
 		RefreshStatus();
 	}
 
@@ -843,13 +848,10 @@ private sealed class RoomProjectileEffect
 	private Vector2 GetDoorSpawnPoint(RoomDoorSide side)
 	{
 		Rect2 rect = GetRoomArenaRect();
-		Vector2 p = side switch
-		{
-			RoomDoorSide.Left => new Vector2(rect.Position.X + 34f, rect.GetCenter().Y),
-			RoomDoorSide.Top => new Vector2(rect.GetCenter().X, rect.Position.Y + 34f),
-			RoomDoorSide.Right => new Vector2(rect.End.X - 34f, rect.GetCenter().Y),
-			_ => new Vector2(rect.GetCenter().X, rect.End.Y - 34f),
-		};
+		Vector2 center = rect.GetCenter();
+		Vector2 half = rect.Size * 0.5f;
+		Vector2 direction = GetDoorDirection(side);
+		Vector2 p = center + new Vector2(direction.X * (half.X - 34f), direction.Y * (half.Y - 34f));
 		return ClampToRoom(p);
 	}
 
@@ -1224,7 +1226,7 @@ private sealed class RoomProjectileEffect
 
 		if (_pendingExitNodeId >= 0)
 		{
-			Rect2 door = GetRoomExitRect(_pendingExitSide).Grow(8f);
+			Rect2 door = GetRoomExitRect(_nodes[_playerNodeId], _pendingExitNodeId).Grow(8f);
 			if (door.HasPoint(hero.Position))
 			{
 				RoomDoorSide entrySide = GetOppositeSide(_pendingExitSide);
@@ -1960,49 +1962,95 @@ private sealed class RoomProjectileEffect
 	{
 		if (linkedNodeId < 0 || linkedNodeId >= _nodes.Count)
 		{
-			return RoomDoorSide.Right;
+			return RoomDoorSide.East;
 		}
 
 		Vector2 delta = _nodes[linkedNodeId].Position - fromNode.Position;
-		if (Mathf.Abs(delta.X) >= Mathf.Abs(delta.Y))
-		{
-			return delta.X >= 0f ? RoomDoorSide.Right : RoomDoorSide.Left;
-		}
-
-		return delta.Y >= 0f ? RoomDoorSide.Bottom : RoomDoorSide.Top;
-	}
-
-	private RoomDoorSide GetExitSide(int index, int totalCount)
-	{
-		return totalCount switch
-		{
-			1 => RoomDoorSide.Right,
-			2 => index == 0 ? RoomDoorSide.Left : RoomDoorSide.Right,
-			3 => index switch
-			{
-				0 => RoomDoorSide.Left,
-				1 => RoomDoorSide.Top,
-				_ => RoomDoorSide.Right,
-			},
-			_ => index switch
-			{
-				0 => RoomDoorSide.Left,
-				1 => RoomDoorSide.Top,
-				2 => RoomDoorSide.Right,
-				_ => RoomDoorSide.Bottom,
-			},
-		};
+		float angle = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(delta.Y, delta.X)) + 360f, 360f);
+		int octant = Mathf.PosMod(Mathf.RoundToInt(angle / 45f), 8);
+		return (RoomDoorSide)octant;
 	}
 
 	private RoomDoorSide GetOppositeSide(RoomDoorSide side)
 	{
+		return (RoomDoorSide)(((int)side + 4) % 8);
+	}
+
+	private Rect2 GetMapCanvasRect()
+	{
+		float titleHeight = _showMapOverlay ? Ui(96f) : Ui(24f);
+		float bottomPadding = Ui(22f);
+		return new Rect2(
+			_mapRect.Position + new Vector2(Ui(18f), titleHeight),
+			_mapRect.Size - new Vector2(Ui(36f), titleHeight + bottomPadding));
+	}
+
+	private Vector2 GetMapScale()
+	{
+		Rect2 canvas = GetMapCanvasRect();
+		return new Vector2(
+			canvas.Size.X / DesignMapRect.Size.X,
+			canvas.Size.Y / DesignMapRect.Size.Y);
+	}
+
+	private float GetMapUnitScale()
+	{
+		Vector2 scale = GetMapScale();
+		return Mathf.Min(scale.X, scale.Y);
+	}
+
+	private Vector2 MapToScreen(Vector2 point)
+	{
+		Rect2 canvas = GetMapCanvasRect();
+		Vector2 scale = GetMapScale();
+		return canvas.Position + new Vector2(
+			(point.X - DesignMapRect.Position.X) * scale.X,
+			(point.Y - DesignMapRect.Position.Y) * scale.Y);
+	}
+
+	private Rect2 MapToScreen(Rect2 rect)
+	{
+		Vector2 min = MapToScreen(rect.Position);
+		Vector2 max = MapToScreen(rect.End);
+		return new Rect2(min, max - min);
+	}
+
+	private Vector2 GetDoorDirection(RoomDoorSide side)
+	{
 		return side switch
 		{
-			RoomDoorSide.Left => RoomDoorSide.Right,
-			RoomDoorSide.Right => RoomDoorSide.Left,
-			RoomDoorSide.Top => RoomDoorSide.Bottom,
-			_ => RoomDoorSide.Top,
+			RoomDoorSide.West => Vector2.Left,
+			RoomDoorSide.NorthWest => new Vector2(-1f, -1f).Normalized(),
+			RoomDoorSide.North => Vector2.Up,
+			RoomDoorSide.NorthEast => new Vector2(1f, -1f).Normalized(),
+			RoomDoorSide.East => Vector2.Right,
+			RoomDoorSide.SouthEast => new Vector2(1f, 1f).Normalized(),
+			RoomDoorSide.South => Vector2.Down,
+			_ => new Vector2(-1f, 1f).Normalized(),
 		};
+	}
+
+	private Rect2 GetRoomExitRect(MapNode node, int linkedNodeId)
+	{
+		RoomDoorSide side = GetExitSide(node, linkedNodeId);
+		int slotIndex = 0;
+		int slotCount = 0;
+		foreach (int neighborId in node.Links)
+		{
+			if (GetExitSide(node, neighborId) != side)
+			{
+				continue;
+			}
+
+			if (neighborId == linkedNodeId)
+			{
+				slotIndex = slotCount;
+			}
+
+			slotCount++;
+		}
+
+		return GetRoomExitRect(side, slotIndex, Mathf.Max(slotCount, 1));
 	}
 
 	private void DrawRoomViewUnified()
@@ -2057,12 +2105,12 @@ private sealed class RoomProjectileEffect
 
 	private void DrawRoomExitsUnified(MapNode node)
 	{
-		for (int i = 0; i < node.Links.Count && i < 4; i++)
+		for (int i = 0; i < node.Links.Count; i++)
 		{
 			int linkedNodeId = node.Links[i];
 			MapNode linkedNode = _nodes[linkedNodeId];
 			RoomDoorSide side = GetExitSide(node, linkedNodeId);
-			Rect2 exitRect = GetRoomExitRect(side);
+			Rect2 exitRect = GetRoomExitRect(node, linkedNodeId);
 			bool pending = linkedNodeId == _pendingExitNodeId;
 			Color fill = pending ? new Color(0.3f, 0.62f, 0.82f, 0.92f) : new Color(0.28f, 0.34f, 0.44f, 0.9f);
 			Color border = pending ? new Color(1f, 0.92f, 0.58f, 1f) : new Color(0.85f, 0.92f, 1f, 0.96f);
@@ -2444,7 +2492,7 @@ private sealed class RoomProjectileEffect
 		}
 
 		RoomDoorSide side = GetExitSide(node, nodeId);
-		Rect2 doorRect = GetRoomExitRect(side);
+		Rect2 doorRect = GetRoomExitRect(node, nodeId);
 		_pendingExitNodeId = nodeId;
 		_pendingExitSide = side;
 		_heroMoveTarget = ClampToRoom(doorRect.GetCenter());
@@ -3895,16 +3943,18 @@ private sealed class RoomProjectileEffect
 
 				if (link < node.Id) continue;
 				bool highlight = HasClearVision(node) && HasClearVision(_nodes[link]);
-				DrawMapPath(node.Position, _nodes[link].Position, highlight);
+				DrawMapPath(MapToScreen(node.Position), MapToScreen(_nodes[link].Position), highlight);
 			}
 		}
 
+		float mapScale = GetMapUnitScale();
 		foreach (MapNode node in _nodes)
 		{
+			Vector2 nodePos = MapToScreen(node.Position);
 			if (!node.Revealed)
 			{
-				DrawCircle(node.Position, 10f, new Color(0.18f, 0.17f, 0.16f, 0.45f));
-				DrawString(ThemeDB.FallbackFont, node.Position + new Vector2(-6f, -12f), "?", HorizontalAlignment.Left, -1f, 12, new Color(0.68f, 0.64f, 0.58f, 0.7f));
+				DrawCircle(nodePos, 10f * mapScale, new Color(0.18f, 0.17f, 0.16f, 0.45f));
+				DrawString(ThemeDB.FallbackFont, nodePos + new Vector2(-6f, -12f) * mapScale, "?", HorizontalAlignment.Left, -1f, UiFont(12), new Color(0.68f, 0.64f, 0.58f, 0.7f));
 				continue;
 			}
 
@@ -3912,39 +3962,40 @@ private sealed class RoomProjectileEffect
 			Color color = GetNodeColor(node, clearVision);
 			float outerAlpha = clearVision ? 0.95f : 0.55f;
 			float labelAlpha = clearVision ? 1f : 0.65f;
-			DrawCircle(node.Position, 26f, new Color(0.14f, 0.12f, 0.1f, outerAlpha));
-			DrawCircle(node.Position, 22f, color);
-			DrawArc(node.Position, 31f, 0f, Mathf.Tau, 32, new Color(color.R, color.G, color.B, clearVision ? 0.38f : 0.18f), 2.2f);
-			DrawNodeGlyph(node, color);
-			Vector2 labelPos = node.Position + GetNodeLabelOffset(node.Id);
+			DrawCircle(nodePos, 26f * mapScale, new Color(0.14f, 0.12f, 0.1f, outerAlpha));
+			DrawCircle(nodePos, 22f * mapScale, color);
+			DrawArc(nodePos, 31f * mapScale, 0f, Mathf.Tau, 32, new Color(color.R, color.G, color.B, clearVision ? 0.38f : 0.18f), 2.2f * mapScale);
+			DrawNodeGlyph(node, nodePos, color, mapScale);
+			Vector2 labelPos = nodePos + GetNodeLabelOffset(node.Id) * mapScale;
 			DrawString(ThemeDB.FallbackFont, labelPos, node.Name, HorizontalAlignment.Left, -1f, UiFont(15), new Color(0.96f, 0.93f, 0.86f, labelAlpha));
 			if (node.Id == _playerNodeId && !_isPlayerMoving)
 			{
-				DrawArc(node.Position, 34f, 0f, Mathf.Tau, 32, new Color(0.58f, 0.95f, 0.98f, 0.9f), 3f);
-				DrawCircle(node.Position, 7f, new Color(0.58f, 0.95f, 0.98f));
+				DrawArc(nodePos, 34f * mapScale, 0f, Mathf.Tau, 32, new Color(0.58f, 0.95f, 0.98f, 0.9f), 3f * mapScale);
+				DrawCircle(nodePos, 7f * mapScale, new Color(0.58f, 0.95f, 0.98f));
 			}
 			AiSquad squad = GetSquadAtNode(node.Id);
 			if (squad != null && clearVision)
 			{
-				Vector2 badge = node.Position + new Vector2(20f, 18f);
-				DrawCircle(badge, 9f, new Color(0.42f, 0.08f, 0.08f, 0.95f));
-				DrawCircle(badge, 7f, new Color(0.92f, 0.34f, 0.3f));
-				DrawString(ThemeDB.FallbackFont, node.Position + GetSquadLabelOffset(node.Id), squad.Name, HorizontalAlignment.Left, -1f, UiFont(11), new Color(1f, 0.84f, 0.8f));
-				Vector2 intentPos = node.Position + GetSquadIntentOffset(node.Id);
-				DrawAiIntentIcon(intentPos + new Vector2(6f, -3f), squad.Intent);
+				Vector2 badge = nodePos + new Vector2(20f, 18f) * mapScale;
+				DrawCircle(badge, 9f * mapScale, new Color(0.42f, 0.08f, 0.08f, 0.95f));
+				DrawCircle(badge, 7f * mapScale, new Color(0.92f, 0.34f, 0.3f));
+				DrawString(ThemeDB.FallbackFont, nodePos + GetSquadLabelOffset(node.Id) * mapScale, squad.Name, HorizontalAlignment.Left, -1f, UiFont(11), new Color(1f, 0.84f, 0.8f));
+				Vector2 intentPos = nodePos + GetSquadIntentOffset(node.Id) * mapScale;
+				DrawAiIntentIcon(intentPos + new Vector2(6f, -3f) * mapScale, squad.Intent);
 				DrawString(ThemeDB.FallbackFont, intentPos + new Vector2(18f, 0f), $"现：{GetAiIntentSummary(squad)}", HorizontalAlignment.Left, -1f, UiFont(10), new Color(0.92f, 0.92f, 0.84f));
 				DrawString(ThemeDB.FallbackFont, intentPos + new Vector2(18f, 12f), $"后：{GetAiNextActionSummary(squad)}", HorizontalAlignment.Left, -1f, UiFont(10), new Color(0.72f, 0.86f, 0.98f, 0.95f));
 
 				int nextNodeId = GetAiPredictedNextNodeId(squad);
 				if (nextNodeId >= 0 && nextNodeId < _nodes.Count && nextNodeId != squad.NodeId)
 				{
-					DrawPredictedMoveArrow(node.Position, _nodes[nextNodeId].Position);
+					DrawPredictedMoveArrow(nodePos, MapToScreen(_nodes[nextNodeId].Position));
 				}
 			}
 		}
 
-		DrawArc(_playerMarkerPosition, 34f, 0f, Mathf.Tau, 32, new Color(0.58f, 0.95f, 0.98f, 0.9f), 3f);
-		DrawCircle(_playerMarkerPosition, 7f, new Color(0.58f, 0.95f, 0.98f));
+		Vector2 marker = MapToScreen(_playerMarkerPosition);
+		DrawArc(marker, 34f * mapScale, 0f, Mathf.Tau, 32, new Color(0.58f, 0.95f, 0.98f, 0.9f), 3f * mapScale);
+		DrawCircle(marker, 7f * mapScale, new Color(0.58f, 0.95f, 0.98f));
 	}
 
 	private void DrawRoomView()
@@ -3985,10 +4036,11 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
-		for (int i = 0; i < node.Links.Count && i < 4; i++)
+		for (int i = 0; i < node.Links.Count; i++)
 		{
-			MapNode linkedNode = _nodes[node.Links[i]];
-			string exitLabel = $"{GetExitDirectionLabel(i, node.Links.Count)} -> {linkedNode.Name}";
+			int linkedNodeId = node.Links[i];
+			MapNode linkedNode = _nodes[linkedNodeId];
+			string exitLabel = $"{GetExitDirectionLabel(GetExitSide(node, linkedNodeId))} -> {linkedNode.Name}";
 			DrawString(ThemeDB.FallbackFont, new Vector2(_mapRect.Position.X + 24f, exitY), exitLabel, HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.76f, 0.8f, 0.86f));
 			exitY += 18f;
 		}
@@ -4010,69 +4062,47 @@ private sealed class RoomProjectileEffect
 
 	private void DrawRoomExits(MapNode node)
 	{
-		for (int i = 0; i < node.Links.Count && i < 4; i++)
+		for (int i = 0; i < node.Links.Count; i++)
 		{
 			int linkedNodeId = node.Links[i];
 			MapNode linkedNode = _nodes[linkedNodeId];
-			Rect2 exitRect = GetRoomExitRect(i, node.Links.Count);
+			Rect2 exitRect = GetRoomExitRect(node, linkedNodeId);
 			bool planned = linkedNodeId == _plannedExitNodeId;
 			Color fill = planned ? new Color(0.3f, 0.54f, 0.68f, 0.9f) : new Color(0.18f, 0.2f, 0.24f, 0.92f);
 			Color border = planned ? new Color(0.92f, 0.84f, 0.58f, 0.98f) : new Color(0.62f, 0.68f, 0.76f, 0.95f);
 			DrawRect(exitRect, fill, true);
 			DrawRect(exitRect, border, false, 2f);
-			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(10f, 18f), GetExitDirectionLabel(i, node.Links.Count), HorizontalAlignment.Left, exitRect.Size.X - 20f, UiFont(13), Colors.White);
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(10f, 18f), GetExitDirectionLabel(GetExitSide(node, linkedNodeId)), HorizontalAlignment.Left, exitRect.Size.X - 20f, UiFont(13), Colors.White);
 			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(10f, 38f), linkedNode.Name, HorizontalAlignment.Left, exitRect.Size.X - 20f, UiFont(13), new Color(0.88f, 0.92f, 0.98f));
 			_buttons.Add(new ButtonDef(exitRect, "use_exit", linkedNodeId));
 		}
 	}
 
-	private Rect2 GetRoomExitRect(int index, int totalCount)
-	{
-		Vector2 size = new(112f, 46f);
-		Vector2 center = _mapRect.GetCenter();
-		Vector2 position = totalCount switch
-		{
-			1 => center + new Vector2(_mapRect.Size.X * 0.5f - size.X - 28f, -size.Y * 0.5f),
-			2 => index == 0
-				? new Vector2(_mapRect.Position.X + 22f, center.Y - size.Y * 0.5f)
-				: new Vector2(_mapRect.End.X - size.X - 22f, center.Y - size.Y * 0.5f),
-			3 => index switch
-			{
-				0 => new Vector2(_mapRect.Position.X + 22f, center.Y - size.Y * 0.5f),
-				1 => new Vector2(center.X - size.X * 0.5f, _mapRect.Position.Y + 106f),
-				_ => new Vector2(_mapRect.End.X - size.X - 22f, center.Y - size.Y * 0.5f),
-			},
-			_ => index switch
-			{
-				0 => new Vector2(_mapRect.Position.X + 22f, center.Y - size.Y * 0.5f),
-				1 => new Vector2(center.X - size.X * 0.5f, _mapRect.Position.Y + 106f),
-				2 => new Vector2(_mapRect.End.X - size.X - 22f, center.Y - size.Y * 0.5f),
-				_ => new Vector2(center.X - size.X * 0.5f, _mapRect.End.Y - size.Y - 126f),
-			},
-		};
-		return new Rect2(position, size);
-	}
-
-	private Rect2 GetRoomExitRect(RoomDoorSide side)
-	{
-		Vector2 size = new(112f, 46f);
-		Vector2 center = _mapRect.GetCenter();
-		Vector2 position = side switch
-		{
-			RoomDoorSide.Left => new Vector2(_mapRect.Position.X + 22f, center.Y - size.Y * 0.5f),
-			RoomDoorSide.Top => new Vector2(center.X - size.X * 0.5f, _mapRect.Position.Y + 106f),
-			RoomDoorSide.Right => new Vector2(_mapRect.End.X - size.X - 22f, center.Y - size.Y * 0.5f),
-			_ => new Vector2(center.X - size.X * 0.5f, _mapRect.End.Y - size.Y - 126f),
-		};
-		return new Rect2(position, size);
-	}
+private Rect2 GetRoomExitRect(RoomDoorSide side, int slotIndex = 0, int slotCount = 1)
+{
+	Vector2 size = new(112f, 46f);
+	Rect2 arena = GetRoomArenaRect();
+	Vector2 center = arena.GetCenter();
+	Vector2 direction = GetDoorDirection(side);
+	Vector2 half = arena.Size * 0.5f;
+	Vector2 anchor = center + new Vector2(direction.X * (half.X - size.X * 0.5f - 22f), direction.Y * (half.Y - size.Y * 0.5f - 22f));
+	Vector2 tangent = new(-direction.Y, direction.X);
+	float spacing = Mathf.Min(size.X, size.Y) * 0.72f;
+	float offset = (slotIndex - (slotCount - 1) * 0.5f) * spacing;
+	Vector2 position = anchor + tangent * offset - size * 0.5f;
+	return new Rect2(position, size);
+}
 
 	private string GetExitDirectionLabel(RoomDoorSide side) => side switch
 	{
-		RoomDoorSide.Left => "瑗夸晶",
-		RoomDoorSide.Top => "鍖椾晶",
-		RoomDoorSide.Right => "涓滀晶",
-		_ => "鍗椾晶",
+		RoomDoorSide.West => "W",
+		RoomDoorSide.NorthWest => "NW",
+		RoomDoorSide.North => "N",
+		RoomDoorSide.NorthEast => "NE",
+		RoomDoorSide.East => "E",
+		RoomDoorSide.SouthEast => "SE",
+		RoomDoorSide.South => "S",
+		_ => "SW",
 	};
 
 	private string GetExitDirectionLabel(int index, int totalCount) => totalCount switch
@@ -4096,16 +4126,21 @@ private sealed class RoomProjectileEffect
 
 	private string GetCleanExitDirectionLabel(RoomDoorSide side) => side switch
 	{
-		RoomDoorSide.Left => "西侧",
-		RoomDoorSide.Top => "北侧",
-		RoomDoorSide.Right => "东侧",
-		_ => "南侧",
+		RoomDoorSide.West => "W",
+		RoomDoorSide.NorthWest => "NW",
+		RoomDoorSide.North => "N",
+		RoomDoorSide.NorthEast => "NE",
+		RoomDoorSide.East => "E",
+		RoomDoorSide.SouthEast => "SE",
+		RoomDoorSide.South => "S",
+		_ => "SW",
 	};
 
 	private void DrawMonasteryBackdrop()
 	{
-		DrawRect(new Rect2(_mapRect.Position + new Vector2(18f, 18f), _mapRect.Size - new Vector2(36f, 36f)), new Color(0.17f, 0.15f, 0.12f), true);
-		DrawRect(new Rect2(_mapRect.Position + new Vector2(28f, 28f), _mapRect.Size - new Vector2(56f, 56f)), new Color(0.22f, 0.2f, 0.16f), false, 2f);
+		Rect2 canvas = GetMapCanvasRect();
+		DrawRect(canvas, new Color(0.17f, 0.15f, 0.12f), true);
+		DrawRect(canvas.GrowIndividual(-Ui(10f), -Ui(10f), -Ui(10f), -Ui(10f)), new Color(0.22f, 0.2f, 0.16f), false, 2f);
 
 		Rect2 gate = new(new Vector2(45f, 285f), new Vector2(125f, 145f));
 		Rect2 cemetery = new(new Vector2(70f, 150f), new Vector2(110f, 120f));
@@ -4131,16 +4166,17 @@ private sealed class RoomProjectileEffect
 		DrawDistrictBlock(bellTower, new Color(0.21f, 0.18f, 0.17f), "钟楼", new Vector2(12f, 22f));
 		DrawDistrictBlock(crypt, new Color(0.16f, 0.15f, 0.18f), "地窖", new Vector2(12f, 22f));
 
-		DrawLine(new Vector2(182f, 360f), new Vector2(250f, 360f), new Color(0.46f, 0.4f, 0.31f, 0.8f), 12f);
-		DrawLine(new Vector2(520f, 360f), new Vector2(620f, 360f), new Color(0.46f, 0.4f, 0.31f, 0.8f), 12f);
-		DrawLine(new Vector2(620f, 255f), new Vector2(620f, 455f), new Color(0.46f, 0.4f, 0.31f, 0.8f), 12f);
-		DrawLine(new Vector2(280f, 505f), new Vector2(550f, 505f), new Color(0.46f, 0.4f, 0.31f, 0.8f), 10f);
+		DrawLine(MapToScreen(new Vector2(182f, 360f)), MapToScreen(new Vector2(250f, 360f)), new Color(0.46f, 0.4f, 0.31f, 0.8f), 12f * GetMapUnitScale());
+		DrawLine(MapToScreen(new Vector2(520f, 360f)), MapToScreen(new Vector2(620f, 360f)), new Color(0.46f, 0.4f, 0.31f, 0.8f), 12f * GetMapUnitScale());
+		DrawLine(MapToScreen(new Vector2(620f, 255f)), MapToScreen(new Vector2(620f, 455f)), new Color(0.46f, 0.4f, 0.31f, 0.8f), 12f * GetMapUnitScale());
+		DrawLine(MapToScreen(new Vector2(280f, 505f)), MapToScreen(new Vector2(550f, 505f)), new Color(0.46f, 0.4f, 0.31f, 0.8f), 10f * GetMapUnitScale());
 	}
 
 	private void DrawBorderKeepBackdrop()
 	{
-		DrawRect(new Rect2(_mapRect.Position + new Vector2(18f, 18f), _mapRect.Size - new Vector2(36f, 36f)), new Color(0.16f, 0.15f, 0.13f), true);
-		DrawRect(new Rect2(_mapRect.Position + new Vector2(34f, 34f), _mapRect.Size - new Vector2(68f, 68f)), new Color(0.22f, 0.2f, 0.18f), false, 2f);
+		Rect2 canvas = GetMapCanvasRect();
+		DrawRect(canvas, new Color(0.16f, 0.15f, 0.13f), true);
+		DrawRect(canvas.GrowIndividual(-Ui(16f), -Ui(16f), -Ui(16f), -Ui(16f)), new Color(0.22f, 0.2f, 0.18f), false, 2f);
 
 		Rect2 outerYard = new(new Vector2(70f, 430f), new Vector2(230f, 160f));
 		Rect2 ditch = new(new Vector2(130f, 330f), new Vector2(165f, 80f));
@@ -4162,16 +4198,17 @@ private sealed class RoomProjectileEffect
 		DrawDistrictBlock(supplyYard, new Color(0.2f, 0.18f, 0.14f), "", Vector2.Zero);
 		DrawDistrictBlock(dungeon, new Color(0.15f, 0.14f, 0.17f), "", Vector2.Zero);
 
-		DrawLine(new Vector2(235f, 510f), new Vector2(650f, 510f), new Color(0.44f, 0.39f, 0.31f, 0.8f), 10f);
-		DrawLine(new Vector2(390f, 170f), new Vector2(650f, 170f), new Color(0.44f, 0.39f, 0.31f, 0.8f), 10f);
-		DrawLine(new Vector2(390f, 170f), new Vector2(390f, 510f), new Color(0.44f, 0.39f, 0.31f, 0.8f), 10f);
-		DrawLine(new Vector2(650f, 170f), new Vector2(650f, 510f), new Color(0.44f, 0.39f, 0.31f, 0.8f), 10f);
+		DrawLine(MapToScreen(new Vector2(235f, 510f)), MapToScreen(new Vector2(650f, 510f)), new Color(0.44f, 0.39f, 0.31f, 0.8f), 10f * GetMapUnitScale());
+		DrawLine(MapToScreen(new Vector2(390f, 170f)), MapToScreen(new Vector2(650f, 170f)), new Color(0.44f, 0.39f, 0.31f, 0.8f), 10f * GetMapUnitScale());
+		DrawLine(MapToScreen(new Vector2(390f, 170f)), MapToScreen(new Vector2(390f, 510f)), new Color(0.44f, 0.39f, 0.31f, 0.8f), 10f * GetMapUnitScale());
+		DrawLine(MapToScreen(new Vector2(650f, 170f)), MapToScreen(new Vector2(650f, 510f)), new Color(0.44f, 0.39f, 0.31f, 0.8f), 10f * GetMapUnitScale());
 	}
 
 	private void DrawDistrictBlock(Rect2 rect, Color fill, string label, Vector2 labelOffset)
 	{
-		DrawRect(rect, fill, true);
-		DrawRect(rect, new Color(0.52f, 0.46f, 0.36f, 0.95f), false, 2f);
+		Rect2 scaled = MapToScreen(rect);
+		DrawRect(scaled, fill, true);
+		DrawRect(scaled, new Color(0.52f, 0.46f, 0.36f, 0.95f), false, 2f * GetMapUnitScale());
 	}
 
 	private void DrawMapPath(Vector2 from, Vector2 to, bool highlight)
@@ -4179,32 +4216,32 @@ private sealed class RoomProjectileEffect
 		Color baseColor = highlight
 			? new Color(0.72f, 0.64f, 0.47f, 0.82f)
 			: new Color(0.48f, 0.42f, 0.32f, 0.26f);
-		float width = highlight ? 3.2f : 1.6f;
+		float width = (highlight ? 3.2f : 1.6f) * GetMapUnitScale();
 		DrawLine(from, to, baseColor, width);
 	}
 
-	private void DrawNodeGlyph(MapNode node, Color color)
+	private void DrawNodeGlyph(MapNode node, Vector2 position, Color color, float scale)
 	{
-		Vector2 p = node.Position;
+		Vector2 p = position;
 		Color ink = new Color(0.09f, 0.08f, 0.07f, 0.9f);
 		switch (node.Type)
 		{
 			case NodeType.Extract:
-				DrawLine(p + new Vector2(-7f, 0f), p + new Vector2(8f, 0f), ink, 2f);
-				DrawLine(p + new Vector2(3f, -5f), p + new Vector2(8f, 0f), ink, 2f);
-				DrawLine(p + new Vector2(3f, 5f), p + new Vector2(8f, 0f), ink, 2f);
+				DrawLine(p + new Vector2(-7f, 0f) * scale, p + new Vector2(8f, 0f) * scale, ink, 2f * scale);
+				DrawLine(p + new Vector2(3f, -5f) * scale, p + new Vector2(8f, 0f) * scale, ink, 2f * scale);
+				DrawLine(p + new Vector2(3f, 5f) * scale, p + new Vector2(8f, 0f) * scale, ink, 2f * scale);
 				break;
 			case NodeType.Battle:
-				DrawLine(p + new Vector2(-7f, -7f), p + new Vector2(7f, 7f), ink, 2.2f);
-				DrawLine(p + new Vector2(-7f, 7f), p + new Vector2(7f, -7f), ink, 2.2f);
+				DrawLine(p + new Vector2(-7f, -7f) * scale, p + new Vector2(7f, 7f) * scale, ink, 2.2f * scale);
+				DrawLine(p + new Vector2(-7f, 7f) * scale, p + new Vector2(7f, -7f) * scale, ink, 2.2f * scale);
 				break;
 			case NodeType.Search:
-				DrawCircle(p + new Vector2(-1f, -1f), 6f, ink);
-				DrawLine(p + new Vector2(4f, 4f), p + new Vector2(10f, 10f), ink, 2f);
-				DrawCircle(p + new Vector2(-1f, -1f), 3.5f, color);
+				DrawCircle(p + new Vector2(-1f, -1f) * scale, 6f * scale, ink);
+				DrawLine(p + new Vector2(4f, 4f) * scale, p + new Vector2(10f, 10f) * scale, ink, 2f * scale);
+				DrawCircle(p + new Vector2(-1f, -1f) * scale, 3.5f * scale, color);
 				break;
 			default:
-				DrawRect(new Rect2(p + new Vector2(-6f, -6f), new Vector2(12f, 12f)), ink, false, 2f);
+				DrawRect(new Rect2(p + new Vector2(-6f, -6f) * scale, new Vector2(12f, 12f) * scale), ink, false, 2f * scale);
 				break;
 		}
 	}
