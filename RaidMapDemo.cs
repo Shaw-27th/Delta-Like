@@ -1424,7 +1424,7 @@ private sealed class RoomProjectileEffect
 
 		if (hasHostiles)
 		{
-			if (_selectedContainerIndex >= 0)
+			if (_selectedContainerIndex >= 0 && !IsSelectedContainerSearchLocked())
 			{
 				_selectedContainerIndex = -1;
 			}
@@ -1454,14 +1454,29 @@ private sealed class RoomProjectileEffect
 
 		if (bestIndex < 0)
 		{
-			_selectedContainerIndex = -1;
+			if (!IsSelectedContainerSearchLocked())
+			{
+				_selectedContainerIndex = -1;
+			}
 			return;
 		}
 
-		if (_selectedContainerIndex != bestIndex)
+		if (!IsSelectedContainerSearchLocked() && _selectedContainerIndex != bestIndex)
 		{
 			OpenContainer(bestIndex);
 		}
+	}
+
+	private bool IsSelectedContainerSearchLocked()
+	{
+		MapNode node = _nodes[_playerNodeId];
+		if (_selectedContainerIndex < 0 || _selectedContainerIndex >= node.Containers.Count)
+		{
+			return false;
+		}
+
+		LootContainer container = node.Containers[_selectedContainerIndex];
+		return container.ActiveSearchItemIndex >= 0;
 	}
 
 	private float GetRoomUnitCollisionRadius(RoomUnit unit)
@@ -3532,8 +3547,11 @@ private sealed class RoomProjectileEffect
 				OpenContainer(button.Index);
 				break;
 			case "close_container":
-				_selectedContainerIndex = -1;
-				RefreshStatus();
+				if (!IsSelectedContainerSearchLocked())
+				{
+					_selectedContainerIndex = -1;
+					RefreshStatus();
+				}
 				break;
 			case "extract":
 				TryExtract();
