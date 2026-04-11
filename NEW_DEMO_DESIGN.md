@@ -4,6 +4,49 @@
 
 ### 2026-04 Recent Changes
 
+- Squad carry capacity is now a real composite backpack instead of an unlimited loot list.
+- Current live carry blocks are:
+- Hero block: `2 x 2`
+- Soldier block: `1 x 1`
+- There is currently no separate base carry block.
+
+- Composite backpack blocks now grow in staged `4 x 4` regions.
+- The intended shape priority is:
+- grow the current region toward a square first,
+- keep placement order top-to-bottom then left-to-right,
+- then open the next `4 x 4` region to the right.
+- This is meant to preserve contiguous space for larger loot footprints.
+
+- Team-backpack cells now only render real enabled capacity.
+- Disabled / non-capacity cells are no longer shown.
+- Backpack cell size was increased for easier testing.
+- Capacity-source chunks still render with dashed grouping so the stitched layout stays readable.
+
+- Team backpack now supports:
+- drag pickup,
+- rotation while held,
+- hover naming,
+- auto-organize,
+- overflow staging when items cannot fit after repacking.
+
+- Overflow / staging behavior is now active.
+- If carry capacity shrinks or new loot cannot fit, the game auto-repacks first.
+- Remaining items move into a right-side `待整理` area.
+- Any item in `待整理` counts as overloaded.
+- Overload still blocks room transition and extraction, but does not block movement inside the room.
+
+- Overflow items can now be dropped to the current room.
+- Held backpack items can also be dropped directly to the current room.
+- These drops create or reuse a temporary floor container named `临时弃置`.
+
+- Backpack interaction polish:
+- picked-up items no longer sit centered under the cursor,
+- the held item now floats offset so the cursor does not cover the item body,
+- this makes hover / pickup / placement easier to read while organizing.
+
+- Test-economy shortcut:
+- new-run starting money was increased from `300` to `3000` for faster iteration.
+
 - Room-to-room traversal now uses continuous geometric door placement.
 - Each linked room projects its direction onto the current room boundary, so room doors align with node-map direction instead of only snapping to fixed 4-way slots.
 - Entering a room now uses the opposite of the previous exit direction, so cross-room entry and exit are consistent.
@@ -67,10 +110,10 @@
 - Carry capacity sources:
 - There is currently no separate base squad capacity block.
 - Hero capacity is the main stable source.
-- Current chosen hero contribution target: `4 x 4`.
+- Current chosen hero contribution target: `2 x 2`.
 - Hero skills, traits, and equipment can add more carry capacity.
 - Soldiers also add carry capacity, but usually much less per unit.
-- Standard soldiers should contribute `1 x 2`.
+- Standard soldiers should contribute `1 x 1`.
 - Advanced or special soldiers can add more than standard troops.
 - Special non-combat logistics units such as pack mules / transport carriers are allowed as future unit types.
 - Pre-run logistics loadout can add fixed or scaling carry bonuses for the whole squad.
@@ -78,8 +121,8 @@
 - Current recommended capacity structure:
 - Total carry space should be assembled from multiple rectangular capacity blocks.
 - Example contributing blocks:
-- Hero block: `4 x 4`.
-- Soldier block: `1 x 2`.
+- Hero block: `2 x 2`.
+- Soldier block: `1 x 1`.
 - Future logistics / equipment blocks: variable.
 - These blocks should be auto-packed by the game into one composite team-backpack panel.
 - The final composite panel can be irregular in feel internally, but its UI row width should cap at `12` cells.
@@ -197,8 +240,8 @@
 - Compute carry limit from a first-pass squad formula.
 - First-pass formula should now be block-based, not just one scalar number:
 - No separate base capacity block.
-- Hero block `4 x 4`.
-- Soldier blocks `1 x 2`.
+- Hero block `2 x 2`.
+- Soldier blocks `1 x 1`.
 - Optional flat logistics block can stay deferred or be added later.
 - Detect overload when carried usage exceeds current limit.
 - Block room-to-room movement and extraction while overloaded.
@@ -246,8 +289,8 @@
 - The run UI must show `current usage / current limit`.
 - The game must calculate a first-pass squad carry layout from:
 - no separate base block,
-- hero `4 x 4`,
-- soldier `1 x 2`.
+- hero `2 x 2`,
+- soldier `1 x 1`.
 - The run must enter overload when usage exceeds limit.
 - Overload must block room transition.
 - Overload must block extraction.

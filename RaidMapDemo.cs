@@ -4361,6 +4361,7 @@ private sealed class RoomProjectileEffect
 		int bestPrimaryScore = int.MaxValue;
 		int bestSecondaryScore = int.MaxValue;
 		int bestTertiaryScore = int.MaxValue;
+		int bestQuaternaryScore = int.MaxValue;
 		for (int y = originY; y <= maxY; y++)
 		{
 			for (int x = originX; x <= maxX; x++)
@@ -4371,7 +4372,7 @@ private sealed class RoomProjectileEffect
 				}
 
 				GetCapacityPlacementScores(occupied, x, y, block.Size, originX, originY, groupSize,
-					out int primaryScore, out int secondaryScore, out int tertiaryScore);
+					out int primaryScore, out int secondaryScore, out int tertiaryScore, out int quaternaryScore);
 				if (primaryScore > bestPrimaryScore)
 				{
 					continue;
@@ -4382,7 +4383,12 @@ private sealed class RoomProjectileEffect
 					continue;
 				}
 
-				if (primaryScore == bestPrimaryScore && secondaryScore == bestSecondaryScore && tertiaryScore >= bestTertiaryScore)
+				if (primaryScore == bestPrimaryScore && secondaryScore == bestSecondaryScore && tertiaryScore > bestTertiaryScore)
+				{
+					continue;
+				}
+
+				if (primaryScore == bestPrimaryScore && secondaryScore == bestSecondaryScore && tertiaryScore == bestTertiaryScore && quaternaryScore >= bestQuaternaryScore)
 				{
 					continue;
 				}
@@ -4391,6 +4397,7 @@ private sealed class RoomProjectileEffect
 				bestPrimaryScore = primaryScore;
 				bestSecondaryScore = secondaryScore;
 				bestTertiaryScore = tertiaryScore;
+				bestQuaternaryScore = quaternaryScore;
 			}
 		}
 
@@ -4405,7 +4412,7 @@ private sealed class RoomProjectileEffect
 	}
 
 	private void GetCapacityPlacementScores(bool[,] occupied, int startX, int startY, Vector2I size, int originX, int originY, int groupSize,
-		out int primaryScore, out int secondaryScore, out int tertiaryScore)
+		out int primaryScore, out int secondaryScore, out int tertiaryScore, out int quaternaryScore)
 	{
 		int minUsedX = int.MaxValue;
 		int minUsedY = int.MaxValue;
@@ -4435,14 +4442,16 @@ private sealed class RoomProjectileEffect
 			primaryScore = int.MaxValue;
 			secondaryScore = int.MaxValue;
 			tertiaryScore = int.MaxValue;
+			quaternaryScore = int.MaxValue;
 			return;
 		}
 
 		int usedWidth = maxUsedX - minUsedX + 1;
 		int usedHeight = maxUsedY - minUsedY + 1;
 		primaryScore = Mathf.Max(usedWidth, usedHeight);
-		secondaryScore = Mathf.Abs(usedWidth - usedHeight);
-		tertiaryScore = (startY - originY) * groupSize + (startX - originX);
+		secondaryScore = usedWidth * usedHeight;
+		tertiaryScore = Mathf.Abs(usedWidth - usedHeight);
+		quaternaryScore = (startY - originY) * groupSize + (startX - originX);
 	}
 
 	private int CountCapacityGroupOccupiedCells(bool[,] occupied, int originX, int originY, int groupSize)
