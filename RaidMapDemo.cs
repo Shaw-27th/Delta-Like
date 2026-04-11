@@ -1215,6 +1215,16 @@ private sealed class RoomProjectileEffect
 			}
 		}
 
+		if (!HasLivingPlayerRoomUnits())
+		{
+			_playerHp = 0;
+			_runBackpack.Clear();
+			_runEnded = true;
+			_runFailed = true;
+			_status = "全队失去作战能力。";
+			return;
+		}
+
 		if (hero.Hp <= 0)
 		{
 			bool allyAlive = false;
@@ -1232,14 +1242,20 @@ private sealed class RoomProjectileEffect
 				hero.Hp = 1;
 				_playerHp = 1;
 			}
-			else
+		}
+	}
+
+	private bool HasLivingPlayerRoomUnits()
+	{
+		for (int i = 0; i < _roomUnits.Count; i++)
+		{
+			if (_roomUnits[i].IsPlayerSide && _roomUnits[i].IsAlive)
 			{
-				_playerHp = 0;
-				_runBackpack.Clear();
-				_runEnded = true;
-				_runFailed = true;
+				return true;
 			}
 		}
+
+		return false;
 	}
 
 	private void ResolveRoomUnitCollisions(RoomUnit hero)
@@ -1315,12 +1331,12 @@ private sealed class RoomProjectileEffect
 
 		if (unit.IsHero)
 		{
-			return unit.IsRanged ? 11.8f : 13f;
+			return unit.IsRanged ? 13.2f : 14.6f;
 		}
 
 		if (unit.IsElite)
 		{
-			return unit.IsRanged ? 9.4f : 10.6f;
+			return unit.IsRanged ? 11f : 12.2f;
 		}
 
 		return unit.IsRanged ? 8.1f : 9.1f;
@@ -1974,7 +1990,12 @@ private sealed class RoomProjectileEffect
 			RoomUnit unit = _roomUnits[i];
 			if (!unit.IsAlive)
 			{
-				DrawCircle(unit.Position, 6f, new Color(0.42f, 0.42f, 0.46f, 0.7f));
+				float corpseSize = unit.IsHero || unit.IsElite ? 16f : 8f;
+				Color corpseColor = unit.IsPlayerSide
+					? new Color(0.42f, 0.96f, 0.52f, 0.92f)
+					: (unit.IsElite ? new Color(1f, 0.34f, 0.34f, 0.96f) : new Color(0.94f, 0.94f, 0.96f, 0.88f));
+				DrawLine(unit.Position + new Vector2(-corpseSize, -corpseSize), unit.Position + new Vector2(corpseSize, corpseSize), corpseColor, unit.IsHero || unit.IsElite ? 3.8f : 2.4f);
+				DrawLine(unit.Position + new Vector2(-corpseSize, corpseSize), unit.Position + new Vector2(corpseSize, -corpseSize), corpseColor, unit.IsHero || unit.IsElite ? 3.8f : 2.4f);
 				continue;
 			}
 
@@ -2036,7 +2057,7 @@ private sealed class RoomProjectileEffect
 		float runSwing = Mathf.Sin(runPhase);
 		float runLift = Mathf.Abs(Mathf.Sin(runPhase)) * (isRunning ? 1.2f : 0.2f);
 		float attackPose = GetRoomAttackPose(unit);
-		float sizeScale = unit.IsHero ? 1.32f : (unit.IsElite ? 1.22f : 1.08f);
+		float sizeScale = unit.IsHero ? 1.46f : (unit.IsElite ? 1.34f : 1.1f);
 		float torsoHalfWidth = (unit.IsRanged ? 4.2f : 5.2f) * sizeScale;
 		float torsoHeight = (unit.IsHero ? 13f : 11f) * sizeScale;
 		float shoulderWidth = torsoHalfWidth + (unit.IsElite ? 1.3f : 0.7f) * sizeScale;
@@ -3633,11 +3654,11 @@ private sealed class RoomProjectileEffect
 		float x = panel.Position.X + Ui(24f);
 		float y = panel.Position.Y + Ui(40f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "局外整备", HorizontalAlignment.Left, -1f, 26, Colors.White);
-		y += 34f;
+		y += Ui(38f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"资金：{_money}", HorizontalAlignment.Left, -1f, UiFont(20), new Color(0.95f, 0.86f, 0.48f));
-		y += 26f;
+		y += Ui(28f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"可用士兵：{_soldierRoster.Count}", HorizontalAlignment.Left, -1f, UiFont(18), new Color(0.76f, 0.9f, 0.82f));
-		y += 28f;
+		y += Ui(30f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "行动地图", HorizontalAlignment.Left, -1f, UiFont(18), Colors.White);
 		Rect2 mapPrevRect = new(new Vector2(x + Ui(122f), y - Ui(22f)), new Vector2(Ui(34f), Ui(28f)));
 		Rect2 mapNextRect = new(new Vector2(x + Ui(440f), y - Ui(22f)), new Vector2(Ui(34f), Ui(28f)));
@@ -3677,10 +3698,10 @@ private sealed class RoomProjectileEffect
 			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
 		}
 
-		float contentTop = panel.Position.Y + Ui(214f);
+		float contentTop = panel.Position.Y + Ui(236f);
 		float contentGap = Ui(30f);
 		float contentWidth = (panel.Size.X - 18f - 18f - contentGap) * 0.5f;
-		float contentHeight = Mathf.Max(316f, panel.Size.Y - Ui(330f));
+		float contentHeight = Mathf.Max(Ui(250f), panel.Size.Y - Ui(390f));
 		Rect2 stashRect = new(new Vector2(panel.Position.X + Ui(18f), contentTop), new Vector2(contentWidth, contentHeight));
 		Rect2 shopRect = new(new Vector2(stashRect.End.X + contentGap, contentTop), new Vector2(contentWidth, contentHeight));
 		DrawRect(stashRect, new Color(0.09f, 0.1f, 0.12f), true);
@@ -3690,7 +3711,7 @@ private sealed class RoomProjectileEffect
 		DrawString(ThemeDB.FallbackFont, stashRect.Position + new Vector2(14f, 24f), "仓库", HorizontalAlignment.Left, -1f, UiFont(20), Colors.White);
 		DrawString(ThemeDB.FallbackFont, shopRect.Position + new Vector2(14f, 24f), "商店", HorizontalAlignment.Left, -1f, UiFont(20), Colors.White);
 
-		float stashY = stashRect.Position.Y + 44f;
+		float stashY = stashRect.Position.Y + Ui(46f);
 		if (_stash.Count == 0)
 		{
 			DrawString(ThemeDB.FallbackFont, new Vector2(stashRect.Position.X + 14f, stashY), "仓库为空", HorizontalAlignment.Left, -1f, 14, new Color(0.72f, 0.76f, 0.82f));
@@ -3727,7 +3748,7 @@ private sealed class RoomProjectileEffect
 			shopY += 34f;
 		}
 
-		float soldierY = panel.End.Y - Ui(120f);
+		float soldierY = stashRect.End.Y + Ui(28f);
 		float soldierX = panel.Position.X + Ui(24f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(soldierX, soldierY), "士兵名单", HorizontalAlignment.Left, -1f, UiFont(19), Colors.White);
 		soldierY += Ui(24f);
