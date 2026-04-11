@@ -495,6 +495,12 @@ private sealed class RoomProjectileEffect
 				_draggedBackpackItem.Size = new Vector2I(_draggedBackpackItem.Size.Y, _draggedBackpackItem.Size.X);
 				return;
 			}
+
+			if (_hasDraggedBackpackItem && keyEvent.Keycode == Key.G)
+			{
+				DropDraggedBackpackItemToGround();
+				return;
+			}
 		}
 
 		if (@event is not InputEventMouseButton mouse || !mouse.Pressed || mouse.ButtonIndex != MouseButton.Left)
@@ -3819,6 +3825,9 @@ private sealed class RoomProjectileEffect
 			case "drop_overflow":
 				DropOverflowToGround();
 				break;
+			case "drop_dragged_backpack":
+				DropDraggedBackpackItemToGround();
+				break;
 			case "open_container":
 				OpenContainer(button.Index);
 				break;
@@ -4300,25 +4309,114 @@ private sealed class RoomProjectileEffect
 			blocks.Add(block);
 		}
 
-		int cursorX = 0;
-		int cursorY = 0;
-		int rowHeight = 0;
+		blocks.Sort((a, b) => (b.Size.X * b.Size.Y).CompareTo(a.Size.X * a.Size.Y));
+		bool[,] occupied = new bool[TeamBackpackMaxWidth, TeamBackpackMaxRows];
 		for (int i = 0; i < blocks.Count; i++)
 		{
 			BackpackCapacityBlock block = blocks[i];
-			if (cursorX + block.Size.X > TeamBackpackMaxWidth)
+			if (!TryPlaceCapacityBlock(block, occupied))
 			{
-				cursorX = 0;
-				cursorY += rowHeight;
-				rowHeight = 0;
+				break;
 			}
-
-			block.Cell = new Vector2I(cursorX, cursorY);
-			cursorX += block.Size.X;
-			rowHeight = Mathf.Max(rowHeight, block.Size.Y);
 		}
 
 		return blocks;
+	}
+
+	private bool TryPlaceCapacityBlock(BackpackCapacityBlock block, bool[,] occupied)
+	{
+		const int groupSize = 4;
+		int groupColumns = Mathf.Max(1, TeamBackpackMaxWidth / groupSize);
+		int groupRows = Mathf.Max(1, TeamBackpackMaxRows / groupSize);
+
+		for (int groupRow = 0; groupRow < groupRows; groupRow++)
+		{
+			for (int groupColumn = 0; groupColumn < groupColumns; groupColumn++)
+			{
+				int originX = groupColumn * groupSize;
+				int originY = groupRow * groupSize;
+				int occupiedCount = CountCapacityGroupOccupiedCells(occupied, originX, originY, groupSize);
+				if (occupiedCount >= groupSize * groupSize)
+				{
+					continue;
+				}
+
+				if (!TryPlaceCapacityBlockInGroup(block, occupied, originX, originY, groupSize))
+				{
+					continue;
+				}
+
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool TryPlaceCapacityBlockInGroup(BackpackCapacityBlock block, bool[,] occupied, int originX, int originY, int groupSize)
+	{
+		int maxX = originX + groupSize - block.Size.X;
+		int maxY = originY + groupSize - block.Size.Y;
+		for (int y = originY; y <= maxY; y++)
+		{
+			for (int x = originX; x <= maxX; x++)
+			{
+				if (!IsCapacityBlockAreaFree(occupied, x, y, block.Size))
+				{
+					continue;
+				}
+
+				block.Cell = new Vector2I(x, y);
+				MarkCapacityBlockArea(occupied, block.Cell, block.Size);
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private int CountCapacityGroupOccupiedCells(bool[,] occupied, int originX, int originY, int groupSize)
+	{
+		int count = 0;
+		for (int y = originY; y < originY + groupSize && y < TeamBackpackMaxRows; y++)
+		{
+			for (int x = originX; x < originX + groupSize && x < TeamBackpackMaxWidth; x++)
+			{
+				if (occupied[x, y])
+				{
+					count++;
+				}
+			}
+		}
+
+		return count;
+	}
+
+	private bool IsCapacityBlockAreaFree(bool[,] occupied, int startX, int startY, Vector2I size)
+	{
+		for (int y = startY; y < startY + size.Y; y++)
+		{
+			for (int x = startX; x < startX + size.X; x++)
+			{
+				if (x < 0 || y < 0 || x >= TeamBackpackMaxWidth || y >= TeamBackpackMaxRows || occupied[x, y])
+				{
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	private void MarkCapacityBlockArea(bool[,] occupied, Vector2I cell, Vector2I size)
+	{
+		for (int y = cell.Y; y < cell.Y + size.Y; y++)
+		{
+			for (int x = cell.X; x < cell.X + size.X; x++)
+			{
+				occupied[x, y] = true;
+			}
+		}
 	}
 
 	private int GetBackpackPreviewGridHeight()
@@ -4539,43 +4637,59 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
-		MapNode node = _nodes[_playerNodeId];
-		RoomUnit hero = FindHeroUnit();
-		Vector2 dropPosition = hero != null ? ClampToRoom(hero.Position + new Vector2(22f, 0f)) : GetRoomArenaRect().GetCenter();
-		LootContainer discard = null;
-		for (int i = 0; i < node.Containers.Count; i++)
-		{
-			LootContainer existing = node.Containers[i];
-			if (existing.Label == "临时弃置" && existing.Position.DistanceTo(dropPosition) <= 36f)
-			{
-				discard = existing;
-				break;
-			}
-		}
-
-		if (discard == null)
-		{
-			discard = new LootContainer
-			{
-				Label = "临时弃置",
-				Kind = ContainerKind.CorpsePile,
-				Position = dropPosition,
-				Tint = new Color(0.88f, 0.58f, 0.28f, 1f),
-				AutoOpenRange = 62f,
-				GridSize = new Vector2I(6, 4),
-			};
-			node.Containers.Add(discard);
-		}
-
+		LootContainer discard = GetOrCreateGroundDiscardContainer();
 		for (int i = 0; i < _overflowBackpackItems.Count; i++)
 		{
 			AddBackpackItemToContainer(discard, _overflowBackpackItems[i]);
 		}
 
 		_overflowBackpackItems.Clear();
-		_selectedContainerIndex = node.Containers.IndexOf(discard);
+		_selectedContainerIndex = _nodes[_playerNodeId].Containers.IndexOf(discard);
 		_status = "已将待整理物品丢到当前房间。";
 		RefreshStatus();
+	}
+
+	private void DropDraggedBackpackItemToGround()
+	{
+		if (!_hasDraggedBackpackItem || _draggedBackpackItem == null || _inHideout || _runEnded)
+		{
+			return;
+		}
+
+		LootContainer discard = GetOrCreateGroundDiscardContainer();
+		AddBackpackItemToContainer(discard, _draggedBackpackItem);
+		_hasDraggedBackpackItem = false;
+		_draggedBackpackItem = null;
+		_selectedContainerIndex = _nodes[_playerNodeId].Containers.IndexOf(discard);
+		_status = "已将物品丢到当前房间。";
+		RefreshStatus();
+	}
+
+	private LootContainer GetOrCreateGroundDiscardContainer()
+	{
+		MapNode node = _nodes[_playerNodeId];
+		RoomUnit hero = FindHeroUnit();
+		Vector2 dropPosition = hero != null ? ClampToRoom(hero.Position + new Vector2(22f, 0f)) : GetRoomArenaRect().GetCenter();
+		for (int i = 0; i < node.Containers.Count; i++)
+		{
+			LootContainer existing = node.Containers[i];
+			if (existing.Label == "临时弃置" && existing.Position.DistanceTo(dropPosition) <= 36f)
+			{
+				return existing;
+			}
+		}
+
+		LootContainer discard = new()
+		{
+			Label = "临时弃置",
+			Kind = ContainerKind.CorpsePile,
+			Position = dropPosition,
+			Tint = new Color(0.88f, 0.58f, 0.28f, 1f),
+			AutoOpenRange = 62f,
+			GridSize = new Vector2I(6, 4),
+		};
+		node.Containers.Add(discard);
+		return discard;
 	}
 
 	private BackpackItem CloneBackpackItem(BackpackItem item)
@@ -5647,6 +5761,12 @@ private sealed class RoomProjectileEffect
 		Rect2 autoPackRect = new(origin + new Vector2(Ui(114f), Ui(-6f)), new Vector2(Ui(92f), Ui(28f)));
 		DrawButton(autoPackRect, "自动整理", new Color(0.28f, 0.42f, 0.26f));
 		_buttons.Add(new ButtonDef(autoPackRect, "auto_pack"));
+		if (_hasDraggedBackpackItem && !_inHideout && !_runEnded)
+		{
+			Rect2 dropDraggedRect = new(origin + new Vector2(Ui(214f), Ui(-6f)), new Vector2(Ui(92f), Ui(28f)));
+			DrawButton(dropDraggedRect, "丢到地面", new Color(0.46f, 0.28f, 0.22f));
+			_buttons.Add(new ButtonDef(dropDraggedRect, "drop_dragged_backpack"));
+		}
 		Vector2 gridOrigin = origin + new Vector2(0f, Ui(30f));
 		List<BackpackCapacityBlock> blocks = BuildCurrentBackpackCapacityBlocks();
 		int gridWidth = GetBackpackPreviewGridWidth();
@@ -5739,7 +5859,8 @@ private sealed class RoomProjectileEffect
 
 		if (_hasDraggedBackpackItem && _draggedBackpackItem != null)
 		{
-			Vector2 drawPos = mouse + new Vector2(Ui(8f), Ui(8f));
+			Vector2 dragSize = new(_draggedBackpackItem.Size.X * cellSize.X - Ui(2f), _draggedBackpackItem.Size.Y * cellSize.Y - Ui(2f));
+			Vector2 drawPos = mouse - dragSize * 0.5f - new Vector2(Ui(8f), Ui(8f));
 			Rect2 dragRect = new(drawPos, new Vector2(_draggedBackpackItem.Size.X * cellSize.X - Ui(2f), _draggedBackpackItem.Size.Y * cellSize.Y - Ui(2f)));
 			DrawRect(dragRect, new Color(GetGridRarityColor(_draggedBackpackItem.Rarity).R, GetGridRarityColor(_draggedBackpackItem.Rarity).G, GetGridRarityColor(_draggedBackpackItem.Rarity).B, 0.82f), true);
 			DrawRect(dragRect, new Color(1f, 1f, 1f, 0.9f), false, 1f);
