@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using System.Collections.Generic;
 
 [GlobalClass]
@@ -133,6 +133,14 @@ public partial class RaidMapDemo : Node2D
 
 			return count;
 		}
+	}
+
+	private sealed class RoomResourceOrb
+	{
+		public Vector2 Position;
+		public Vector2 Velocity;
+		public int MoneyAmount;
+		public Color Tint = new(1f, 0.84f, 0.34f, 1f);
 	}
 
 	private sealed class EquippedLoot
@@ -290,6 +298,7 @@ private sealed class RoomProjectileEffect
 	private readonly List<RoomUnit> _roomUnits = new();
 	private readonly List<RoomProjectileEffect> _roomProjectileEffects = new();
 	private readonly List<RoomMeleeArcEffect> _roomMeleeArcEffects = new();
+	private readonly List<RoomResourceOrb> _roomResourceOrbs = new();
 	private readonly RandomNumberGenerator _rng = new();
 
 	private Rect2 _mapRect = new(new Vector2(30f, 30f), new Vector2(760f, 660f));
@@ -308,6 +317,7 @@ private sealed class RoomProjectileEffect
 	private int _searchActions;
 	private int _lootValue;
 	private int _money;
+	private int _runMoneyLooted;
 	private int _nextSoldierId = 1;
 	private bool _runEnded;
 	private bool _runFailed;
@@ -465,6 +475,7 @@ private sealed class RoomProjectileEffect
 		_playerStrength = 11;
 		_timeSlotProgress = 0;
 		_lootValue = 0;
+		_runMoneyLooted = 0;
 		_turn = 0;
 		_runEnded = false;
 		_runFailed = false;
@@ -476,6 +487,7 @@ private sealed class RoomProjectileEffect
 		_roomUnits.Clear();
 		_roomProjectileEffects.Clear();
 		_roomMeleeArcEffects.Clear();
+		_roomResourceOrbs.Clear();
 		_heroHasMoveTarget = false;
 		_pendingExitNodeId = -1;
 		_roomDirty = true;
@@ -1163,6 +1175,7 @@ private sealed class RoomProjectileEffect
 		}
 
 		bool hasHostiles = HasHostilesInRoom();
+		UpdateRoomResourceOrbs(hero, delta);
 		UpdateRoomContainerInteraction(hero, hasHostiles);
 		for (int i = 0; i < _roomUnits.Count; i++)
 		{
@@ -1957,7 +1970,7 @@ private sealed class RoomProjectileEffect
 		}
 
 		MapNode node = _nodes[_playerNodeId];
-		AddDeathLootContainer(node, dead);
+		AddDeathDrops(node, dead);
 
 		if (!dead.IsPlayerSide)
 		{
@@ -1985,8 +1998,13 @@ private sealed class RoomProjectileEffect
 		}
 	}
 
-	private void AddDeathLootContainer(MapNode node, RoomUnit dead)
+	private void AddDeathDrops(MapNode node, RoomUnit dead)
 	{
+		if (!dead.IsHero)
+		{
+			SpawnMoneyOrb(dead);
+		}
+
 		if (dead.IsElite)
 		{
 			LootContainer elite = new()
@@ -2003,46 +2021,19 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
-		LootContainer pile = FindMergeableDeathContainer(node, dead.Position);
-		if (pile == null)
+		if (!dead.IsPlayerSide && _rng.Randf() < 0.05f)
 		{
-			pile = new LootContainer
+			LootContainer special = new()
 			{
-				Label = "遗留物",
+				Label = dead.IsAiSquad ? $"{dead.Name} drop" : $"{dead.Name} loot",
 				Kind = ContainerKind.CorpsePile,
 				Position = ClampToRoom(dead.Position),
 				Tint = GetRoomUnitBaseColor(dead),
 				AutoOpenRange = 58f,
 			};
-			node.Containers.Add(pile);
+			AddRandomDeathLoot(dead, special, 1, false);
+			node.Containers.Add(special);
 		}
-
-		AddRandomDeathLoot(dead, pile, 1, false);
-	}
-
-	private LootContainer FindMergeableDeathContainer(MapNode node, Vector2 position)
-	{
-		LootContainer best = null;
-		float bestDistance = 54f;
-		for (int i = 0; i < node.Containers.Count; i++)
-		{
-			LootContainer candidate = node.Containers[i];
-			if (candidate.Kind != ContainerKind.CorpsePile)
-			{
-				continue;
-			}
-
-			float distance = candidate.Position.DistanceTo(position);
-			if (distance > bestDistance)
-			{
-				continue;
-			}
-
-			bestDistance = distance;
-			best = candidate;
-		}
-
-		return best;
 	}
 
 	private void AddRandomDeathLoot(RoomUnit dead, LootContainer container, int hiddenCount, bool promoteEquipment)
@@ -2066,6 +2057,59 @@ private sealed class RoomProjectileEffect
 		{
 			AddContainerLoot(container, dead.IsAiSquad ? "染血徽章" : "破损零件", false);
 		}
+	}
+
+	private void SpawnMoneyOrb(RoomUnit dead)
+	{
+		int amount = dead.IsPlayerSide ? _rng.RandiRange(4, 9) : _rng.RandiRange(6, 14);
+		if (dead.IsAiSquad)
+		{
+			amount += 3;
+		}
+
+		RoomResourceOrb orb = new()
+		{
+			Position = ClampToRoom(dead.Position),
+			Velocity = new Vector2(_rng.RandfRange(-28f, 28f), _rng.RandfRange(-36f, -8f)),
+			MoneyAmount = amount,
+			Tint = dead.IsPlayerSide ? new Color(0.56f, 0.95f, 0.72f, 1f) : new Color(1f, 0.84f, 0.34f, 1f),
+		};
+		_roomResourceOrbs.Add(orb);
+	}
+
+	private void UpdateRoomResourceOrbs(RoomUnit hero, float delta)
+	{
+		for (int i = _roomResourceOrbs.Count - 1; i >= 0; i--)
+		{
+			RoomResourceOrb orb = _roomResourceOrbs[i];
+			Vector2 toHero = hero.Position - orb.Position;
+			float distance = toHero.Length();
+			if (distance <= 20f)
+			{
+				CollectResourceOrb(orb);
+				_roomResourceOrbs.RemoveAt(i);
+				continue;
+			}
+
+			if (distance <= 128f)
+			{
+				Vector2 pullDir = distance > 0.001f ? toHero / distance : Vector2.Zero;
+				orb.Velocity = orb.Velocity.Lerp(pullDir * 240f, 0.18f);
+			}
+			else
+			{
+				orb.Velocity = orb.Velocity.Lerp(Vector2.Zero, 0.08f);
+			}
+
+			orb.Position = ClampToRoom(orb.Position + orb.Velocity * delta);
+		}
+	}
+
+	private void CollectResourceOrb(RoomResourceOrb orb)
+	{
+		_money += orb.MoneyAmount;
+		_runMoneyLooted += orb.MoneyAmount;
+		LogEvent($"获得 {orb.MoneyAmount} 资金。");
 	}
 
 	private void AddContainerLoot(LootContainer container, string label, bool revealed)
@@ -2244,6 +2288,7 @@ private sealed class RoomProjectileEffect
 		DrawRoomExitsUnified(node);
 		DrawRoomContainers(node);
 		DrawRoomCorpses(node);
+		DrawRoomResourceOrbs();
 		DrawRoomImpactEffects();
 		DrawRoomUnits();
 	}
@@ -2349,6 +2394,18 @@ private sealed class RoomProjectileEffect
 
 			string caption = container.Kind == ContainerKind.EliteCorpse ? "精英容器" : $"容器 {CountNodeLootSingle(container)}";
 			DrawString(ThemeDB.FallbackFont, container.Position + new Vector2(-42f, radius + 18f), caption, HorizontalAlignment.Left, 100f, UiFont(11), new Color(0.94f, 0.94f, 0.96f, selected || inRange ? 1f : 0.76f));
+		}
+	}
+
+	private void DrawRoomResourceOrbs()
+	{
+		for (int i = 0; i < _roomResourceOrbs.Count; i++)
+		{
+			RoomResourceOrb orb = _roomResourceOrbs[i];
+			Color glow = new Color(orb.Tint.R, orb.Tint.G, orb.Tint.B, 0.28f);
+			DrawCircle(orb.Position, 13f, glow);
+			DrawCircle(orb.Position, 8f, orb.Tint);
+			DrawCircle(orb.Position + new Vector2(-2f, -2f), 3.2f, new Color(1f, 0.97f, 0.82f, 0.95f));
 		}
 	}
 
@@ -4624,6 +4681,8 @@ private sealed class RoomProjectileEffect
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u7c7b\u578b\uff1a{GetNodeTypeLabel(node.Type)}", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.75f, 0.78f, 0.82f));
 		y += Ui(22f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u5a01\u80c1\uff1a{node.Threat}   \u6218\u5229\u54c1\uff1a{CountNodeLoot(node)}", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.75f, 0.78f, 0.82f));
+		y += Ui(22f);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"\u62fe\u53d6\u8d44\u91d1\uff1a{_runMoneyLooted}", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.95f, 0.86f, 0.48f));
 		y += Ui(34f);
 		float actionWidth = (_sideRect.Size.X - Ui(60f)) * 0.5f;
 		Rect2 mapRect = new(new Vector2(x, y), new Vector2(actionWidth, Ui(34f)));

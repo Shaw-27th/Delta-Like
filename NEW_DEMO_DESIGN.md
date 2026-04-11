@@ -24,11 +24,12 @@
 - Containers can auto-open at close range during non-combat.
 - If auto-search is enabled, opening a nearby container will also auto-start the existing search flow.
 
-- Unit deaths now feed scene containers directly.
-- Both player-side and enemy-side deaths can generate container loot.
-- Normal deaths try to merge into an existing nearby corpse pile.
-- Elite / boss deaths always create a separate elite container.
-- The current death-loot contribution is intentionally simple and randomized for now; the merge mechanism exists and can be expanded later.
+- Unit deaths now split into two drop paths.
+- Normal soldier / monster deaths always spawn an absorbable resource orb.
+- The current resource-orb implementation only grants money, and the looted amount is tracked separately in the side panel.
+- Enemy normal units can also roll a low-probability special container drop.
+- Player-side normal units do not generate normal containers.
+- Elite / boss deaths still always create a separate elite container.
 
 ### Current Container/Search Direction
 
@@ -42,6 +43,14 @@
 - Static room container placement still uses preset anchor points, not per-room handcrafted dressing.
 - Some old container/sidebar helper code may still remain in the file even though the main interaction path has moved to in-room containers.
 - Death-generated container visuals are usable but not yet final and can still be polished.
+
+### Current Death-Drop Direction
+
+- Normal deaths no longer rely on guaranteed corpse containers.
+- Normal soldier / monster deaths now primarily resolve through resource orbs.
+- Resource orbs are collected by bringing the controlled hero close enough for auto-attraction and pickup.
+- Normal enemy monsters and enemy soldiers also have a low-probability special container drop.
+- Elite / boss deaths continue to use their own dedicated container flow.
 
 ## 文档目的
 
