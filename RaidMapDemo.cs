@@ -88,6 +88,9 @@ public partial class RaidMapDemo : Node2D
 	{
 		public string Label = "";
 		public ContainerKind Kind;
+		public Vector2 Position;
+		public Color Tint = new(0.76f, 0.74f, 0.7f, 1f);
+		public float AutoOpenRange = 54f;
 		public Vector2I GridSize = new(5, 4);
 		public readonly List<string> VisibleItems = new();
 		public readonly List<string> HiddenItems = new();
@@ -622,7 +625,14 @@ private sealed class RoomProjectileEffect
 
 	private void AddRoomContainer(int nodeId, string label, int hiddenCount, int visibleCount)
 	{
-		LootContainer container = new() { Label = label, Kind = ContainerKind.Room };
+		LootContainer container = new()
+		{
+			Label = label,
+			Kind = ContainerKind.Room,
+			Position = GetPresetContainerPosition(nodeId, _nodes[nodeId].Containers.Count),
+			Tint = new Color(0.76f, 0.68f, 0.34f, 1f),
+			AutoOpenRange = 56f,
+		};
 		for (int i = 0; i < visibleCount; i++) container.VisibleItems.Add(RollVisibleEquipment());
 		for (int i = 0; i < hiddenCount; i++) container.HiddenItems.Add(RollLootItem());
 		_nodes[nodeId].Containers.Add(container);
@@ -670,6 +680,27 @@ private sealed class RoomProjectileEffect
 				squad.Supplies += 1;
 			}
 		}
+	}
+
+	private Vector2 GetPresetContainerPosition(int nodeId, int slotIndex)
+	{
+		Rect2 rect = GetRoomArenaRect();
+		Vector2[] anchors =
+		[
+			new Vector2(rect.Position.X + 84f, rect.Position.Y + 92f),
+			new Vector2(rect.End.X - 96f, rect.Position.Y + 96f),
+			new Vector2(rect.Position.X + 102f, rect.End.Y - 92f),
+			new Vector2(rect.End.X - 108f, rect.End.Y - 96f),
+			new Vector2(rect.GetCenter().X - 132f, rect.GetCenter().Y + 24f),
+			new Vector2(rect.GetCenter().X + 126f, rect.GetCenter().Y - 18f),
+			new Vector2(rect.GetCenter().X, rect.Position.Y + 84f),
+			new Vector2(rect.GetCenter().X, rect.End.Y - 84f),
+		];
+
+		int offsetSeed = (nodeId * 31 + slotIndex * 17) % anchors.Length;
+		Vector2 basePos = anchors[offsetSeed];
+		Vector2 jitter = new(((nodeId + slotIndex * 3) % 5 - 2) * 10f, ((nodeId * 2 + slotIndex) % 5 - 2) * 8f);
+		return ClampToRoom(basePos + jitter);
 	}
 
 	private void BuildBorderKeepMap()
@@ -1132,6 +1163,7 @@ private sealed class RoomProjectileEffect
 		}
 
 		bool hasHostiles = HasHostilesInRoom();
+		UpdateRoomContainerInteraction(hero, hasHostiles);
 		for (int i = 0; i < _roomUnits.Count; i++)
 		{
 			RoomUnit unit = _roomUnits[i];
@@ -1380,6 +1412,55 @@ private sealed class RoomProjectileEffect
 				a.Position = ClampToRoom(a.Position - offset * pushA);
 				b.Position = ClampToRoom(b.Position + offset * pushB);
 			}
+		}
+	}
+
+	private void UpdateRoomContainerInteraction(RoomUnit hero, bool hasHostiles)
+	{
+		if (hero == null)
+		{
+			return;
+		}
+
+		if (hasHostiles)
+		{
+			if (_selectedContainerIndex >= 0)
+			{
+				_selectedContainerIndex = -1;
+			}
+			return;
+		}
+
+		MapNode node = _nodes[_playerNodeId];
+		int bestIndex = -1;
+		float bestDistance = float.MaxValue;
+		for (int i = 0; i < node.Containers.Count; i++)
+		{
+			LootContainer container = node.Containers[i];
+			if (container.IsEmpty)
+			{
+				continue;
+			}
+
+			float distance = hero.Position.DistanceTo(container.Position);
+			if (distance > container.AutoOpenRange || distance >= bestDistance)
+			{
+				continue;
+			}
+
+			bestDistance = distance;
+			bestIndex = i;
+		}
+
+		if (bestIndex < 0)
+		{
+			_selectedContainerIndex = -1;
+			return;
+		}
+
+		if (_selectedContainerIndex != bestIndex)
+		{
+			OpenContainer(bestIndex);
 		}
 	}
 
@@ -1860,38 +1941,11 @@ private sealed class RoomProjectileEffect
 			});
 		}
 
+		MapNode node = _nodes[_playerNodeId];
+		AddDeathLootContainer(node, dead);
+
 		if (!dead.IsPlayerSide)
 		{
-			MapNode node = _nodes[_playerNodeId];
-			if (dead.IsElite)
-			{
-				LootContainer elite = new() { Label = dead.Name, Kind = ContainerKind.EliteCorpse };
-				elite.EquippedItems.Add(new EquippedLoot { Slot = EquipmentSlot.Weapon, Label = "精钢军刀" });
-				elite.EquippedItems.Add(new EquippedLoot { Slot = EquipmentSlot.Armor, Label = "队长锁甲" });
-				elite.EquippedItems.Add(new EquippedLoot { Slot = EquipmentSlot.Trinket, Label = "纹章坠饰" });
-				elite.HiddenItems.Add(RollLootItem());
-				node.Containers.Add(elite);
-			}
-			else
-			{
-				LootContainer pile = null;
-				for (int i = node.Containers.Count - 1; i >= 0; i--)
-				{
-					if (node.Containers[i].Kind == ContainerKind.CorpsePile)
-					{
-						pile = node.Containers[i];
-						break;
-					}
-				}
-
-				if (pile == null)
-				{
-					pile = new LootContainer { Label = "尸体堆", Kind = ContainerKind.CorpsePile };
-					node.Containers.Add(pile);
-				}
-				pile.HiddenItems.Add(RollLootItem());
-			}
-
 			if (!HasHostilesInRoom())
 			{
 				AiSquad squad = GetSquadAtNode(node.Id);
@@ -1913,6 +1967,107 @@ private sealed class RoomProjectileEffect
 					break;
 				}
 			}
+		}
+	}
+
+	private void AddDeathLootContainer(MapNode node, RoomUnit dead)
+	{
+		if (dead.IsElite)
+		{
+			LootContainer elite = new()
+			{
+				Label = dead.Name,
+				Kind = ContainerKind.EliteCorpse,
+				Position = ClampToRoom(dead.Position),
+				Tint = GetRoomUnitBaseColor(dead),
+				AutoOpenRange = 60f,
+			};
+			AddRandomDeathLoot(dead, elite, 3, true);
+			PromoteEliteEquipment(elite);
+			node.Containers.Add(elite);
+			return;
+		}
+
+		LootContainer pile = FindMergeableDeathContainer(node, dead.Position);
+		if (pile == null)
+		{
+			pile = new LootContainer
+			{
+				Label = "遗留物",
+				Kind = ContainerKind.CorpsePile,
+				Position = ClampToRoom(dead.Position),
+				Tint = GetRoomUnitBaseColor(dead),
+				AutoOpenRange = 58f,
+			};
+			node.Containers.Add(pile);
+		}
+
+		AddRandomDeathLoot(dead, pile, 1, false);
+	}
+
+	private LootContainer FindMergeableDeathContainer(MapNode node, Vector2 position)
+	{
+		LootContainer best = null;
+		float bestDistance = 54f;
+		for (int i = 0; i < node.Containers.Count; i++)
+		{
+			LootContainer candidate = node.Containers[i];
+			if (candidate.Kind != ContainerKind.CorpsePile)
+			{
+				continue;
+			}
+
+			float distance = candidate.Position.DistanceTo(position);
+			if (distance > bestDistance)
+			{
+				continue;
+			}
+
+			bestDistance = distance;
+			best = candidate;
+		}
+
+		return best;
+	}
+
+	private void AddRandomDeathLoot(RoomUnit dead, LootContainer container, int hiddenCount, bool promoteEquipment)
+	{
+		if (promoteEquipment)
+		{
+			AddContainerLoot(container, dead.IsAiSquad ? "队长佩刀" : "精英武装", true);
+			AddContainerLoot(container, dead.IsAiSquad ? "队长护甲" : "厚皮护甲", true);
+		}
+		else if (_rng.Randf() < 0.35f)
+		{
+			AddContainerLoot(container, dead.IsPlayerSide ? "遗落补给" : "战场零件", true);
+		}
+
+		for (int i = 0; i < hiddenCount; i++)
+		{
+			AddContainerLoot(container, RollLootItem(), false);
+		}
+
+		if (_rng.Randf() < 0.4f)
+		{
+			AddContainerLoot(container, dead.IsAiSquad ? "染血徽章" : "破损零件", false);
+		}
+	}
+
+	private void AddContainerLoot(LootContainer container, string label, bool revealed)
+	{
+		if (container.GridItems.Count > 0)
+		{
+			AddGridItem(container, label, revealed);
+			return;
+		}
+
+		if (revealed)
+		{
+			container.VisibleItems.Add(label);
+		}
+		else
+		{
+			container.HiddenItems.Add(label);
 		}
 	}
 
@@ -2072,6 +2227,7 @@ private sealed class RoomProjectileEffect
 		}
 
 		DrawRoomExitsUnified(node);
+		DrawRoomContainers(node);
 		DrawRoomCorpses(node);
 		DrawRoomImpactEffects();
 		DrawRoomUnits();
@@ -2146,6 +2302,38 @@ private sealed class RoomProjectileEffect
 				DrawRect(staminaBg, new Color(1f, 0.96f, 0.72f, 0.7f), false, 0.8f);
 			}
 			DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-28f, -20f), unit.Name, HorizontalAlignment.Left, 110f, UiFont(12), Colors.White);
+		}
+	}
+
+	private void DrawRoomContainers(MapNode node)
+	{
+		RoomUnit hero = FindHeroUnit();
+		for (int i = 0; i < node.Containers.Count; i++)
+		{
+			LootContainer container = node.Containers[i];
+			if (container.IsEmpty)
+			{
+				continue;
+			}
+
+			bool selected = i == _selectedContainerIndex;
+			bool inRange = hero != null && hero.Position.DistanceTo(container.Position) <= container.AutoOpenRange;
+			Color tint = container.Tint;
+			Color fill = new Color(tint.R * 0.78f, tint.G * 0.78f, tint.B * 0.78f, 0.96f);
+			Color border = selected ? Colors.White : tint.Lightened(inRange ? 0.25f : 0.08f);
+			float radius = container.Kind == ContainerKind.EliteCorpse ? 18f : 13f;
+			Rect2 body = new(container.Position - new Vector2(radius, radius * 0.78f), new Vector2(radius * 2f, radius * 1.56f));
+			DrawRect(body, fill, true);
+			DrawRect(body, border, false, selected ? 2.4f : 1.6f);
+			DrawLine(body.Position + new Vector2(0f, body.Size.Y * 0.46f), body.End - new Vector2(0f, body.Size.Y * 0.54f), new Color(0.16f, 0.16f, 0.18f, 0.7f), 1.2f);
+			DrawCircle(container.Position + new Vector2(0f, -body.Size.Y * 0.58f), radius * 0.46f, border);
+			if (inRange || selected)
+			{
+				DrawArc(container.Position, container.AutoOpenRange, 0f, Mathf.Tau, 28, new Color(tint.R, tint.G, tint.B, selected ? 0.55f : 0.26f), selected ? 2.6f : 1.4f);
+			}
+
+			string caption = container.Kind == ContainerKind.EliteCorpse ? "精英容器" : $"容器 {CountNodeLootSingle(container)}";
+			DrawString(ThemeDB.FallbackFont, container.Position + new Vector2(-42f, radius + 18f), caption, HorizontalAlignment.Left, 100f, UiFont(11), new Color(0.94f, 0.94f, 0.96f, selected || inRange ? 1f : 0.76f));
 		}
 	}
 
@@ -2673,7 +2861,14 @@ private sealed class RoomProjectileEffect
 
 	private void GenerateBattleLoot(MapNode node, AiSquad squad)
 	{
-		LootContainer pile = new() { Label = "尸体堆", Kind = ContainerKind.CorpsePile };
+		LootContainer pile = new()
+		{
+			Label = "尸体堆",
+			Kind = ContainerKind.CorpsePile,
+			Position = ClampToRoom(GetRoomArenaRect().GetCenter() + new Vector2(36f, 48f)),
+			Tint = new Color(0.72f, 0.74f, 0.78f, 1f),
+			AutoOpenRange = 58f,
+		};
 		int count = _rng.RandiRange(3, 5);
 		for (int i = 0; i < count; i++)
 		{
@@ -2681,7 +2876,14 @@ private sealed class RoomProjectileEffect
 		}
 		node.Containers.Add(pile);
 
-		LootContainer elite = new() { Label = squad != null ? $"{squad.Name} 队长" : "精英守卫", Kind = ContainerKind.EliteCorpse };
+		LootContainer elite = new()
+		{
+			Label = squad != null ? $"{squad.Name} 队长" : "精英守卫",
+			Kind = ContainerKind.EliteCorpse,
+			Position = ClampToRoom(GetRoomArenaRect().GetCenter() + new Vector2(96f, -12f)),
+			Tint = squad != null ? new Color(0.98f, 0.64f, 0.26f, 1f) : new Color(0.86f, 0.84f, 0.8f, 1f),
+			AutoOpenRange = 60f,
+		};
 		elite.VisibleItems.Add(squad != null ? "精钢军刀" : "守卫长枪");
 		elite.VisibleItems.Add(squad != null ? "队长锁甲" : "钢片甲");
 		elite.HiddenItems.Add("绷带包");
@@ -3108,7 +3310,14 @@ private sealed class RoomProjectileEffect
 		loser.BusyTurns = 0;
 		loser.RivalId = -1;
 		MapNode node = _nodes[winner.NodeId];
-		LootContainer pile = new() { Label = $"{loser.Name} 的遗骸", Kind = ContainerKind.CorpsePile };
+		LootContainer pile = new()
+		{
+			Label = $"{loser.Name} 的遗骸",
+			Kind = ContainerKind.CorpsePile,
+			Position = ClampToRoom(GetRoomArenaRect().GetCenter()),
+			Tint = new Color(0.92f, 0.5f, 0.22f, 1f),
+			AutoOpenRange = 58f,
+		};
 		pile.HiddenItems.Add("破损徽章");
 		pile.HiddenItems.Add("野战口粮");
 		pile.HiddenItems.Add(RollLootItem());
@@ -3529,7 +3738,7 @@ private sealed class RoomProjectileEffect
 
 	private bool CanSearch(MapNode node)
 	{
-		return !_runEnded && !_inHideout;
+		return !_runEnded && !_inHideout && !HasHostilesInRoom();
 	}
 
 	private void AddLoot(string item)
@@ -3731,29 +3940,37 @@ private sealed class RoomProjectileEffect
 		int count = 0;
 		foreach (LootContainer container in node.Containers)
 		{
-			foreach (EquippedLoot equipped in container.EquippedItems)
+			count += CountNodeLootSingle(container);
+		}
+		return count;
+	}
+
+	private int CountNodeLootSingle(LootContainer container)
+	{
+		int count = 0;
+		foreach (EquippedLoot equipped in container.EquippedItems)
+		{
+			if (!equipped.Taken && !string.IsNullOrEmpty(equipped.Label))
 			{
-				if (!equipped.Taken && !string.IsNullOrEmpty(equipped.Label))
+				count++;
+			}
+		}
+
+		if (container.GridItems.Count > 0)
+		{
+			foreach (GridLootItem item in container.GridItems)
+			{
+				if (!item.Taken)
 				{
 					count++;
 				}
 			}
-
-			if (container.GridItems.Count > 0)
-			{
-				foreach (GridLootItem item in container.GridItems)
-				{
-					if (!item.Taken)
-					{
-						count++;
-					}
-				}
-			}
-			else
-			{
-				count += container.VisibleItems.Count + container.HiddenRemaining;
-			}
 		}
+		else
+		{
+			count += container.VisibleItems.Count + container.HiddenRemaining;
+		}
+
 		return count;
 	}
 
@@ -4404,27 +4621,6 @@ private sealed class RoomProjectileEffect
 			_buttons.Add(new ButtonDef(rect, "extract"));
 		}
 		y += node.Type == NodeType.Extract ? Ui(88f) : Ui(50f);
-		if (CanSearch(node) && CountNodeLoot(node) > 0)
-		{
-			DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "\u5bb9\u5668", HorizontalAlignment.Left, -1f, UiFont(18), Colors.White);
-			y += Ui(26f);
-			for (int i = 0; i < node.Containers.Count && i < 6; i++)
-			{
-				LootContainer container = node.Containers[i];
-				if (container.IsEmpty) continue;
-				Rect2 rowRect = new(new Vector2(x, y), new Vector2(_sideRect.Size.X - Ui(44f), Ui(28f)));
-				Color fill = i == _selectedContainerIndex ? new Color(0.26f, 0.3f, 0.38f) : new Color(0.12f, 0.13f, 0.16f);
-				DrawRect(rowRect, fill, true);
-				DrawRect(rowRect, new Color(0.34f, 0.37f, 0.42f), false, 1f);
-				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(Ui(10f), Ui(20f)), container.Label, HorizontalAlignment.Left, Ui(180f), UiFont(13), Colors.White);
-				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(Ui(188f), Ui(20f)), $"\u660e\u9762 {CountRevealedGridItems(container) + CountAvailableEquipped(container)}", HorizontalAlignment.Left, Ui(76f), UiFont(12), new Color(0.78f, 0.87f, 0.98f));
-				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(Ui(252f), Ui(20f)), $"\u672a\u63ed {CountHiddenGridItems(container)}", HorizontalAlignment.Left, Ui(70f), UiFont(12), new Color(0.92f, 0.84f, 0.6f));
-				Rect2 openRect = new(new Vector2(rowRect.End.X - Ui(74f), rowRect.Position.Y + Ui(2f)), new Vector2(Ui(60f), Ui(24f)));
-				DrawButton(openRect, "\u6253\u5f00", new Color(0.23f, 0.4f, 0.58f));
-				_buttons.Add(new ButtonDef(openRect, "open_container", i));
-				y += Ui(36f);
-			}
-		}
 		float logTop = panelBottom - Ui(144f);
 		DrawLine(new Vector2(x, logTop - 10f), new Vector2(_sideRect.End.X - 18f, logTop - 10f), new Color(0.24f, 0.27f, 0.31f), 1f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, logTop), "\u4e16\u754c\u52a8\u6001", HorizontalAlignment.Left, -1f, UiFont(18), Colors.White);
