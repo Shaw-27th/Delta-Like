@@ -1323,7 +1323,7 @@ private sealed class RoomProjectileEffect
 			return unit.IsRanged ? 9.4f : 10.6f;
 		}
 
-		return unit.IsRanged ? 7.4f : 8.4f;
+		return unit.IsRanged ? 8.1f : 9.1f;
 	}
 
 	private void StepUnitCombat(RoomUnit attacker, RoomUnit target, float delta)
@@ -1926,7 +1926,7 @@ private sealed class RoomProjectileEffect
 			DrawLine(new Vector2(arena.Position.X, y), new Vector2(arena.End.X, y), new Color(0.16f, 0.19f, 0.24f, 0.38f), 1f);
 		}
 
-		DrawString(ThemeDB.FallbackFont, arena.Position + new Vector2(14f, 22f), node.Name, HorizontalAlignment.Left, -1f, 20, Colors.White);
+		DrawString(ThemeDB.FallbackFont, arena.Position + new Vector2(Ui(16f), Ui(26f)), node.Name, HorizontalAlignment.Left, -1f, UiFont(22), Colors.White);
 		DrawRect(new Rect2(arena.Position + new Vector2(10f, 30f), new Vector2(270f, 20f)), new Color(0.1f, 0.12f, 0.17f, 0.96f), true);
 		DrawString(ThemeDB.FallbackFont, arena.Position + new Vector2(14f, 42f), "战斗 / 搜索 / 过门处于同一实时状态", HorizontalAlignment.Left, -1f, 12, new Color(0.88f, 0.92f, 0.98f));
 		DrawString(ThemeDB.FallbackFont, arena.Position + new Vector2(14f, 42f), "战斗/搜索/过门为同一实时状态", HorizontalAlignment.Left, -1f, 12, new Color(0.88f, 0.92f, 0.98f));
@@ -1961,8 +1961,8 @@ private sealed class RoomProjectileEffect
 			Color border = pending ? new Color(1f, 0.92f, 0.58f, 1f) : new Color(0.85f, 0.92f, 1f, 0.96f);
 			DrawRect(exitRect, fill, true);
 			DrawRect(exitRect, border, false, 2f);
-			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(8f, 17f), GetCleanExitDirectionLabel(side), HorizontalAlignment.Left, exitRect.Size.X - 16f, 12, Colors.White);
-			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(8f, 34f), linkedNode.Name, HorizontalAlignment.Left, exitRect.Size.X - 16f, 11, new Color(0.9f, 0.95f, 1f));
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(Ui(8f), Ui(19f)), GetCleanExitDirectionLabel(side), HorizontalAlignment.Left, exitRect.Size.X - Ui(16f), UiFont(13), Colors.White);
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(Ui(8f), Ui(38f)), linkedNode.Name, HorizontalAlignment.Left, exitRect.Size.X - Ui(16f), UiFont(12), new Color(0.9f, 0.95f, 1f));
 			_buttons.Add(new ButtonDef(exitRect, "use_exit", linkedNodeId));
 		}
 	}
@@ -1990,7 +1990,7 @@ private sealed class RoomProjectileEffect
 			DrawRoomUnitFigure(unit, body);
 			if (unit.AttackWindupTime > 0f)
 			{
-				float radius = unit.IsHero ? 12f : 9f;
+				float radius = unit.IsHero ? 14f : (unit.IsElite ? 11f : 9.8f);
 				Vector2 dir = unit.Facing == Vector2.Zero ? (unit.IsPlayerSide ? Vector2.Right : Vector2.Left) : unit.Facing.Normalized();
 				Vector2 normal = new(-dir.Y, dir.X);
 				float totalWindup = unit.IsRanged ? 0.13f : (unit.IsHero || unit.IsElite ? 0.12f : 0.09f);
@@ -2020,7 +2020,7 @@ private sealed class RoomProjectileEffect
 				DrawRect(new Rect2(staminaBg.Position, new Vector2(staminaBg.Size.X * staminaRatio, staminaBg.Size.Y)), staminaColor, true);
 				DrawRect(staminaBg, new Color(1f, 0.96f, 0.72f, 0.7f), false, 0.8f);
 			}
-			DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-22f, -14f), unit.Name, HorizontalAlignment.Left, 80f, 10, Colors.White);
+			DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-28f, -20f), unit.Name, HorizontalAlignment.Left, 110f, UiFont(12), Colors.White);
 		}
 	}
 
@@ -2036,7 +2036,7 @@ private sealed class RoomProjectileEffect
 		float runSwing = Mathf.Sin(runPhase);
 		float runLift = Mathf.Abs(Mathf.Sin(runPhase)) * (isRunning ? 1.2f : 0.2f);
 		float attackPose = GetRoomAttackPose(unit);
-		float sizeScale = unit.IsHero ? 1.28f : (unit.IsElite ? 1.18f : 1f);
+		float sizeScale = unit.IsHero ? 1.32f : (unit.IsElite ? 1.22f : 1.08f);
 		float torsoHalfWidth = (unit.IsRanged ? 4.2f : 5.2f) * sizeScale;
 		float torsoHeight = (unit.IsHero ? 13f : 11f) * sizeScale;
 		float shoulderWidth = torsoHalfWidth + (unit.IsElite ? 1.3f : 0.7f) * sizeScale;
@@ -3634,32 +3634,32 @@ private sealed class RoomProjectileEffect
 		float y = panel.Position.Y + Ui(40f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "局外整备", HorizontalAlignment.Left, -1f, 26, Colors.White);
 		y += 34f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"资金：{_money}", HorizontalAlignment.Left, -1f, 18, new Color(0.95f, 0.86f, 0.48f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"资金：{_money}", HorizontalAlignment.Left, -1f, UiFont(20), new Color(0.95f, 0.86f, 0.48f));
 		y += 26f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"可用士兵：{_soldierRoster.Count}", HorizontalAlignment.Left, -1f, 16, new Color(0.76f, 0.9f, 0.82f));
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"可用士兵：{_soldierRoster.Count}", HorizontalAlignment.Left, -1f, UiFont(18), new Color(0.76f, 0.9f, 0.82f));
 		y += 28f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "行动地图", HorizontalAlignment.Left, -1f, 16, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "行动地图", HorizontalAlignment.Left, -1f, UiFont(18), Colors.White);
 		Rect2 mapPrevRect = new(new Vector2(x + Ui(122f), y - Ui(22f)), new Vector2(Ui(34f), Ui(28f)));
 		Rect2 mapNextRect = new(new Vector2(x + Ui(440f), y - Ui(22f)), new Vector2(Ui(34f), Ui(28f)));
 		Rect2 mapNameRect = new(new Vector2(x + Ui(166f), y - Ui(22f)), new Vector2(Ui(262f), Ui(28f)));
 		DrawButton(mapPrevRect, "<", new Color(0.22f, 0.24f, 0.29f));
 		DrawRect(mapNameRect, new Color(0.11f, 0.12f, 0.15f), true);
 		DrawRect(mapNameRect, new Color(0.34f, 0.37f, 0.42f), false, 1f);
-		DrawString(ThemeDB.FallbackFont, mapNameRect.Position + new Vector2(10f, 17f), GetSelectedMapName(), HorizontalAlignment.Left, -1f, 13, new Color(0.88f, 0.9f, 0.95f));
+		DrawString(ThemeDB.FallbackFont, mapNameRect.Position + new Vector2(10f, 17f), GetSelectedMapName(), HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.88f, 0.9f, 0.95f));
 		DrawButton(mapNextRect, ">", new Color(0.22f, 0.24f, 0.29f));
 		_buttons.Add(new ButtonDef(mapPrevRect, "select_map_prev"));
 		_buttons.Add(new ButtonDef(mapNextRect, "select_map_next"));
 		y += Ui(38f);
 		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), $"地图定位：{GetSelectedMapRoleLabel()}", HorizontalAlignment.Left, -1f, 14, new Color(0.76f, 0.84f, 0.94f));
 		y += Ui(32f);
-		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "行动难度", HorizontalAlignment.Left, -1f, 16, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(x, y), "行动难度", HorizontalAlignment.Left, -1f, UiFont(18), Colors.White);
 		Rect2 diffPrevRect = new(new Vector2(x + Ui(122f), y - Ui(22f)), new Vector2(Ui(34f), Ui(28f)));
 		Rect2 diffNextRect = new(new Vector2(x + Ui(440f), y - Ui(22f)), new Vector2(Ui(34f), Ui(28f)));
 		Rect2 diffNameRect = new(new Vector2(x + Ui(166f), y - Ui(22f)), new Vector2(Ui(262f), Ui(28f)));
 		DrawButton(diffPrevRect, "<", new Color(0.22f, 0.24f, 0.29f));
 		DrawRect(diffNameRect, new Color(0.11f, 0.12f, 0.15f), true);
 		DrawRect(diffNameRect, new Color(0.34f, 0.37f, 0.42f), false, 1f);
-		DrawString(ThemeDB.FallbackFont, diffNameRect.Position + new Vector2(10f, 17f), GetDifficultyName(_selectedDifficulty), HorizontalAlignment.Left, -1f, 13, new Color(0.96f, 0.9f, 0.78f));
+		DrawString(ThemeDB.FallbackFont, diffNameRect.Position + new Vector2(10f, 17f), GetDifficultyName(_selectedDifficulty), HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.96f, 0.9f, 0.78f));
 		DrawButton(diffNextRect, ">", new Color(0.22f, 0.24f, 0.29f));
 		_buttons.Add(new ButtonDef(diffPrevRect, "select_diff_prev"));
 		_buttons.Add(new ButtonDef(diffNextRect, "select_diff_next"));
@@ -3687,8 +3687,8 @@ private sealed class RoomProjectileEffect
 		DrawRect(shopRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(stashRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
 		DrawRect(shopRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
-		DrawString(ThemeDB.FallbackFont, stashRect.Position + new Vector2(14f, 24f), "仓库", HorizontalAlignment.Left, -1f, 18, Colors.White);
-		DrawString(ThemeDB.FallbackFont, shopRect.Position + new Vector2(14f, 24f), "商店", HorizontalAlignment.Left, -1f, 18, Colors.White);
+		DrawString(ThemeDB.FallbackFont, stashRect.Position + new Vector2(14f, 24f), "仓库", HorizontalAlignment.Left, -1f, UiFont(20), Colors.White);
+		DrawString(ThemeDB.FallbackFont, shopRect.Position + new Vector2(14f, 24f), "商店", HorizontalAlignment.Left, -1f, UiFont(20), Colors.White);
 
 		float stashY = stashRect.Position.Y + 44f;
 		if (_stash.Count == 0)
@@ -3729,18 +3729,18 @@ private sealed class RoomProjectileEffect
 
 		float soldierY = panel.End.Y - Ui(120f);
 		float soldierX = panel.Position.X + Ui(24f);
-		DrawString(ThemeDB.FallbackFont, new Vector2(soldierX, soldierY), "士兵名单", HorizontalAlignment.Left, -1f, 16, Colors.White);
-		soldierY += 22f;
+		DrawString(ThemeDB.FallbackFont, new Vector2(soldierX, soldierY), "士兵名单", HorizontalAlignment.Left, -1f, UiFont(19), Colors.White);
+		soldierY += Ui(24f);
 		if (_soldierRoster.Count == 0)
 		{
-			DrawString(ThemeDB.FallbackFont, new Vector2(soldierX, soldierY), "当前没有可用士兵。", HorizontalAlignment.Left, -1f, 13, new Color(0.72f, 0.76f, 0.82f));
+			DrawString(ThemeDB.FallbackFont, new Vector2(soldierX, soldierY), "当前没有可用士兵。", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.72f, 0.76f, 0.82f));
 		}
 		else
 		{
 			for (int i = 0; i < _soldierRoster.Count && i < 6; i++)
 			{
-				DrawString(ThemeDB.FallbackFont, new Vector2(soldierX, soldierY), $"• {_soldierRoster[i].Name}", HorizontalAlignment.Left, -1f, 13, new Color(0.82f, 0.88f, 0.94f));
-				soldierY += 18f;
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierX, soldierY), $"• {_soldierRoster[i].Name}", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.82f, 0.88f, 0.94f));
+				soldierY += Ui(20f);
 			}
 		}
 	}
@@ -3791,12 +3791,12 @@ private sealed class RoomProjectileEffect
 			Color color = GetNodeColor(node, clearVision);
 			float outerAlpha = clearVision ? 0.95f : 0.55f;
 			float labelAlpha = clearVision ? 1f : 0.65f;
-			DrawCircle(node.Position, 24f, new Color(0.14f, 0.12f, 0.1f, outerAlpha));
-			DrawCircle(node.Position, 20f, color);
-			DrawArc(node.Position, 28f, 0f, Mathf.Tau, 32, new Color(color.R, color.G, color.B, clearVision ? 0.38f : 0.18f), 2f);
+			DrawCircle(node.Position, 26f, new Color(0.14f, 0.12f, 0.1f, outerAlpha));
+			DrawCircle(node.Position, 22f, color);
+			DrawArc(node.Position, 31f, 0f, Mathf.Tau, 32, new Color(color.R, color.G, color.B, clearVision ? 0.38f : 0.18f), 2.2f);
 			DrawNodeGlyph(node, color);
 			Vector2 labelPos = node.Position + GetNodeLabelOffset(node.Id);
-			DrawString(ThemeDB.FallbackFont, labelPos, node.Name, HorizontalAlignment.Left, -1f, 14, new Color(0.96f, 0.93f, 0.86f, labelAlpha));
+			DrawString(ThemeDB.FallbackFont, labelPos, node.Name, HorizontalAlignment.Left, -1f, UiFont(15), new Color(0.96f, 0.93f, 0.86f, labelAlpha));
 			if (node.Id == _playerNodeId && !_isPlayerMoving)
 			{
 				DrawArc(node.Position, 34f, 0f, Mathf.Tau, 32, new Color(0.58f, 0.95f, 0.98f, 0.9f), 3f);
@@ -3808,11 +3808,11 @@ private sealed class RoomProjectileEffect
 				Vector2 badge = node.Position + new Vector2(20f, 18f);
 				DrawCircle(badge, 9f, new Color(0.42f, 0.08f, 0.08f, 0.95f));
 				DrawCircle(badge, 7f, new Color(0.92f, 0.34f, 0.3f));
-				DrawString(ThemeDB.FallbackFont, node.Position + GetSquadLabelOffset(node.Id), squad.Name, HorizontalAlignment.Left, -1f, 10, new Color(1f, 0.84f, 0.8f));
+				DrawString(ThemeDB.FallbackFont, node.Position + GetSquadLabelOffset(node.Id), squad.Name, HorizontalAlignment.Left, -1f, UiFont(11), new Color(1f, 0.84f, 0.8f));
 				Vector2 intentPos = node.Position + GetSquadIntentOffset(node.Id);
 				DrawAiIntentIcon(intentPos + new Vector2(6f, -3f), squad.Intent);
-				DrawString(ThemeDB.FallbackFont, intentPos + new Vector2(18f, 0f), $"现：{GetAiIntentSummary(squad)}", HorizontalAlignment.Left, -1f, 9, new Color(0.92f, 0.92f, 0.84f));
-				DrawString(ThemeDB.FallbackFont, intentPos + new Vector2(18f, 12f), $"后：{GetAiNextActionSummary(squad)}", HorizontalAlignment.Left, -1f, 9, new Color(0.72f, 0.86f, 0.98f, 0.95f));
+				DrawString(ThemeDB.FallbackFont, intentPos + new Vector2(18f, 0f), $"现：{GetAiIntentSummary(squad)}", HorizontalAlignment.Left, -1f, UiFont(10), new Color(0.92f, 0.92f, 0.84f));
+				DrawString(ThemeDB.FallbackFont, intentPos + new Vector2(18f, 12f), $"后：{GetAiNextActionSummary(squad)}", HorizontalAlignment.Left, -1f, UiFont(10), new Color(0.72f, 0.86f, 0.98f, 0.95f));
 
 				int nextNodeId = GetAiPredictedNextNodeId(squad);
 				if (nextNodeId >= 0 && nextNodeId < _nodes.Count && nextNodeId != squad.NodeId)
@@ -3843,24 +3843,24 @@ private sealed class RoomProjectileEffect
 		Rect2 banner = new(_mapRect.Position + new Vector2(18f, 18f), new Vector2(_mapRect.Size.X - 36f, 74f));
 		DrawRect(banner, new Color(0.05f, 0.05f, 0.06f, 0.78f), true);
 		DrawRect(banner, new Color(0.38f, 0.41f, 0.46f, 0.92f), false, 1.5f);
-		DrawString(ThemeDB.FallbackFont, banner.Position + new Vector2(16f, 24f), $"战术房间: {node.Name}", HorizontalAlignment.Left, -1f, 18, Colors.White);
-		DrawString(ThemeDB.FallbackFont, banner.Position + new Vector2(16f, 46f), $"类型 {GetNodeTypeLabel(node.Type)}  威胁 {node.Threat}  搜刮 {CountNodeLoot(node)}", HorizontalAlignment.Left, -1f, 13, new Color(0.76f, 0.82f, 0.9f));
-		DrawString(ThemeDB.FallbackFont, banner.Position + new Vector2(16f, 64f), "按 M 打开战略地图，默认操作留在房间层。", HorizontalAlignment.Left, -1f, 12, new Color(0.94f, 0.84f, 0.62f));
+		DrawString(ThemeDB.FallbackFont, banner.Position + new Vector2(16f, 26f), $"战术房间: {node.Name}", HorizontalAlignment.Left, -1f, UiFont(20), Colors.White);
+		DrawString(ThemeDB.FallbackFont, banner.Position + new Vector2(16f, 50f), $"类型 {GetNodeTypeLabel(node.Type)}  威胁 {node.Threat}  搜刮 {CountNodeLoot(node)}", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.76f, 0.82f, 0.9f));
+		DrawString(ThemeDB.FallbackFont, banner.Position + new Vector2(16f, 70f), "按 M 打开战略地图，默认操作留在房间层。", HorizontalAlignment.Left, -1f, UiFont(13), new Color(0.94f, 0.84f, 0.62f));
 
 		Rect2 roomCore = new(_mapRect.Position + new Vector2(120f, 136f), _mapRect.Size - new Vector2(240f, 250f));
 		DrawRect(roomCore, new Color(0.08f, 0.09f, 0.11f, 0.7f), true);
 		DrawRect(roomCore, new Color(0.42f, 0.45f, 0.5f, 0.95f), false, 2f);
-		DrawString(ThemeDB.FallbackFont, roomCore.Position + new Vector2(18f, 26f), "房间内部", HorizontalAlignment.Left, -1f, 18, Colors.White);
-		DrawString(ThemeDB.FallbackFont, roomCore.Position + new Vector2(18f, 48f), "这里承接搜索、战斗和转场决策。", HorizontalAlignment.Left, -1f, 12, new Color(0.82f, 0.86f, 0.92f));
-		DrawString(ThemeDB.FallbackFont, roomCore.Position + new Vector2(18f, 68f), _plannedExitNodeId >= 0 ? $"已规划出口：{_nodes[_plannedExitNodeId].Name}" : "尚未规划出口，可直接在房间内选出口。", HorizontalAlignment.Left, -1f, 12, new Color(0.94f, 0.84f, 0.62f));
+		DrawString(ThemeDB.FallbackFont, roomCore.Position + new Vector2(18f, 26f), "房间内部", HorizontalAlignment.Left, -1f, UiFont(20), Colors.White);
+		DrawString(ThemeDB.FallbackFont, roomCore.Position + new Vector2(18f, 50f), "这里承接搜索、战斗和转场决策。", HorizontalAlignment.Left, -1f, UiFont(13), new Color(0.82f, 0.86f, 0.92f));
+		DrawString(ThemeDB.FallbackFont, roomCore.Position + new Vector2(18f, 72f), _plannedExitNodeId >= 0 ? $"已规划出口：{_nodes[_plannedExitNodeId].Name}" : "尚未规划出口，可直接在房间内选出口。", HorizontalAlignment.Left, -1f, UiFont(13), new Color(0.94f, 0.84f, 0.62f));
 		DrawRect(new Rect2(roomCore.Position + new Vector2(28f, 96f), new Vector2(roomCore.Size.X - 56f, roomCore.Size.Y - 132f)), new Color(0.16f, 0.18f, 0.2f, 0.45f), false, 2f);
 
 		float exitY = _mapRect.End.Y - 110f;
-		DrawString(ThemeDB.FallbackFont, new Vector2(_mapRect.Position.X + 24f, exitY), "房间出口", HorizontalAlignment.Left, -1f, 16, Colors.White);
+		DrawString(ThemeDB.FallbackFont, new Vector2(_mapRect.Position.X + 24f, exitY), "房间出口", HorizontalAlignment.Left, -1f, UiFont(18), Colors.White);
 		exitY += 24f;
 		if (node.Links.Count == 0)
 		{
-			DrawString(ThemeDB.FallbackFont, new Vector2(_mapRect.Position.X + 24f, exitY), "当前房间没有可用出口。", HorizontalAlignment.Left, -1f, 13, new Color(0.76f, 0.8f, 0.86f));
+			DrawString(ThemeDB.FallbackFont, new Vector2(_mapRect.Position.X + 24f, exitY), "当前房间没有可用出口。", HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.76f, 0.8f, 0.86f));
 			return;
 		}
 
@@ -3868,7 +3868,7 @@ private sealed class RoomProjectileEffect
 		{
 			MapNode linkedNode = _nodes[node.Links[i]];
 			string exitLabel = $"{GetExitDirectionLabel(i, node.Links.Count)} -> {linkedNode.Name}";
-			DrawString(ThemeDB.FallbackFont, new Vector2(_mapRect.Position.X + 24f, exitY), exitLabel, HorizontalAlignment.Left, -1f, 13, new Color(0.76f, 0.8f, 0.86f));
+			DrawString(ThemeDB.FallbackFont, new Vector2(_mapRect.Position.X + 24f, exitY), exitLabel, HorizontalAlignment.Left, -1f, UiFont(14), new Color(0.76f, 0.8f, 0.86f));
 			exitY += 18f;
 		}
 
@@ -3883,8 +3883,8 @@ private sealed class RoomProjectileEffect
 		Rect2 titleBar = new(_mapRect.Position + new Vector2(18f, 18f), new Vector2(_mapRect.Size.X - 36f, 64f));
 		DrawRect(titleBar, new Color(0.04f, 0.05f, 0.06f, 0.9f), true);
 		DrawRect(titleBar, new Color(0.46f, 0.5f, 0.55f, 0.95f), false, 1.5f);
-		DrawString(ThemeDB.FallbackFont, titleBar.Position + new Vector2(16f, 24f), "战略地图", HorizontalAlignment.Left, -1f, 18, Colors.White);
-		DrawString(ThemeDB.FallbackFont, titleBar.Position + new Vector2(16f, 46f), "点击相邻节点执行转场，再按 M 返回房间视图。", HorizontalAlignment.Left, -1f, 12, new Color(0.86f, 0.9f, 0.95f));
+		DrawString(ThemeDB.FallbackFont, titleBar.Position + new Vector2(16f, 24f), "战略地图", HorizontalAlignment.Left, -1f, UiFont(20), Colors.White);
+		DrawString(ThemeDB.FallbackFont, titleBar.Position + new Vector2(16f, 48f), "点击相邻节点执行转场，再按 M 返回房间视图。", HorizontalAlignment.Left, -1f, UiFont(13), new Color(0.86f, 0.9f, 0.95f));
 	}
 
 	private void DrawRoomExits(MapNode node)
@@ -3899,8 +3899,8 @@ private sealed class RoomProjectileEffect
 			Color border = planned ? new Color(0.92f, 0.84f, 0.58f, 0.98f) : new Color(0.62f, 0.68f, 0.76f, 0.95f);
 			DrawRect(exitRect, fill, true);
 			DrawRect(exitRect, border, false, 2f);
-			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(10f, 18f), GetExitDirectionLabel(i, node.Links.Count), HorizontalAlignment.Left, exitRect.Size.X - 20f, 12, Colors.White);
-			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(10f, 36f), linkedNode.Name, HorizontalAlignment.Left, exitRect.Size.X - 20f, 12, new Color(0.88f, 0.92f, 0.98f));
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(10f, 18f), GetExitDirectionLabel(i, node.Links.Count), HorizontalAlignment.Left, exitRect.Size.X - 20f, UiFont(13), Colors.White);
+			DrawString(ThemeDB.FallbackFont, exitRect.Position + new Vector2(10f, 38f), linkedNode.Name, HorizontalAlignment.Left, exitRect.Size.X - 20f, UiFont(13), new Color(0.88f, 0.92f, 0.98f));
 			_buttons.Add(new ButtonDef(exitRect, "use_exit", linkedNodeId));
 		}
 	}
@@ -4258,8 +4258,8 @@ private sealed class RoomProjectileEffect
 				DrawRect(rowRect, fill, true);
 				DrawRect(rowRect, new Color(0.34f, 0.37f, 0.42f), false, 1f);
 				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(Ui(10f), Ui(20f)), container.Label, HorizontalAlignment.Left, Ui(180f), UiFont(13), Colors.White);
-				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(Ui(188f), Ui(20f)), $"\u660e\u9762 {CountRevealedGridItems(container) + CountAvailableEquipped(container)}", HorizontalAlignment.Left, Ui(72f), UiFont(11), new Color(0.78f, 0.87f, 0.98f));
-				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(Ui(250f), Ui(20f)), $"\u672a\u63ed {CountHiddenGridItems(container)}", HorizontalAlignment.Left, Ui(64f), UiFont(11), new Color(0.92f, 0.84f, 0.6f));
+				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(Ui(188f), Ui(20f)), $"\u660e\u9762 {CountRevealedGridItems(container) + CountAvailableEquipped(container)}", HorizontalAlignment.Left, Ui(76f), UiFont(12), new Color(0.78f, 0.87f, 0.98f));
+				DrawString(ThemeDB.FallbackFont, rowRect.Position + new Vector2(Ui(252f), Ui(20f)), $"\u672a\u63ed {CountHiddenGridItems(container)}", HorizontalAlignment.Left, Ui(70f), UiFont(12), new Color(0.92f, 0.84f, 0.6f));
 				Rect2 openRect = new(new Vector2(rowRect.End.X - Ui(74f), rowRect.Position.Y + Ui(2f)), new Vector2(Ui(60f), Ui(24f)));
 				DrawButton(openRect, "\u6253\u5f00", new Color(0.23f, 0.4f, 0.58f));
 				_buttons.Add(new ButtonDef(openRect, "open_container", i));
@@ -4273,7 +4273,7 @@ private sealed class RoomProjectileEffect
 		int startIndex = Mathf.Max(0, _eventLog.Count - 5);
 		for (int i = startIndex; i < _eventLog.Count; i++)
 		{
-			DrawString(ThemeDB.FallbackFont, new Vector2(x, logY), _eventLog[i], HorizontalAlignment.Left, _sideRect.Size.X - Ui(44f), UiFont(13), new Color(0.8f, 0.84f, 0.9f));
+			DrawString(ThemeDB.FallbackFont, new Vector2(x, logY), _eventLog[i], HorizontalAlignment.Left, _sideRect.Size.X - Ui(44f), UiFont(14), new Color(0.8f, 0.84f, 0.9f));
 			logY += Ui(22f);
 		}
 	}
