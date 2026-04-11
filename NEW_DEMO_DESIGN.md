@@ -159,21 +159,71 @@
 - New-run starting money is currently boosted for testing.
 - Current test start money: `3000`
 
+## Inventory Progress Snapshot
+
+### Completed milestone: stash foundation
+
+- The stash now has a real fixed grid foundation instead of a simple string list.
+- Current live stash size is `12 x 10`.
+- Buying from the shop now tries to place the purchased item into the stash grid.
+- Extraction now checks whether all carried run items can fit into the stash before allowing extraction.
+- If the stash cannot accept the extracted items, extraction is blocked.
+- Hideout stash UI now displays the stash as a real item grid.
+- Stash items can be selected and sold from the grid view.
+
+### In-progress milestone: shared transfer logic
+
+- Shop and stash now already share:
+- item size language,
+- item rarity color presentation,
+- grid-based item representation.
+- Container-to-backpack transfer is active.
+- Backpack-to-container return is now also active for the currently open container popup.
+- Backpack-to-container return now tries:
+- the clicked cell first,
+- then a nearest available automatic placement pass,
+- then a rotated placement pass if needed.
+- The open container popup also provides a direct on-screen hint while a backpack item is being held.
+- This means room-side storage is no longer strictly one-way.
+
+### Full target for the current inventory push
+
+- The near-term target is not just to have separate working panels.
+- The target is one coherent inventory language across:
+- room containers,
+- team backpack,
+- stash,
+- shop acquisition path.
+- The intended result is:
+- the same item footprint rules,
+- the same item presentation logic,
+- the same transfer expectations,
+- and fewer one-off special cases per panel.
+
 ## Current Known Gaps
 
 ### Stash system
 
-- The stash is not yet a full shared grid inventory with the same fidelity as the team backpack.
-- Main stash width / height rules are not fully implemented as a real grid.
-- Extraction-to-stash is not yet the final intended stash workflow.
+- The stash now has a real grid foundation, but not full parity with the team backpack yet.
+- Extraction-to-stash is now functional at the foundation level, but the surrounding management UX is still basic.
 - Storage-box tabs and typed storage boxes are not implemented.
 
 ### Backpack management depth
 
-- Backpack-to-container transfer is still functional but not yet polished as a full management UI.
+- Backpack-to-container transfer is now functional for the currently open container popup, but still not polished as a full management UI.
 - Overflow and overload recovery are usable but still rough.
 - Fine manual sorting workflows are still limited compared with the intended final inventory management depth.
 - Direct manual rearrangement of capacity-source blocks is not implemented.
+
+### Shared transfer UX
+
+- Transfer behavior is still split between:
+- direct take buttons,
+- take-all,
+- drag-hold backpack placement,
+- stash selection actions.
+- The code is moving toward a unified inventory language, but the interaction model is not fully unified yet.
+- Stash-to-backpack and broader cross-panel transfer workflows are still incomplete.
 
 ### Logistics and advanced capacity sources
 
@@ -188,11 +238,11 @@
 
 ## Recommended Next Major Work
 
-1. Replace the current stash with a true grid-based stash.
-2. Route successful extraction into that stash flow cleanly.
-3. Add the first real stash tab structure and fixed `12`-wide storage behavior.
-4. Improve backpack/container transfer ergonomics after stash exists.
-5. Revisit logistics plans and advanced carry modifiers only after stash and extraction storage are stable.
+1. Continue the shared transfer pass until stash, backpack, and container interactions feel like one system rather than three partially different ones.
+2. Add broader stash transfer workflows after the current room-side transfer logic is stable.
+3. Add the first real stash tab structure and fixed `12`-wide storage behavior as a formalized hideout storage layer.
+4. Revisit logistics plans and advanced carry modifiers only after stash and extraction storage are stable.
+5. Do a cleanup pass in `RaidMapDemo.cs` after the current inventory push stops moving.
 
 ## Notes for Future Updates
 
