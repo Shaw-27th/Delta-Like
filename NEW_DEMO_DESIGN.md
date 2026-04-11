@@ -55,6 +55,8 @@
 ### Proposed Backpack / Stash Direction
 
 - Containers, team backpack, and stash should all use the same width x height grid logic.
+- Item size must stay consistent across all inventory contexts.
+- If an item is `2 x 3` in a container, it is also `2 x 3` in the team backpack and stash.
 - Search loot should enter the team backpack first.
 - Successful extraction should move carried items from the team backpack into stash storage.
 - Supplies and carried utility items should also consume team backpack space.
@@ -63,22 +65,57 @@
 - Carry capacity should come from multiple sources at once.
 
 - Carry capacity sources:
-- Hero base carry capacity is the main stable source.
+- There is currently no separate base squad capacity block.
+- Hero capacity is the main stable source.
+- Current chosen hero contribution target: `4 x 4`.
 - Hero skills, traits, and equipment can add more carry capacity.
 - Soldiers also add carry capacity, but usually much less per unit.
+- Standard soldiers should contribute `1 x 2`.
 - Advanced or special soldiers can add more than standard troops.
 - Special non-combat logistics units such as pack mules / transport carriers are allowed as future unit types.
 - Pre-run logistics loadout can add fixed or scaling carry bonuses for the whole squad.
 
 - Current recommended capacity structure:
-- `Total carry limit = stable base capacity + unit contribution + logistics bonus + equipment / trait bonus`.
-- Stable base capacity should come mostly from heroes and logistics.
-- Soldier contribution should feel meaningful, but should not be the only thing preventing the run from functioning.
+- Total carry space should be assembled from multiple rectangular capacity blocks.
+- Example contributing blocks:
+- Hero block: `4 x 4`.
+- Soldier block: `1 x 2`.
+- Future logistics / equipment blocks: variable.
+- These blocks should be auto-packed by the game into one composite team-backpack panel.
+- The final composite panel can be irregular in feel internally, but its UI row width should cap at `12` cells.
+- Capacity blocks should be visually understandable in the UI even after auto-packing.
+- The player should be able to see that the total space is stitched together from several source blocks, not one monolithic bag.
 
 - Current recommended implementation direction:
 - Do not start with a literal hero-only Tarkov backpack.
 - Start with a squad carry-capacity panel that still uses grid space and item footprint.
 - The fiction should be expedition pack load, salvage drag bags, haul frames, or squad logistics support.
+- Auto-packing is acceptable for the first implementation.
+- Later, manual backpack-capacity arrangement can be considered if it adds real gameplay value.
+
+### Team Backpack UI / Interaction Rules
+
+- Team backpack should use the same item-grid language as containers and stash.
+- Team backpack must support drag movement.
+- Team backpack must support rotation.
+- Rotation should use the same dimensions swap rule everywhere: `W x H` becomes `H x W`.
+- Item names must be visible either:
+- directly on the item if readable,
+- or through mouse hover tooltip if direct labels become too noisy.
+
+- The team-backpack panel should not look like one flat generic rectangle.
+- It should visually communicate that the total capacity is assembled from smaller source capacities.
+- Recommended presentation:
+- The global backing grid still behaves as one shared placement surface.
+- Capacity-source boundaries are shown as softer grouping cues such as dashed separators, subtle shading, or grouped background panels.
+- A `4 x 4` hero block should read visually as one chunk.
+- Soldier-provided `1 x 2` blocks should read as add-on chunks attached to the main load.
+- Items are allowed to span across different source blocks.
+- Source-block visuals are explanatory only and must not create hard placement barriers.
+
+- Team-backpack UI must avoid side-panel overlap with existing run UI.
+- The carry panel and the event log / map controls must have distinct vertical regions.
+- The current overlap issue between `世界动态` and the map-toggle row should be treated as a layout bug to fix during the inventory UI pass.
 
 - Current stash target:
 - Main stash tab is always present.
@@ -158,10 +195,11 @@
 - Route container loot into the team backpack instead of directly into an unbounded list.
 - Add visible carry usage and carry limit to the run UI.
 - Compute carry limit from a first-pass squad formula.
-- First-pass formula should be simple and stable:
-- Hero base capacity.
-- Soldier contribution.
-- Optional logistics-plan flat bonus.
+- First-pass formula should now be block-based, not just one scalar number:
+- No separate base capacity block.
+- Hero block `4 x 4`.
+- Soldier blocks `1 x 2`.
+- Optional flat logistics block can stay deferred or be added later.
 - Detect overload when carried usage exceeds current limit.
 - Block room-to-room movement and extraction while overloaded.
 - Allow staying in the current room while overloaded.
@@ -204,13 +242,21 @@
 
 - Team backpack must stop being an unlimited list and become a real bounded grid.
 - Search/container loot must go into that bounded team backpack.
+- Item footprint must remain identical between container, team backpack, and stash.
 - The run UI must show `current usage / current limit`.
-- The game must calculate a first-pass squad carry limit from hero + soldiers + optional flat logistics bonus.
+- The game must calculate a first-pass squad carry layout from:
+- no separate base block,
+- hero `4 x 4`,
+- soldier `1 x 2`.
 - The run must enter overload when usage exceeds limit.
 - Overload must block room transition.
 - Overload must block extraction.
 - The player must still be allowed to move inside the current room while overloaded.
 - The player must have at least one basic way to remove carried items from the team backpack in-room.
+- Team backpack must support drag movement.
+- Team backpack must support rotation.
+- Team-backpack items must show readable names directly or on hover.
+- Team-backpack UI must visually explain stitched capacity blocks without making them placement barriers.
 
 ### Phase 1 Explicitly Not Required
 
