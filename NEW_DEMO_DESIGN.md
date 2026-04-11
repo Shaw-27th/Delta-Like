@@ -178,6 +178,7 @@
 - grid-based item representation.
 - Hideout stash and the outside-run backpack now share a bidirectional drag-style transfer flow.
 - Hideout and post-run settlement now support press-move-release dragging instead of only two-click pickup/drop.
+- Drag preview anchoring now follows the original grab point, and target placement uses the same preview origin plus valid/invalid placement highlights.
 - The hideout layout was reworked so the stash, shop, and outside-run backpack fit inside separate panels.
 - The old explicit `Bring Into Run` / `Return To Stash` buttons are no longer required for the main flow.
 - Hideout preparation now expects direct grid-to-grid movement between stash and the outside-run backpack area.

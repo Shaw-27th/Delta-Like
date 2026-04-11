@@ -372,13 +372,16 @@ private sealed class RoomProjectileEffect
 	private BackpackItem _draggedBackpackItem;
 	private bool _hasDraggedBackpackItem;
 	private Vector2I _draggedBackpackOriginalCell;
+	private Vector2 _draggedBackpackGrabOffset;
 	private BackpackItem _draggedHideoutItem;
 	private bool _hasDraggedHideoutItem;
 	private Vector2I _draggedHideoutOriginalCell;
+	private Vector2 _draggedHideoutGrabOffset;
 	private bool _draggedHideoutFromLoadout;
 	private bool _pendingHideoutDrag;
 	private bool _pendingHideoutDragFromLoadout;
 	private int _pendingHideoutDragIndex = -1;
+	private Vector2 _pendingHideoutGrabOffset;
 	private int _selectedSettlementIndex = -1;
 	private int _sfxCursor;
 	private AudioStreamWav _sfxMeleeLight;
@@ -683,10 +686,13 @@ private sealed class RoomProjectileEffect
 		_overflowBackpackItems.Clear();
 		_hasDraggedBackpackItem = false;
 		_draggedBackpackItem = null;
+		_draggedBackpackGrabOffset = Vector2.Zero;
 		_hasDraggedHideoutItem = false;
 		_draggedHideoutItem = null;
+		_draggedHideoutGrabOffset = Vector2.Zero;
 		_pendingHideoutDrag = false;
 		_pendingHideoutDragIndex = -1;
+		_pendingHideoutGrabOffset = Vector2.Zero;
 
 		_playerMaxHp = 24;
 		_playerHp = 24;
@@ -832,8 +838,10 @@ private sealed class RoomProjectileEffect
 		_selectedSettlementIndex = -1;
 		_hasDraggedHideoutItem = false;
 		_draggedHideoutItem = null;
+		_draggedHideoutGrabOffset = Vector2.Zero;
 		_pendingHideoutDrag = false;
 		_pendingHideoutDragIndex = -1;
+		_pendingHideoutGrabOffset = Vector2.Zero;
 		_battleSim = null;
 		_eventLog.Clear();
 		if (_shopStock.Count == 0)
@@ -4408,8 +4416,7 @@ private sealed class RoomProjectileEffect
 			return true;
 		}
 
-		Vector2 local = click - gridOrigin;
-		Vector2I cell = new(Mathf.FloorToInt(local.X / cellSize.X), Mathf.FloorToInt(local.Y / cellSize.Y));
+		Vector2I cell = GetDraggedBackpackTargetCell(gridOrigin, cellSize);
 		if (!TryMoveDraggedBackpackItemToContainer(container, cell))
 		{
 			_status = "容器空间不足，无法放回。";
@@ -4997,11 +5004,6 @@ private sealed class RoomProjectileEffect
 			maxWidth = Mathf.Max(maxWidth, item.Cell.X + item.Size.X);
 		}
 
-		if (_hasDraggedBackpackItem && _draggedBackpackItem != null)
-		{
-			maxWidth = Mathf.Max(maxWidth, _draggedBackpackItem.Cell.X + _draggedBackpackItem.Size.X);
-		}
-
 		return Mathf.Clamp(Mathf.Max(1, maxWidth), 1, TeamBackpackMaxWidth);
 	}
 
@@ -5040,6 +5042,7 @@ private sealed class RoomProjectileEffect
 
 		_draggedBackpackItem = _runBackpack[itemIndex];
 		_draggedBackpackOriginalCell = _draggedBackpackItem.Cell;
+		_draggedBackpackGrabOffset = click - GetBackpackItemRect(_draggedBackpackItem, gridOrigin, cellSize).Position;
 		_hasDraggedBackpackItem = true;
 		_runBackpack.RemoveAt(itemIndex);
 		return true;
@@ -5082,6 +5085,14 @@ private sealed class RoomProjectileEffect
 		_runBackpack.Add(_draggedBackpackItem);
 		_hasDraggedBackpackItem = false;
 		_draggedBackpackItem = null;
+		_draggedBackpackGrabOffset = Vector2.Zero;
+	}
+
+	private Rect2 GetBackpackItemRect(BackpackItem item, Vector2 gridOrigin, Vector2 cellSize)
+	{
+		return new Rect2(
+			gridOrigin + new Vector2(item.Cell.X * cellSize.X, item.Cell.Y * cellSize.Y),
+			new Vector2(item.Size.X * cellSize.X - Ui(2f), item.Size.Y * cellSize.Y - Ui(2f)));
 	}
 
 	private int GetBackpackItemIndexAtPoint(Vector2 point, Vector2 gridOrigin, Vector2 cellSize)
@@ -5089,9 +5100,7 @@ private sealed class RoomProjectileEffect
 		for (int i = _runBackpack.Count - 1; i >= 0; i--)
 		{
 			BackpackItem item = _runBackpack[i];
-			Rect2 itemRect = new(
-				gridOrigin + new Vector2(item.Cell.X * cellSize.X, item.Cell.Y * cellSize.Y),
-				new Vector2(item.Size.X * cellSize.X - Ui(2f), item.Size.Y * cellSize.Y - Ui(2f)));
+			Rect2 itemRect = GetBackpackItemRect(item, gridOrigin, cellSize);
 			if (itemRect.HasPoint(point))
 			{
 				return i;
@@ -5104,6 +5113,15 @@ private sealed class RoomProjectileEffect
 	private Vector2I GetBackpackCellAtPoint(Vector2 point, Vector2 gridOrigin, Vector2 cellSize)
 	{
 		Vector2 local = point - gridOrigin;
+		return new Vector2I(
+			Mathf.FloorToInt(local.X / cellSize.X),
+			Mathf.FloorToInt(local.Y / cellSize.Y));
+	}
+
+	private Vector2I GetDraggedBackpackTargetCell(Vector2 gridOrigin, Vector2 cellSize)
+	{
+		Vector2 dragOrigin = GetViewport().GetMousePosition() - _draggedBackpackGrabOffset;
+		Vector2 local = dragOrigin - gridOrigin + new Vector2(Ui(1f), Ui(1f));
 		return new Vector2I(
 			Mathf.FloorToInt(local.X / cellSize.X),
 			Mathf.FloorToInt(local.Y / cellSize.Y));
@@ -6497,6 +6515,7 @@ private sealed class RoomProjectileEffect
 			_pendingHideoutDrag = true;
 			_pendingHideoutDragFromLoadout = false;
 			_pendingHideoutDragIndex = itemIndex;
+			_pendingHideoutGrabOffset = click - GetStorageItemRect(_stash[itemIndex], stashGridOrigin, stashCellSize).Position;
 			return true;
 		}
 
@@ -6531,6 +6550,7 @@ private sealed class RoomProjectileEffect
 		_pendingHideoutDrag = true;
 		_pendingHideoutDragFromLoadout = true;
 		_pendingHideoutDragIndex = secondaryIndex;
+		_pendingHideoutGrabOffset = click - GetStorageItemRect(_hideoutLoadout[secondaryIndex], secondaryGridOrigin, secondaryCellSize).Position;
 
 		return true;
 	}
@@ -6546,9 +6566,8 @@ private sealed class RoomProjectileEffect
 
 			if (clickedStash || clickedSecondary)
 			{
-				Vector2 local = click - (clickedStash ? stashGridOrigin : secondaryGridOrigin);
 				Vector2 cellSize = clickedStash ? stashCellSize : secondaryCellSize;
-				Vector2I cell = new(Mathf.FloorToInt(local.X / cellSize.X), Mathf.FloorToInt(local.Y / cellSize.Y));
+				Vector2I cell = GetDraggedHideoutTargetCell(clickedStash ? stashGridOrigin : secondaryGridOrigin, cellSize);
 				if (clickedStash)
 				{
 					if (TryPlaceDraggedHideoutItemInStash(cell))
@@ -6589,6 +6608,7 @@ private sealed class RoomProjectileEffect
 
 			_draggedHideoutItem = _hideoutLoadout[_pendingHideoutDragIndex];
 			_draggedHideoutOriginalCell = _draggedHideoutItem.Cell;
+			_draggedHideoutGrabOffset = _pendingHideoutGrabOffset;
 			_draggedHideoutFromLoadout = true;
 			_hasDraggedHideoutItem = true;
 			_hideoutLoadout.RemoveAt(_pendingHideoutDragIndex);
@@ -6606,6 +6626,7 @@ private sealed class RoomProjectileEffect
 
 			_draggedHideoutItem = _stash[_pendingHideoutDragIndex];
 			_draggedHideoutOriginalCell = _draggedHideoutItem.Cell;
+			_draggedHideoutGrabOffset = _pendingHideoutGrabOffset;
 			_draggedHideoutFromLoadout = false;
 			_hasDraggedHideoutItem = true;
 			_stash.RemoveAt(_pendingHideoutDragIndex);
@@ -6614,6 +6635,7 @@ private sealed class RoomProjectileEffect
 
 		_pendingHideoutDrag = false;
 		_pendingHideoutDragIndex = -1;
+		_pendingHideoutGrabOffset = Vector2.Zero;
 	}
 
 	private void RestoreDraggedHideoutItem()
@@ -6637,6 +6659,23 @@ private sealed class RoomProjectileEffect
 		_draggedHideoutItem = null;
 		_pendingHideoutDrag = false;
 		_pendingHideoutDragIndex = -1;
+		_pendingHideoutGrabOffset = Vector2.Zero;
+	}
+
+	private Rect2 GetStorageItemRect(BackpackItem item, Vector2 gridOrigin, Vector2 cellSize)
+	{
+		return new Rect2(
+			gridOrigin + new Vector2(item.Cell.X * cellSize.X, item.Cell.Y * cellSize.Y),
+			new Vector2(item.Size.X * cellSize.X - Ui(2f), item.Size.Y * cellSize.Y - Ui(2f)));
+	}
+
+	private Vector2I GetDraggedHideoutTargetCell(Vector2 gridOrigin, Vector2 cellSize)
+	{
+		Vector2 dragOrigin = GetViewport().GetMousePosition() - _draggedHideoutGrabOffset;
+		Vector2 local = dragOrigin - gridOrigin + new Vector2(Ui(1f), Ui(1f));
+		return new Vector2I(
+			Mathf.FloorToInt(local.X / cellSize.X),
+			Mathf.FloorToInt(local.Y / cellSize.Y));
 	}
 
 	private bool TryPlaceDraggedHideoutItemInStash(Vector2I cell)
@@ -6658,6 +6697,7 @@ private sealed class RoomProjectileEffect
 		_stash.Add(_draggedHideoutItem);
 		_hasDraggedHideoutItem = false;
 		_draggedHideoutItem = null;
+		_draggedHideoutGrabOffset = Vector2.Zero;
 		_pendingHideoutDrag = false;
 		_pendingHideoutDragIndex = -1;
 		return true;
@@ -6680,6 +6720,7 @@ private sealed class RoomProjectileEffect
 		_hideoutLoadout.Add(_draggedHideoutItem);
 		_hasDraggedHideoutItem = false;
 		_draggedHideoutItem = null;
+		_draggedHideoutGrabOffset = Vector2.Zero;
 		_pendingHideoutDrag = false;
 		_pendingHideoutDragIndex = -1;
 		return true;
@@ -6921,9 +6962,22 @@ private sealed class RoomProjectileEffect
 		Vector2 mouse = GetViewport().GetMousePosition();
 		Vector2 cellSize = new(Ui(18f), Ui(18f));
 		Vector2 dragSize = new(_draggedBackpackItem.Size.X * cellSize.X - Ui(2f), _draggedBackpackItem.Size.Y * cellSize.Y - Ui(2f));
-		Vector2 drawPos = mouse - dragSize * 0.5f - new Vector2(Ui(8f), Ui(8f));
+		Vector2 drawPos = mouse - _draggedBackpackGrabOffset;
 		Rect2 dragRect = new(drawPos, dragSize);
 		Color dragColor = GetGridRarityColor(_draggedBackpackItem.Rarity);
+
+		GetBackpackPreviewLayout(out Vector2 gridOrigin, out Vector2 previewCellSize, out int _, out int _);
+		Vector2I previewCell = GetDraggedBackpackTargetCell(gridOrigin, previewCellSize);
+		if (previewCell.X >= 0 && previewCell.Y >= 0
+			&& previewCell.X + _draggedBackpackItem.Size.X <= TeamBackpackMaxWidth
+			&& previewCell.Y + _draggedBackpackItem.Size.Y <= TeamBackpackMaxRows)
+		{
+			Rect2 targetRect = GetBackpackItemRect(new BackpackItem { Cell = previewCell, Size = _draggedBackpackItem.Size }, gridOrigin, previewCellSize);
+			bool canPlace = IsBackpackAreaEnabled(previewCell, _draggedBackpackItem.Size) && IsBackpackAreaFree(previewCell, _draggedBackpackItem.Size);
+			DrawRect(targetRect, new Color(1f, 1f, 1f, 0.08f), true);
+			DrawRect(targetRect, canPlace ? new Color(0.42f, 0.96f, 0.58f, 0.95f) : new Color(0.96f, 0.34f, 0.34f, 0.95f), false, 2f);
+		}
+
 		DrawRect(dragRect, new Color(dragColor.R, dragColor.G, dragColor.B, 0.84f), true);
 		DrawRect(dragRect, new Color(1f, 1f, 1f, 0.9f), false, 1f);
 		DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f) + dragRect.Size.Y + Ui(4f)), _draggedBackpackItem.Label);
@@ -6937,11 +6991,34 @@ private sealed class RoomProjectileEffect
 		}
 
 		Vector2 mouse = GetViewport().GetMousePosition();
-		Vector2 cellSize = new(Ui(18f), Ui(18f));
+		Vector2 cellSize = _draggedHideoutFromLoadout ? new Vector2(Ui(18f), Ui(18f)) : new Vector2(Ui(22f), Ui(22f));
 		Vector2 dragSize = new(_draggedHideoutItem.Size.X * cellSize.X - Ui(2f), _draggedHideoutItem.Size.Y * cellSize.Y - Ui(2f));
-		Vector2 drawPos = mouse - dragSize * 0.5f - new Vector2(Ui(8f), Ui(8f));
+		Vector2 drawPos = mouse - _draggedHideoutGrabOffset;
 		Rect2 dragRect = new(drawPos, dragSize);
 		Color dragColor = GetGridRarityColor(_draggedHideoutItem.Rarity);
+
+		GetHideoutStashGridLayout(out Rect2 stashGridRect, out Vector2 stashGridOrigin, out Vector2 stashCellSize);
+		GetSecondaryStorageGridLayout(out Rect2 secondaryGridRect, out Vector2 secondaryGridOrigin, out Vector2 secondaryCellSize);
+		if (stashGridRect.HasPoint(mouse))
+		{
+			Vector2I cell = GetDraggedHideoutTargetCell(stashGridOrigin, stashCellSize);
+			if (cell.X >= 0 && cell.Y >= 0 && cell.X + _draggedHideoutItem.Size.X <= StashGridWidth && cell.Y + _draggedHideoutItem.Size.Y <= StashGridHeight)
+			{
+				Rect2 targetRect = GetStorageItemRect(new BackpackItem { Cell = cell, Size = _draggedHideoutItem.Size }, stashGridOrigin, stashCellSize);
+				bool canPlace = IsStorageAreaFree(cell, _draggedHideoutItem.Size, _stash);
+				DrawRect(targetRect, new Color(1f, 1f, 1f, 0.08f), true);
+				DrawRect(targetRect, canPlace ? new Color(0.42f, 0.96f, 0.58f, 0.95f) : new Color(0.96f, 0.34f, 0.34f, 0.95f), false, 2f);
+			}
+		}
+		else if (secondaryGridRect.HasPoint(mouse))
+		{
+			Vector2I cell = GetDraggedHideoutTargetCell(secondaryGridOrigin, secondaryCellSize);
+			Rect2 targetRect = GetStorageItemRect(new BackpackItem { Cell = cell, Size = _draggedHideoutItem.Size }, secondaryGridOrigin, secondaryCellSize);
+			bool canPlace = IsAreaEnabledInBlocks(cell, _draggedHideoutItem.Size, BuildHideoutLoadoutCapacityBlocks()) && IsStorageAreaFree(cell, _draggedHideoutItem.Size, _hideoutLoadout);
+			DrawRect(targetRect, new Color(1f, 1f, 1f, 0.08f), true);
+			DrawRect(targetRect, canPlace ? new Color(0.42f, 0.96f, 0.58f, 0.95f) : new Color(0.96f, 0.34f, 0.34f, 0.95f), false, 2f);
+		}
+
 		DrawRect(dragRect, new Color(dragColor.R, dragColor.G, dragColor.B, 0.84f), true);
 		DrawRect(dragRect, new Color(1f, 1f, 1f, 0.9f), false, 1f);
 		DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f) + dragRect.Size.Y + Ui(4f)), _draggedHideoutItem.Label);
@@ -7157,6 +7234,22 @@ private sealed class RoomProjectileEffect
 				Rect2 cellRect = new(gridOrigin + new Vector2(x * cellSize.X, y * cellSize.Y), cellSize - new Vector2(2f, 2f));
 				DrawRect(cellRect, new Color(0.09f, 0.1f, 0.12f), true);
 				DrawRect(cellRect, new Color(0.24f, 0.26f, 0.3f), false, 1f);
+			}
+		}
+
+		if (_hasDraggedBackpackItem && _draggedBackpackItem != null)
+		{
+			Vector2I targetCell = GetDraggedBackpackTargetCell(gridOrigin, cellSize);
+			if (targetCell.X >= 0 && targetCell.Y >= 0
+				&& targetCell.X + _draggedBackpackItem.Size.X <= container.GridSize.X
+				&& targetCell.Y + _draggedBackpackItem.Size.Y <= container.GridSize.Y)
+			{
+				Rect2 targetRect = new(
+					gridOrigin + new Vector2(targetCell.X * cellSize.X, targetCell.Y * cellSize.Y),
+					new Vector2(_draggedBackpackItem.Size.X * cellSize.X - 2f, _draggedBackpackItem.Size.Y * cellSize.Y - 2f));
+				bool canPlace = IsGridAreaFree(container, targetCell, _draggedBackpackItem.Size);
+				DrawRect(targetRect, new Color(1f, 1f, 1f, 0.08f), true);
+				DrawRect(targetRect, canPlace ? new Color(0.42f, 0.96f, 0.58f, 0.95f) : new Color(0.96f, 0.34f, 0.34f, 0.95f), false, 2f);
 			}
 		}
 
