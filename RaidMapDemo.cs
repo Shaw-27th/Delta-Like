@@ -532,6 +532,11 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
+		if (HandleOpenContainerPopupClick(click))
+		{
+			return;
+		}
+
 		if (_showMapOverlay)
 		{
 			foreach (MapNode node in _nodes)
@@ -4217,6 +4222,91 @@ private sealed class RoomProjectileEffect
 		return true;
 	}
 
+	private bool HandleOpenContainerPopupClick(Vector2 click)
+	{
+		if (!_hasDraggedBackpackItem || _selectedContainerIndex < 0 || _inHideout || _runEnded)
+		{
+			return false;
+		}
+
+		MapNode node = _nodes[_playerNodeId];
+		if (_selectedContainerIndex >= node.Containers.Count)
+		{
+			return false;
+		}
+
+		LootContainer container = node.Containers[_selectedContainerIndex];
+		GetContainerPopupGridLayout(container, out Rect2 panel, out Vector2 gridOrigin, out Vector2 cellSize);
+		if (!panel.HasPoint(click))
+		{
+			return false;
+		}
+
+		Rect2 gridRect = new(gridOrigin, new Vector2(container.GridSize.X * cellSize.X, container.GridSize.Y * cellSize.Y));
+		if (!gridRect.HasPoint(click))
+		{
+			return true;
+		}
+
+		Vector2 local = click - gridOrigin;
+		Vector2I cell = new(Mathf.FloorToInt(local.X / cellSize.X), Mathf.FloorToInt(local.Y / cellSize.Y));
+		if (!TryMoveDraggedBackpackItemToContainer(container, cell))
+		{
+			_status = "容器空间不足，无法放回。";
+		}
+
+		return true;
+	}
+
+	private bool TryMoveDraggedBackpackItemToContainer(LootContainer container, Vector2I cell)
+	{
+		if (!_hasDraggedBackpackItem || _draggedBackpackItem == null)
+		{
+			return false;
+		}
+
+		GridLootItem movedItem = new()
+		{
+			Label = _draggedBackpackItem.Label,
+			Rarity = _draggedBackpackItem.Rarity,
+			Size = _draggedBackpackItem.Size,
+			Cell = cell,
+			Revealed = true,
+			SearchTime = GetGridSearchTime(_draggedBackpackItem.Rarity),
+		};
+
+		if (cell.X < 0 || cell.Y < 0
+			|| cell.X + movedItem.Size.X > container.GridSize.X
+			|| cell.Y + movedItem.Size.Y > container.GridSize.Y
+			|| !IsGridAreaFree(container, cell, movedItem.Size))
+		{
+			if (movedItem.Size.X != movedItem.Size.Y)
+			{
+				Vector2I rotated = new(movedItem.Size.Y, movedItem.Size.X);
+				if (cell.X < 0 || cell.Y < 0
+					|| cell.X + rotated.X > container.GridSize.X
+					|| cell.Y + rotated.Y > container.GridSize.Y
+					|| !IsGridAreaFree(container, cell, rotated))
+				{
+					return false;
+				}
+
+				movedItem.Size = rotated;
+			}
+			else
+			{
+				return false;
+			}
+		}
+
+		container.GridItems.Add(movedItem);
+		LogEvent($"将 {_draggedBackpackItem.Label} 放回了 {container.Label}。");
+		_hasDraggedBackpackItem = false;
+		_draggedBackpackItem = null;
+		RefreshStatus();
+		return true;
+	}
+
 	private bool AddLoot(string item, Vector2I size)
 	{
 		BackpackItem backpackItem = CreateBackpackItem(item, size);
@@ -6307,11 +6397,7 @@ private sealed class RoomProjectileEffect
 		}
 		LootContainer container = node.Containers[_selectedContainerIndex];
 		EnsureContainerGrid(container);
-		Vector2 cellSize = new(26f, 26f);
-		float equipmentHeight = container.Kind == ContainerKind.EliteCorpse ? 118f : 0f;
-		float gridWidth = container.GridSize.X * cellSize.X + 26f;
-		Vector2 panelSize = new(Mathf.Max(gridWidth + 28f, 356f), container.GridSize.Y * cellSize.Y + 96f + equipmentHeight);
-		Rect2 panel = new((GetViewportRect().Size - panelSize) / 2f, panelSize);
+		GetContainerPopupGridLayout(container, out Rect2 panel, out Vector2 gridOrigin, out Vector2 cellSize);
 		DrawRect(panel, new Color(0.08f, 0.09f, 0.11f, 0.7f), true);
 		DrawRect(panel, new Color(1f, 1f, 1f, 0.82f), false, 2f);
 		Rect2 titleBar = new(panel.Position + new Vector2(1f, 1f), new Vector2(panel.Size.X - 2f, 30f));
@@ -6351,7 +6437,6 @@ private sealed class RoomProjectileEffect
 
 		DrawString(ThemeDB.FallbackFont, new Vector2(panel.Position.X + 14f, rowY), "背包", HorizontalAlignment.Left, -1f, 13, new Color(0.9f, 0.92f, 0.96f));
 		rowY += 16f;
-		Vector2 gridOrigin = new(panel.Position.X + (panel.Size.X - gridWidth) * 0.5f, rowY);
 		for (int y = 0; y < container.GridSize.Y; y++)
 		{
 			for (int x = 0; x < container.GridSize.X; x++)
@@ -6427,6 +6512,26 @@ private sealed class RoomProjectileEffect
 				DrawLine(intersections[0], intersections[1], color, 1f);
 			}
 		}
+	}
+
+	private void GetContainerPopupGridLayout(LootContainer container, out Rect2 panel, out Vector2 gridOrigin, out Vector2 cellSize)
+	{
+		EnsureContainerGrid(container);
+		cellSize = new Vector2(26f, 26f);
+		float equipmentHeight = container.Kind == ContainerKind.EliteCorpse ? 118f : 0f;
+		float gridWidth = container.GridSize.X * cellSize.X + 26f;
+		Vector2 panelSize = new(Mathf.Max(gridWidth + 28f, 356f), container.GridSize.Y * cellSize.Y + 96f + equipmentHeight);
+		panel = new Rect2((GetViewportRect().Size - panelSize) / 2f, panelSize);
+		float rowY = panel.Position.Y + 42f;
+		if (container.Kind == ContainerKind.EliteCorpse)
+		{
+			rowY += 16f;
+			rowY += container.EquippedItems.Count * 34f;
+			rowY += 8f;
+		}
+
+		rowY += 16f;
+		gridOrigin = new Vector2(panel.Position.X + (panel.Size.X - gridWidth) * 0.5f, rowY);
 	}
 
 	private static void AddUniquePoint(List<Vector2> points, Vector2 point)
