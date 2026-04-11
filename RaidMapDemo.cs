@@ -350,6 +350,7 @@ private sealed class RoomProjectileEffect
 	private bool _confirmSkipChecked;
 	private int _selectedContainerIndex = -1;
 	private int _selectedStashIndex = -1;
+	private int _selectedShopIndex = -1;
 	private int _pendingRevealContainerIndex = -1;
 	private bool _showMapOverlay;
 	private int _plannedExitNodeId = -1;
@@ -626,6 +627,8 @@ private sealed class RoomProjectileEffect
 		_showMapOverlay = false;
 		_plannedExitNodeId = -1;
 		_selectedContainerIndex = -1;
+		_selectedStashIndex = -1;
+		_selectedShopIndex = -1;
 		_encounter = null;
 		_roomUnits.Clear();
 		_roomProjectileEffects.Clear();
@@ -739,6 +742,8 @@ private sealed class RoomProjectileEffect
 		_runEnded = false;
 		_runFailed = false;
 		_selectedContainerIndex = -1;
+		_selectedStashIndex = -1;
+		_selectedShopIndex = -1;
 		_battleSim = null;
 		_eventLog.Clear();
 		if (_shopStock.Count == 0)
@@ -3778,6 +3783,11 @@ private sealed class RoomProjectileEffect
 					return;
 				case "select_stash":
 					_selectedStashIndex = button.Index;
+					_selectedShopIndex = -1;
+					return;
+				case "select_shop":
+					_selectedShopIndex = button.Index;
+					_selectedStashIndex = -1;
 					return;
 				case "buy_shop":
 					BuyShopItem(button.Index);
@@ -5086,6 +5096,7 @@ private sealed class RoomProjectileEffect
 		_money += GetItemValue(item);
 		_stash.RemoveAt(index);
 		_selectedStashIndex = -1;
+		_selectedShopIndex = -1;
 	}
 
 	private void BuyShopItem(int index)
@@ -5109,6 +5120,7 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
+		_selectedShopIndex = -1;
 		_status = $"已购入 {entry.Label}。";
 	}
 
@@ -5399,22 +5411,46 @@ private sealed class RoomProjectileEffect
 			DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f)), stashHoverLabel);
 		}
 
-		float shopY = shopRect.Position.Y + 44f;
+		Vector2 shopCellSize = new(Ui(18f), Ui(18f));
+		float shopY = shopRect.Position.Y + Ui(44f);
 		for (int i = 0; i < _shopStock.Count; i++)
 		{
 			ShopEntry entry = _shopStock[i];
-			Rect2 row = new(new Vector2(shopRect.Position.X + 14f, shopY), new Vector2(shopRect.Size.X - 28f, 28f));
+			Vector2I itemSize = GetBackpackItemSize(entry.Label);
+			Rect2 row = new(new Vector2(shopRect.Position.X + Ui(14f), shopY), new Vector2(shopRect.Size.X - Ui(28f), Ui(40f)));
 			DrawRect(row, new Color(0.12f, 0.13f, 0.16f), true);
-			DrawRect(row, new Color(0.34f, 0.37f, 0.42f), false, 1f);
-			DrawString(ThemeDB.FallbackFont, row.Position + new Vector2(10f, 19f), entry.Label, HorizontalAlignment.Left, 220f, 12, Colors.White);
-			DrawString(ThemeDB.FallbackFont, row.Position + new Vector2(250f, 19f), $"价格 {entry.Price}", HorizontalAlignment.Left, 70f, 12, new Color(0.78f, 0.87f, 0.98f));
-			Rect2 buyRect = new(new Vector2(row.End.X - 68f, row.Position.Y + 2f), new Vector2(56f, 24f));
-			DrawButton(buyRect, _money >= entry.Price ? "买入" : "不足", _money >= entry.Price ? new Color(0.26f, 0.42f, 0.58f) : new Color(0.24f, 0.24f, 0.28f));
-			if (_money >= entry.Price)
+			DrawRect(row, i == _selectedShopIndex ? new Color(0.92f, 0.82f, 0.48f, 0.95f) : new Color(0.34f, 0.37f, 0.42f), false, i == _selectedShopIndex ? 2f : 1f);
+
+			Rect2 previewRect = new(row.Position + new Vector2(Ui(6f), Ui(4f)), new Vector2(itemSize.X * shopCellSize.X - Ui(2f), itemSize.Y * shopCellSize.Y - Ui(2f)));
+			Color previewColor = GetGridRarityColor(GetItemRarityByLabel(entry.Label));
+			DrawRect(previewRect, previewColor, true);
+			DrawRect(previewRect, new Color(1f, 1f, 1f, 0.82f), false, 1f);
+
+			float textX = previewRect.End.X + Ui(10f);
+			DrawString(ThemeDB.FallbackFont, new Vector2(textX, row.Position.Y + Ui(17f)), entry.Label, HorizontalAlignment.Left, row.Size.X - Ui(170f), UiFont(12), Colors.White);
+			DrawString(ThemeDB.FallbackFont, new Vector2(textX, row.Position.Y + Ui(33f)), $"Price {entry.Price}   Size {itemSize.X}x{itemSize.Y}", HorizontalAlignment.Left, row.Size.X - Ui(170f), UiFont(11), new Color(0.78f, 0.87f, 0.98f));
+
+			Rect2 selectRect = new(row.Position, new Vector2(row.Size.X - Ui(74f), row.Size.Y));
+			_buttons.Add(new ButtonDef(selectRect, "select_shop", i));
+
+			bool canAfford = _money >= entry.Price;
+			Rect2 buyRect = new(new Vector2(row.End.X - Ui(64f), row.Position.Y + Ui(6f)), new Vector2(Ui(56f), Ui(28f)));
+			DrawButton(buyRect, canAfford ? "Buy" : "Low", canAfford ? new Color(0.26f, 0.42f, 0.58f) : new Color(0.24f, 0.24f, 0.28f));
+			if (canAfford)
 			{
 				_buttons.Add(new ButtonDef(buyRect, "buy_shop", i));
 			}
-			shopY += 34f;
+
+			shopY += Ui(46f);
+		}
+
+		if (_selectedShopIndex >= 0 && _selectedShopIndex < _shopStock.Count)
+		{
+			ShopEntry selectedShop = _shopStock[_selectedShopIndex];
+			Vector2I selectedSize = GetBackpackItemSize(selectedShop.Label);
+			float infoY = shopRect.End.Y - Ui(42f);
+			DrawString(ThemeDB.FallbackFont, new Vector2(shopRect.Position.X + Ui(14f), infoY), selectedShop.Label, HorizontalAlignment.Left, shopRect.Size.X - Ui(120f), UiFont(13), Colors.White);
+			DrawString(ThemeDB.FallbackFont, new Vector2(shopRect.Position.X + Ui(14f), infoY + Ui(18f)), $"Price {selectedShop.Price}   Size {selectedSize.X}x{selectedSize.Y}", HorizontalAlignment.Left, shopRect.Size.X - Ui(120f), UiFont(12), new Color(0.78f, 0.87f, 0.98f));
 		}
 
 		float soldierY = stashRect.End.Y + Ui(34f);
