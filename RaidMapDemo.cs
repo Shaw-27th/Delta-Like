@@ -704,7 +704,7 @@ private sealed class RoomProjectileEffect
 		_runEnded = false;
 		_runFailed = false;
 		_showSettlementTransfer = false;
-		_autoSearchEnabled = false;
+		_autoSearchEnabled = true;
 		_showMapOverlay = false;
 		_plannedExitNodeId = -1;
 		_selectedContainerIndex = -1;
@@ -827,6 +827,11 @@ private sealed class RoomProjectileEffect
 
 	private void InitHideout()
 	{
+		if (!_inHideout && _runEnded)
+		{
+			CommitRunSoldierRoster();
+		}
+
 		_inHideout = true;
 		_runEnded = false;
 		_runFailed = false;
@@ -858,6 +863,15 @@ private sealed class RoomProjectileEffect
 		{
 			RecruitSoldierInternal();
 			RecruitSoldierInternal();
+		}
+	}
+
+	private void CommitRunSoldierRoster()
+	{
+		_soldierRoster.Clear();
+		for (int i = 0; i < _runSoldiers.Count; i++)
+		{
+			_soldierRoster.Add(new SoldierRecord { Name = _runSoldiers[i].Name });
 		}
 	}
 
