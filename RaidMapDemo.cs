@@ -345,6 +345,7 @@ private sealed class RoomProjectileEffect
 	private bool _runEnded;
 	private bool _runFailed;
 	private bool _inHideout = true;
+	private bool _showSettlementTransfer;
 	private bool _autoSearchEnabled;
 	private bool _skipSearchConfirm;
 	private bool _showSearchConfirm;
@@ -375,6 +376,7 @@ private sealed class RoomProjectileEffect
 	private bool _hasDraggedHideoutItem;
 	private Vector2I _draggedHideoutOriginalCell;
 	private bool _draggedHideoutFromLoadout;
+	private int _selectedSettlementIndex = -1;
 	private int _sfxCursor;
 	private AudioStreamWav _sfxMeleeLight;
 	private AudioStreamWav _sfxMeleeHeavy;
@@ -506,6 +508,12 @@ private sealed class RoomProjectileEffect
 				return;
 			}
 
+			if (_hasDraggedHideoutItem && keyEvent.Keycode == Key.R)
+			{
+				_draggedHideoutItem.Size = new Vector2I(_draggedHideoutItem.Size.Y, _draggedHideoutItem.Size.X);
+				return;
+			}
+
 			if (_hasDraggedBackpackItem && keyEvent.Keycode == Key.G)
 			{
 				DropDraggedBackpackItemToGround();
@@ -519,7 +527,7 @@ private sealed class RoomProjectileEffect
 		}
 
 		Vector2 click = mouse.Position;
-		if (_inHideout && HandleHideoutStorageClick(click))
+		if ((_inHideout || (_runEnded && _showSettlementTransfer)) && HandleHideoutStorageClick(click))
 		{
 			return;
 		}
@@ -583,6 +591,11 @@ private sealed class RoomProjectileEffect
 			DrawHideout();
 			return;
 		}
+		if (_runEnded && _showSettlementTransfer)
+		{
+			DrawSettlementTransfer();
+			return;
+		}
 		DrawRoomViewUnified();
 		if (_showMapOverlay)
 		{
@@ -641,6 +654,7 @@ private sealed class RoomProjectileEffect
 		_turn = 0;
 		_runEnded = false;
 		_runFailed = false;
+		_showSettlementTransfer = false;
 		_autoSearchEnabled = false;
 		_showMapOverlay = false;
 		_plannedExitNodeId = -1;
@@ -648,6 +662,7 @@ private sealed class RoomProjectileEffect
 		_selectedStashIndex = -1;
 		_selectedShopIndex = -1;
 		_selectedLoadoutIndex = -1;
+		_selectedSettlementIndex = -1;
 		_encounter = null;
 		_roomUnits.Clear();
 		_roomProjectileEffects.Clear();
@@ -766,10 +781,12 @@ private sealed class RoomProjectileEffect
 		_inHideout = true;
 		_runEnded = false;
 		_runFailed = false;
+		_showSettlementTransfer = false;
 		_selectedContainerIndex = -1;
 		_selectedStashIndex = -1;
 		_selectedShopIndex = -1;
 		_selectedLoadoutIndex = -1;
+		_selectedSettlementIndex = -1;
 		_hasDraggedHideoutItem = false;
 		_draggedHideoutItem = null;
 		_battleSim = null;
@@ -3858,6 +3875,34 @@ private sealed class RoomProjectileEffect
 			{
 				InitHideout();
 			}
+			else if (button.Action == "open_settlement" && !_runFailed)
+			{
+				_showSettlementTransfer = true;
+				_selectedSettlementIndex = -1;
+				_selectedStashIndex = -1;
+				_selectedShopIndex = -1;
+				_selectedLoadoutIndex = -1;
+			}
+			else if (button.Action == "finish_settlement" && !_runFailed)
+			{
+				InitHideout();
+				_status = "已完成结算，返回局外整备。";
+			}
+			else if (button.Action == "select_settlement")
+			{
+				_selectedSettlementIndex = button.Index;
+				_selectedStashIndex = -1;
+				_selectedShopIndex = -1;
+				_selectedLoadoutIndex = -1;
+			}
+			else if (button.Action == "move_stash_to_settlement")
+			{
+				MoveSelectedStashItemToLoadout();
+			}
+			else if (button.Action == "move_settlement_to_stash")
+			{
+				MoveSelectedLoadoutItemToStash();
+			}
 			return;
 		}
 
@@ -4187,24 +4232,22 @@ private sealed class RoomProjectileEffect
 			extractedItems.Add(CloneBackpackItem(_overflowBackpackItems[i]));
 		}
 
-		if (!CanFitItemsInStash(extractedItems))
+		if (!CanFitItemsInHideoutLoadout(extractedItems))
 		{
-			_status = "仓库空间不足，当前无法撤离。";
+			_status = "局外背包空间不足，当前无法撤离。";
 			return;
 		}
 
-		for (int i = 0; i < extractedItems.Count; i++)
-		{
-			TryAddToStash(extractedItems[i]);
-		}
-
+		RebuildHideoutLoadout(extractedItems);
 		_runBackpack.Clear();
 		_overflowBackpackItems.Clear();
 		_hasDraggedBackpackItem = false;
 		_draggedBackpackItem = null;
 		_runEnded = true;
 		_runFailed = false;
-		_status = "撤离成功。";
+		_showSettlementTransfer = false;
+		_selectedSettlementIndex = -1;
+		_status = "撤离成功，等待结算转移。";
 		LogEvent("玩家成功撤离。");
 	}
 
@@ -4255,6 +4298,36 @@ private sealed class RoomProjectileEffect
 		}
 
 		return true;
+	}
+
+	private bool CanFitItemsInHideoutLoadout(List<BackpackItem> items)
+	{
+		List<BackpackItem> staged = new();
+		for (int i = 0; i < items.Count; i++)
+		{
+			BackpackItem item = CloneBackpackItem(items[i]);
+			if (!TryPlaceHideoutLoadoutItemInList(item, staged))
+			{
+				return false;
+			}
+
+			staged.Add(item);
+		}
+
+		return true;
+	}
+
+	private void RebuildHideoutLoadout(List<BackpackItem> items)
+	{
+		_hideoutLoadout.Clear();
+		for (int i = 0; i < items.Count; i++)
+		{
+			BackpackItem item = CloneBackpackItem(items[i]);
+			if (TryPlaceHideoutLoadoutItemInList(item, _hideoutLoadout))
+			{
+				_hideoutLoadout.Add(item);
+			}
+		}
 	}
 
 	private bool HandleOpenContainerPopupClick(Vector2 click)
@@ -4467,13 +4540,18 @@ private sealed class RoomProjectileEffect
 
 	private bool TryPlaceHideoutLoadoutItem(BackpackItem item)
 	{
+		return TryPlaceHideoutLoadoutItemInList(item, _hideoutLoadout);
+	}
+
+	private bool TryPlaceHideoutLoadoutItemInList(BackpackItem item, List<BackpackItem> items)
+	{
 		List<BackpackCapacityBlock> blocks = BuildHideoutLoadoutCapacityBlocks();
 		for (int y = 0; y <= TeamBackpackMaxRows - item.Size.Y; y++)
 		{
 			for (int x = 0; x <= TeamBackpackMaxWidth - item.Size.X; x++)
 			{
 				Vector2I cell = new(x, y);
-				if (!IsAreaEnabledInBlocks(cell, item.Size, blocks) || !IsStorageAreaFree(cell, item.Size, _hideoutLoadout))
+				if (!IsAreaEnabledInBlocks(cell, item.Size, blocks) || !IsStorageAreaFree(cell, item.Size, items))
 				{
 					continue;
 				}
@@ -5383,16 +5461,7 @@ private sealed class RoomProjectileEffect
 		{
 			items.Add(CloneBackpackItem(_hideoutLoadout[i]));
 		}
-
-		_hideoutLoadout.Clear();
-		for (int i = 0; i < items.Count; i++)
-		{
-			BackpackItem item = items[i];
-			if (TryPlaceHideoutLoadoutItem(item))
-			{
-				_hideoutLoadout.Add(item);
-			}
-		}
+		RebuildHideoutLoadout(items);
 	}
 
 	private void RecruitSoldierInternal()
@@ -5554,11 +5623,7 @@ private sealed class RoomProjectileEffect
 
 	private void DrawHideout()
 	{
-		Vector2 viewport = GetViewportRect().Size;
-		Vector2 panelSize = new(
-			Mathf.Clamp(viewport.X - Ui(120f), 1040f, 1420f),
-			Mathf.Clamp(viewport.Y - Ui(100f), 620f, 860f));
-		Rect2 panel = new((viewport - panelSize) * 0.5f, panelSize);
+		GetHideoutLayout(out Rect2 panel, out Rect2 stashRect, out Rect2 shopRect, out Rect2 loadoutRect);
 		DrawRect(panel, new Color(0.05f, 0.05f, 0.06f, 0.96f), true);
 		DrawRect(panel, Colors.White, false, 2f);
 
@@ -5608,13 +5673,6 @@ private sealed class RoomProjectileEffect
 		{
 			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
 		}
-
-		float contentTop = panel.Position.Y + Ui(272f);
-		float contentGap = Ui(30f);
-		float contentWidth = (panel.Size.X - 18f - 18f - contentGap) * 0.5f;
-		float contentHeight = Mathf.Max(Ui(210f), panel.Size.Y - Ui(474f));
-		Rect2 stashRect = new(new Vector2(panel.Position.X + Ui(18f), contentTop), new Vector2(contentWidth, contentHeight));
-		Rect2 shopRect = new(new Vector2(stashRect.End.X + contentGap, contentTop), new Vector2(contentWidth, contentHeight));
 		DrawRect(stashRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(shopRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(stashRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
@@ -5734,8 +5792,6 @@ private sealed class RoomProjectileEffect
 			DrawString(ThemeDB.FallbackFont, new Vector2(shopRect.Position.X + Ui(14f), infoY + Ui(18f)), $"Price {selectedShop.Price}   Size {selectedSize.X}x{selectedSize.Y}", HorizontalAlignment.Left, shopRect.Size.X - Ui(120f), UiFont(12), new Color(0.78f, 0.87f, 0.98f));
 		}
 
-		float loadoutTop = stashRect.End.Y + Ui(34f);
-		Rect2 loadoutRect = new(new Vector2(panel.Position.X + Ui(18f), loadoutTop), new Vector2(panel.Size.X - Ui(36f), panel.End.Y - loadoutTop - Ui(18f)));
 		DrawRect(loadoutRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(loadoutRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
 		DrawString(ThemeDB.FallbackFont, loadoutRect.Position + new Vector2(Ui(14f), Ui(24f)), "预备携行", HorizontalAlignment.Left, -1f, UiFont(18), Colors.White);
@@ -6341,14 +6397,15 @@ private sealed class RoomProjectileEffect
 	private bool HandleHideoutStorageClick(Vector2 click)
 	{
 		GetHideoutStashGridLayout(out Rect2 stashGridRect, out Vector2 stashGridOrigin, out Vector2 stashCellSize);
-		if (!stashGridRect.HasPoint(click))
+		GetSecondaryStorageGridLayout(out Rect2 secondaryGridRect, out Vector2 secondaryGridOrigin, out Vector2 secondaryCellSize);
+		bool clickedStash = stashGridRect.HasPoint(click);
+		bool clickedSecondary = secondaryGridRect.HasPoint(click);
+
+		if (!clickedStash && !clickedSecondary)
 		{
-			if (_hasDraggedHideoutItem && !_draggedHideoutFromLoadout)
+			if (_hasDraggedHideoutItem)
 			{
-				_draggedHideoutItem.Cell = _draggedHideoutOriginalCell;
-				_stash.Add(_draggedHideoutItem);
-				_hasDraggedHideoutItem = false;
-				_draggedHideoutItem = null;
+				RestoreDraggedHideoutItem();
 				return true;
 			}
 
@@ -6357,51 +6414,233 @@ private sealed class RoomProjectileEffect
 
 		if (_hasDraggedHideoutItem)
 		{
-			Vector2 local = click - stashGridOrigin;
-			Vector2I cell = new(Mathf.FloorToInt(local.X / stashCellSize.X), Mathf.FloorToInt(local.Y / stashCellSize.Y));
-			if (cell.X >= 0 && cell.Y >= 0
-				&& cell.X + _draggedHideoutItem.Size.X <= StashGridWidth
-				&& cell.Y + _draggedHideoutItem.Size.Y <= StashGridHeight
-				&& IsStorageAreaFree(cell, _draggedHideoutItem.Size, _stash))
+			Vector2 local = click - (clickedStash ? stashGridOrigin : secondaryGridOrigin);
+			Vector2 cellSize = clickedStash ? stashCellSize : secondaryCellSize;
+			Vector2I cell = new(Mathf.FloorToInt(local.X / cellSize.X), Mathf.FloorToInt(local.Y / cellSize.Y));
+			if (clickedStash)
 			{
-				_draggedHideoutItem.Cell = cell;
-				_stash.Add(_draggedHideoutItem);
-				_hasDraggedHideoutItem = false;
-				_draggedHideoutItem = null;
+				if (TryPlaceDraggedHideoutItemInStash(cell))
+				{
+					return true;
+				}
+			}
+			else if (TryPlaceDraggedHideoutItemInSecondary(cell))
+			{
 				return true;
 			}
 
-			_draggedHideoutItem.Cell = _draggedHideoutOriginalCell;
-			_stash.Add(_draggedHideoutItem);
-			_hasDraggedHideoutItem = false;
-			_draggedHideoutItem = null;
+			RestoreDraggedHideoutItem();
 			return true;
 		}
 
-		int itemIndex = GetStorageItemIndexAtPoint(click, stashGridOrigin, stashCellSize, _stash);
-		if (itemIndex < 0)
+		if (clickedStash)
 		{
-			_selectedStashIndex = -1;
+			int itemIndex = GetStorageItemIndexAtPoint(click, stashGridOrigin, stashCellSize, _stash);
+			if (itemIndex < 0)
+			{
+				_selectedStashIndex = -1;
+				return true;
+			}
+
+			if (_selectedStashIndex == itemIndex)
+			{
+				_draggedHideoutItem = _stash[itemIndex];
+				_draggedHideoutOriginalCell = _draggedHideoutItem.Cell;
+				_draggedHideoutFromLoadout = false;
+				_hasDraggedHideoutItem = true;
+				_stash.RemoveAt(itemIndex);
+				_selectedStashIndex = -1;
+				return true;
+			}
+
+			_selectedStashIndex = itemIndex;
+			_selectedShopIndex = -1;
+			_selectedLoadoutIndex = -1;
+			_selectedSettlementIndex = -1;
 			return true;
 		}
 
-		if (_selectedStashIndex == itemIndex)
+		int secondaryIndex = GetStorageItemIndexAtPoint(click, secondaryGridOrigin, secondaryCellSize, _hideoutLoadout);
+		if (secondaryIndex < 0)
 		{
-			_draggedHideoutItem = _stash[itemIndex];
+			if (_inHideout)
+			{
+				_selectedLoadoutIndex = -1;
+			}
+			else
+			{
+				_selectedSettlementIndex = -1;
+			}
+
+			return true;
+		}
+
+		if ((_inHideout && _selectedLoadoutIndex == secondaryIndex) || (_showSettlementTransfer && _selectedSettlementIndex == secondaryIndex))
+		{
+			_draggedHideoutItem = _hideoutLoadout[secondaryIndex];
 			_draggedHideoutOriginalCell = _draggedHideoutItem.Cell;
-			_draggedHideoutFromLoadout = false;
+			_draggedHideoutFromLoadout = true;
 			_hasDraggedHideoutItem = true;
-			_stash.RemoveAt(itemIndex);
-			_selectedStashIndex = -1;
+			_hideoutLoadout.RemoveAt(secondaryIndex);
+			_selectedLoadoutIndex = -1;
+			_selectedSettlementIndex = -1;
 			return true;
 		}
 
-		_selectedStashIndex = itemIndex;
+		_selectedStashIndex = -1;
 		_selectedShopIndex = -1;
-		_selectedLoadoutIndex = -1;
+		if (_inHideout)
+		{
+			_selectedLoadoutIndex = secondaryIndex;
+			_selectedSettlementIndex = -1;
+		}
+		else
+		{
+			_selectedSettlementIndex = secondaryIndex;
+			_selectedLoadoutIndex = -1;
+		}
+
 		return true;
 	}
 
+	private void RestoreDraggedHideoutItem()
+	{
+		if (!_hasDraggedHideoutItem || _draggedHideoutItem == null)
+		{
+			return;
+		}
+
+		_draggedHideoutItem.Cell = _draggedHideoutOriginalCell;
+		if (_draggedHideoutFromLoadout)
+		{
+			_hideoutLoadout.Add(_draggedHideoutItem);
+		}
+		else
+		{
+			_stash.Add(_draggedHideoutItem);
+		}
+
+		_hasDraggedHideoutItem = false;
+		_draggedHideoutItem = null;
+	}
+
+	private bool TryPlaceDraggedHideoutItemInStash(Vector2I cell)
+	{
+		if (!_hasDraggedHideoutItem || _draggedHideoutItem == null)
+		{
+			return false;
+		}
+
+		if (cell.X < 0 || cell.Y < 0
+			|| cell.X + _draggedHideoutItem.Size.X > StashGridWidth
+			|| cell.Y + _draggedHideoutItem.Size.Y > StashGridHeight
+			|| !IsStorageAreaFree(cell, _draggedHideoutItem.Size, _stash))
+		{
+			return false;
+		}
+
+		_draggedHideoutItem.Cell = cell;
+		_stash.Add(_draggedHideoutItem);
+		_hasDraggedHideoutItem = false;
+		_draggedHideoutItem = null;
+		return true;
+	}
+
+	private bool TryPlaceDraggedHideoutItemInSecondary(Vector2I cell)
+	{
+		if (!_hasDraggedHideoutItem || _draggedHideoutItem == null)
+		{
+			return false;
+		}
+
+		List<BackpackCapacityBlock> blocks = BuildHideoutLoadoutCapacityBlocks();
+		if (!IsAreaEnabledInBlocks(cell, _draggedHideoutItem.Size, blocks) || !IsStorageAreaFree(cell, _draggedHideoutItem.Size, _hideoutLoadout))
+		{
+			return false;
+		}
+
+		_draggedHideoutItem.Cell = cell;
+		_hideoutLoadout.Add(_draggedHideoutItem);
+		_hasDraggedHideoutItem = false;
+		_draggedHideoutItem = null;
+		return true;
+	}
+
+	private void GetHideoutLayout(out Rect2 panel, out Rect2 stashRect, out Rect2 shopRect, out Rect2 loadoutRect)
+	{
+		Vector2 viewport = GetViewportRect().Size;
+		Vector2 panelSize = new(
+			Mathf.Clamp(viewport.X - Ui(120f), 1100f, 1480f),
+			Mathf.Clamp(viewport.Y - Ui(90f), 660f, 900f));
+		panel = new Rect2((viewport - panelSize) * 0.5f, panelSize);
+
+		float contentTop = panel.Position.Y + Ui(272f);
+		float contentBottom = panel.End.Y - Ui(18f);
+		float contentHeight = Mathf.Max(Ui(260f), contentBottom - contentTop);
+		float gap = Ui(20f);
+		float stashWidth = Mathf.Max(Ui(320f), panel.Size.X * 0.46f);
+		float rightWidth = panel.Size.X - Ui(36f) - stashWidth - gap;
+		float rightX = panel.Position.X + Ui(18f) + stashWidth + gap;
+		float stackGap = Ui(16f);
+		float topHeight = Mathf.Max(Ui(220f), contentHeight * 0.5f - stackGap * 0.5f);
+		float bottomHeight = contentHeight - topHeight - stackGap;
+
+		stashRect = new Rect2(new Vector2(panel.Position.X + Ui(18f), contentTop), new Vector2(stashWidth, contentHeight));
+		shopRect = new Rect2(new Vector2(rightX, contentTop), new Vector2(rightWidth, topHeight));
+		loadoutRect = new Rect2(new Vector2(rightX, shopRect.End.Y + stackGap), new Vector2(rightWidth, bottomHeight));
+	}
+
+	private void GetSettlementLayout(out Rect2 panel, out Rect2 stashRect, out Rect2 backpackRect)
+	{
+		Vector2 viewport = GetViewportRect().Size;
+		Vector2 panelSize = new(
+			Mathf.Clamp(viewport.X - Ui(120f), 1080f, 1440f),
+			Mathf.Clamp(viewport.Y - Ui(100f), 640f, 860f));
+		panel = new Rect2((viewport - panelSize) * 0.5f, panelSize);
+
+		float contentTop = panel.Position.Y + Ui(86f);
+		float contentBottom = panel.End.Y - Ui(22f);
+		float contentHeight = contentBottom - contentTop;
+		float gap = Ui(18f);
+		float leftWidth = Mathf.Max(Ui(320f), panel.Size.X * 0.46f);
+		float rightWidth = panel.Size.X - Ui(36f) - leftWidth - gap;
+		stashRect = new Rect2(new Vector2(panel.Position.X + Ui(18f), contentTop), new Vector2(leftWidth, contentHeight));
+		backpackRect = new Rect2(new Vector2(stashRect.End.X + gap, contentTop), new Vector2(rightWidth, contentHeight));
+	}
+
+	private void GetHideoutStashGridLayout(out Rect2 stashGridRect, out Vector2 stashGridOrigin, out Vector2 stashCellSize)
+	{
+		if (_runEnded && _showSettlementTransfer)
+		{
+			GetSettlementLayout(out _, out Rect2 stashRect, out _);
+			stashCellSize = new Vector2(Ui(22f), Ui(22f));
+			stashGridOrigin = stashRect.Position + new Vector2(Ui(14f), Ui(46f));
+			stashGridRect = new Rect2(stashGridOrigin, new Vector2(StashGridWidth * stashCellSize.X, StashGridHeight * stashCellSize.Y));
+			return;
+		}
+
+		GetHideoutLayout(out _, out Rect2 hideoutStashRect, out _, out _);
+		stashCellSize = new Vector2(Ui(22f), Ui(22f));
+		stashGridOrigin = hideoutStashRect.Position + new Vector2(Ui(14f), Ui(46f));
+		stashGridRect = new Rect2(stashGridOrigin, new Vector2(StashGridWidth * stashCellSize.X, StashGridHeight * stashCellSize.Y));
+	}
+
+	private void GetSecondaryStorageGridLayout(out Rect2 gridRect, out Vector2 gridOrigin, out Vector2 cellSize)
+	{
+		cellSize = new Vector2(Ui(18f), Ui(18f));
+		if (_runEnded && _showSettlementTransfer)
+		{
+			GetSettlementLayout(out _, out _, out Rect2 backpackRect);
+			gridOrigin = backpackRect.Position + new Vector2(Ui(14f), Ui(42f));
+		}
+		else
+		{
+			GetHideoutLayout(out _, out _, out _, out Rect2 loadoutRect);
+			gridOrigin = loadoutRect.Position + new Vector2(Ui(14f), Ui(42f));
+		}
+
+		gridRect = new Rect2(gridOrigin, new Vector2(TeamBackpackMaxWidth * cellSize.X, TeamBackpackMaxRows * cellSize.Y));
+	}
 	private int GetStorageItemIndexAtPoint(Vector2 point, Vector2 gridOrigin, Vector2 cellSize, List<BackpackItem> items)
 	{
 		for (int i = items.Count - 1; i >= 0; i--)
@@ -6417,23 +6656,6 @@ private sealed class RoomProjectileEffect
 		}
 
 		return -1;
-	}
-
-	private void GetHideoutStashGridLayout(out Rect2 stashGridRect, out Vector2 stashGridOrigin, out Vector2 stashCellSize)
-	{
-		Vector2 viewport = GetViewportRect().Size;
-		Vector2 panelSize = new(
-			Mathf.Clamp(viewport.X - Ui(120f), 1040f, 1420f),
-			Mathf.Clamp(viewport.Y - Ui(100f), 620f, 860f));
-		Rect2 panel = new((viewport - panelSize) * 0.5f, panelSize);
-		float contentTop = panel.Position.Y + Ui(272f);
-		float contentGap = Ui(30f);
-		float contentWidth = (panel.Size.X - 18f - 18f - contentGap) * 0.5f;
-		float contentHeight = Mathf.Max(Ui(210f), panel.Size.Y - Ui(474f));
-		Rect2 stashRect = new(new Vector2(panel.Position.X + Ui(18f), contentTop), new Vector2(contentWidth, contentHeight));
-		stashCellSize = new Vector2(Ui(22f), Ui(22f));
-		stashGridOrigin = stashRect.Position + new Vector2(Ui(14f), Ui(46f));
-		stashGridRect = new Rect2(stashGridOrigin, new Vector2(StashGridWidth * stashCellSize.X, StashGridHeight * stashCellSize.Y));
 	}
 
 	private void GetBackpackPreviewLayout(out Vector2 gridOrigin, out Vector2 cellSize, out int gridWidth, out int gridHeight)
@@ -6972,9 +7194,143 @@ private sealed class RoomProjectileEffect
 			y += 22f;
 		}
 
-		Rect2 rect = new(new Vector2(panel.Position.X + 26f, panel.End.Y - 54f), new Vector2(140f, 30f));
-		DrawButton(rect, "重新开始", new Color(0.26f, 0.45f, 0.62f));
-		_buttons.Add(new ButtonDef(rect, "restart"));
+		if (_runFailed)
+		{
+			Rect2 rect = new(new Vector2(panel.Position.X + 26f, panel.End.Y - 54f), new Vector2(140f, 30f));
+			DrawButton(rect, "重新开始", new Color(0.26f, 0.45f, 0.62f));
+			_buttons.Add(new ButtonDef(rect, "restart"));
+			return;
+		}
+
+		Rect2 settlementRect = new(new Vector2(panel.Position.X + 26f, panel.End.Y - 54f), new Vector2(164f, 30f));
+		DrawButton(settlementRect, "进入结算转移", new Color(0.26f, 0.45f, 0.62f));
+		_buttons.Add(new ButtonDef(settlementRect, "open_settlement"));
+		Rect2 restartRect = new(new Vector2(settlementRect.End.X + 12f, panel.End.Y - 54f), new Vector2(140f, 30f));
+		DrawButton(restartRect, "直接返回", new Color(0.32f, 0.34f, 0.4f));
+		_buttons.Add(new ButtonDef(restartRect, "restart"));
+	}
+
+	private void DrawSettlementTransfer()
+	{
+		GetSettlementLayout(out Rect2 panel, out Rect2 stashRect, out Rect2 backpackRect);
+		DrawRect(panel, new Color(0.04f, 0.04f, 0.05f, 0.97f), true);
+		DrawRect(panel, Colors.White, false, 2f);
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(Ui(24f), Ui(34f)), "撤离结算", HorizontalAlignment.Left, -1f, UiFont(24), Colors.White);
+		DrawString(ThemeDB.FallbackFont, panel.Position + new Vector2(Ui(24f), Ui(58f)), "左侧是仓库，右侧是本次带回的局外背包。双向拖动后，点完成结算。", HorizontalAlignment.Left, panel.Size.X - Ui(240f), UiFont(12), new Color(0.82f, 0.88f, 0.94f));
+		Rect2 finishRect = new(new Vector2(panel.End.X - Ui(156f), panel.Position.Y + Ui(18f)), new Vector2(Ui(132f), Ui(32f)));
+		DrawButton(finishRect, "完成结算", new Color(0.28f, 0.48f, 0.34f));
+		_buttons.Add(new ButtonDef(finishRect, "finish_settlement"));
+
+		DrawRect(stashRect, new Color(0.09f, 0.1f, 0.12f), true);
+		DrawRect(backpackRect, new Color(0.09f, 0.1f, 0.12f), true);
+		DrawRect(stashRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
+		DrawRect(backpackRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
+		DrawString(ThemeDB.FallbackFont, stashRect.Position + new Vector2(Ui(14f), Ui(24f)), "仓库", HorizontalAlignment.Left, -1f, UiFont(20), Colors.White);
+		DrawString(ThemeDB.FallbackFont, backpackRect.Position + new Vector2(Ui(14f), Ui(24f)), "局外背包", HorizontalAlignment.Left, -1f, UiFont(20), Colors.White);
+
+		Vector2 stashCellSize = new(Ui(22f), Ui(22f));
+		Vector2 stashGridOrigin = stashRect.Position + new Vector2(Ui(14f), Ui(46f));
+		Rect2 stashGridRect = new(stashGridOrigin, new Vector2(StashGridWidth * stashCellSize.X, StashGridHeight * stashCellSize.Y));
+		DrawRect(stashGridRect, new Color(0.07f, 0.08f, 0.1f), true);
+		for (int yCell = 0; yCell < StashGridHeight; yCell++)
+		{
+			for (int xCell = 0; xCell < StashGridWidth; xCell++)
+			{
+				Rect2 cellRect = new(
+					stashGridOrigin + new Vector2(xCell * stashCellSize.X, yCell * stashCellSize.Y),
+					stashCellSize - new Vector2(Ui(2f), Ui(2f)));
+				DrawRect(cellRect, new Color(0.11f, 0.12f, 0.15f), true);
+				DrawRect(cellRect, new Color(0.24f, 0.27f, 0.32f), false, 1f);
+			}
+		}
+
+		Vector2 mouse = GetViewport().GetMousePosition();
+		string hoverLabel = "";
+		for (int i = 0; i < _stash.Count; i++)
+		{
+			BackpackItem item = _stash[i];
+			Rect2 itemRect = new(
+				stashGridOrigin + new Vector2(item.Cell.X * stashCellSize.X, item.Cell.Y * stashCellSize.Y),
+				new Vector2(item.Size.X * stashCellSize.X - Ui(2f), item.Size.Y * stashCellSize.Y - Ui(2f)));
+			DrawRect(itemRect, GetGridRarityColor(item.Rarity), true);
+			DrawRect(itemRect, i == _selectedStashIndex ? new Color(1f, 0.94f, 0.62f, 0.96f) : new Color(1f, 1f, 1f, 0.8f), false, i == _selectedStashIndex ? 2f : 1f);
+			if (itemRect.Size.X >= Ui(42f))
+			{
+				DrawString(ThemeDB.FallbackFont, itemRect.Position + new Vector2(Ui(3f), Ui(14f)), item.Label, HorizontalAlignment.Left, itemRect.Size.X - Ui(4f), UiFont(10), Colors.Black);
+			}
+
+			if (itemRect.HasPoint(mouse))
+			{
+				hoverLabel = item.Label;
+			}
+
+			_buttons.Add(new ButtonDef(itemRect, "select_stash", i));
+		}
+
+		Vector2 cellSize = new(Ui(18f), Ui(18f));
+		Vector2 gridOrigin = backpackRect.Position + new Vector2(Ui(14f), Ui(42f));
+		List<BackpackCapacityBlock> blocks = BuildHideoutLoadoutCapacityBlocks();
+		for (int i = 0; i < blocks.Count; i++)
+		{
+			BackpackCapacityBlock block = blocks[i];
+			Rect2 blockRect = new(
+				gridOrigin + new Vector2(block.Cell.X * cellSize.X, block.Cell.Y * cellSize.Y),
+				new Vector2(block.Size.X * cellSize.X - Ui(2f), block.Size.Y * cellSize.Y - Ui(2f)));
+			DrawRect(blockRect, i == 0 ? new Color(0.18f, 0.2f, 0.26f, 0.65f) : new Color(0.16f, 0.18f, 0.22f, 0.6f), true);
+			DrawDashedRect(blockRect, new Color(0.82f, 0.86f, 0.94f, 0.4f));
+			for (int by = 0; by < block.Size.Y; by++)
+			{
+				for (int bx = 0; bx < block.Size.X; bx++)
+				{
+					Rect2 cellRect = new(
+						gridOrigin + new Vector2((block.Cell.X + bx) * cellSize.X, (block.Cell.Y + by) * cellSize.Y),
+						cellSize - new Vector2(Ui(2f), Ui(2f)));
+					DrawRect(cellRect, new Color(0.08f, 0.09f, 0.11f), true);
+					DrawRect(cellRect, new Color(0.2f, 0.23f, 0.28f), false, 1f);
+				}
+			}
+		}
+
+		for (int i = 0; i < _hideoutLoadout.Count; i++)
+		{
+			BackpackItem item = _hideoutLoadout[i];
+			Rect2 itemRect = new(
+				gridOrigin + new Vector2(item.Cell.X * cellSize.X, item.Cell.Y * cellSize.Y),
+				new Vector2(item.Size.X * cellSize.X - Ui(2f), item.Size.Y * cellSize.Y - Ui(2f)));
+			DrawRect(itemRect, GetGridRarityColor(item.Rarity), true);
+			DrawRect(itemRect, i == _selectedSettlementIndex ? new Color(1f, 0.94f, 0.62f, 0.96f) : new Color(1f, 1f, 1f, 0.8f), false, i == _selectedSettlementIndex ? 2f : 1f);
+			if (itemRect.Size.X >= Ui(42f))
+			{
+				DrawString(ThemeDB.FallbackFont, itemRect.Position + new Vector2(Ui(3f), Ui(14f)), item.Label, HorizontalAlignment.Left, itemRect.Size.X - Ui(4f), UiFont(10), Colors.Black);
+			}
+
+			if (itemRect.HasPoint(mouse))
+			{
+				hoverLabel = item.Label;
+			}
+
+			_buttons.Add(new ButtonDef(itemRect, "select_settlement", i));
+		}
+
+		DrawString(ThemeDB.FallbackFont, new Vector2(backpackRect.Position.X + Ui(14f), backpackRect.End.Y - Ui(22f)),
+			$"当前保留 { _hideoutLoadout.Count } 件物品，未转入仓库的内容会继续留在局外背包。",
+			HorizontalAlignment.Left, backpackRect.Size.X - Ui(28f), UiFont(12), new Color(0.82f, 0.88f, 0.94f));
+
+		if (_hasDraggedHideoutItem && _draggedHideoutItem != null)
+		{
+			Vector2 dragSize = new(_draggedHideoutItem.Size.X * cellSize.X - Ui(2f), _draggedHideoutItem.Size.Y * cellSize.Y - Ui(2f));
+			Vector2 drawPos = mouse - dragSize * 0.5f - new Vector2(Ui(8f), Ui(8f));
+			Rect2 dragRect = new(drawPos, dragSize);
+			Color dragColor = GetGridRarityColor(_draggedHideoutItem.Rarity);
+			DrawRect(dragRect, new Color(dragColor.R, dragColor.G, dragColor.B, 0.84f), true);
+			DrawRect(dragRect, new Color(1f, 1f, 1f, 0.9f), false, 1f);
+			hoverLabel = _draggedHideoutItem.Label;
+		}
+
+		if (!string.IsNullOrEmpty(hoverLabel))
+		{
+			DrawInventoryTooltip(mouse + new Vector2(Ui(14f), Ui(10f)), hoverLabel);
+		}
 	}
 
 	private static string GetNodeTypeLabel(NodeType type) => type switch

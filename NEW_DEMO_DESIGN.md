@@ -166,10 +166,9 @@
 - The stash now has a real fixed grid foundation instead of a simple string list.
 - Current live stash size is `12 x 10`.
 - Buying from the shop now tries to place the purchased item into the stash grid.
-- Extraction now checks whether all carried run items can fit into the stash before allowing extraction.
-- If the stash cannot accept the extracted items, extraction is blocked.
 - Hideout stash UI now displays the stash as a real item grid.
 - Stash items can be selected and sold from the grid view.
+- Stash items can also be manually rearranged inside the stash grid.
 
 ### In-progress milestone: shared transfer logic
 
@@ -177,6 +176,8 @@
 - item size language,
 - item rarity color presentation,
 - grid-based item representation.
+- Hideout stash and the outside-run backpack now share a bidirectional drag-style transfer flow.
+- The hideout layout was reworked so the stash, shop, and outside-run backpack fit inside separate panels.
 - Container-to-backpack transfer is active.
 - Backpack-to-container return is now also active for the currently open container popup.
 - Backpack-to-container return now tries:
@@ -185,6 +186,9 @@
 - then a rotated placement pass if needed.
 - The open container popup also provides a direct on-screen hint while a backpack item is being held.
 - This means room-side storage is no longer strictly one-way.
+- Successful extraction no longer auto-dumps run loot into the stash.
+- Instead, extracted items are carried back into the persistent outside-run backpack first.
+- A post-result settlement transfer screen is now the intended path for stash transfer after extraction.
 
 ### Full target for the current inventory push
 
@@ -205,7 +209,7 @@
 ### Stash system
 
 - The stash now has a real grid foundation, but not full parity with the team backpack yet.
-- Extraction-to-stash is now functional at the foundation level, but the surrounding management UX is still basic.
+- Post-run settlement transfer now exists in principle, but the surrounding management UX is still basic.
 - Storage-box tabs and typed storage boxes are not implemented.
 
 ### Backpack management depth
@@ -223,7 +227,7 @@
 - drag-hold backpack placement,
 - stash selection actions.
 - The code is moving toward a unified inventory language, but the interaction model is not fully unified yet.
-- Stash-to-backpack and broader cross-panel transfer workflows are still incomplete.
+- Full parity across room containers, run backpack, outside-run backpack, and stash is still incomplete.
 
 ### Logistics and advanced capacity sources
 
@@ -239,8 +243,8 @@
 ## Recommended Next Major Work
 
 1. Continue the shared transfer pass until stash, backpack, and container interactions feel like one system rather than three partially different ones.
-2. Add broader stash transfer workflows after the current room-side transfer logic is stable.
-3. Add the first real stash tab structure and fixed `12`-wide storage behavior as a formalized hideout storage layer.
+2. Tighten the post-run settlement transfer UX until stash and outside-run backpack management feel native rather than provisional.
+3. Add the first real stash tab structure and typed storage boxes as a formalized hideout storage layer.
 4. Revisit logistics plans and advanced carry modifiers only after stash and extraction storage are stable.
 5. Do a cleanup pass in `RaidMapDemo.cs` after the current inventory push stops moving.
 
