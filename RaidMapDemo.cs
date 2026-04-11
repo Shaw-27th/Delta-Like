@@ -2102,7 +2102,7 @@ private sealed class RoomProjectileEffect
 
 			Color body = unit.IsPlayerSide
 				? (unit.IsHero ? new Color(0.34f, 0.84f, 1f) : new Color(0.5f, 0.92f, 0.72f))
-				: (unit.IsElite ? new Color(0.96f, 0.52f, 0.4f) : new Color(0.92f, 0.38f, 0.38f));
+				: (unit.IsElite ? new Color(0.86f, 0.84f, 0.8f) : new Color(0.72f, 0.74f, 0.78f));
 			if (unit.HitFlash > 0f)
 			{
 				float flash = Mathf.Clamp(unit.HitFlash * 5f, 0f, 1f);
@@ -2129,7 +2129,7 @@ private sealed class RoomProjectileEffect
 			Rect2 hpBg = new(unit.Position + new Vector2(-20f, 18f), new Vector2(40f, 4f));
 			DrawRect(hpBg, new Color(0.14f, 0.14f, 0.16f), true);
 			float ratio = unit.MaxHp > 0 ? (float)unit.Hp / unit.MaxHp : 0f;
-			DrawRect(new Rect2(hpBg.Position, new Vector2(hpBg.Size.X * ratio, hpBg.Size.Y)), unit.IsPlayerSide ? new Color(0.46f, 0.95f, 0.58f) : new Color(0.95f, 0.5f, 0.5f), true);
+			DrawRect(new Rect2(hpBg.Position, new Vector2(hpBg.Size.X * ratio, hpBg.Size.Y)), unit.IsPlayerSide ? new Color(0.46f, 0.95f, 0.58f) : new Color(0.8f, 0.82f, 0.86f), true);
 			DrawRect(hpBg, Colors.White, false, 1f);
 			if (!unit.IsRanged && unit.MaxStamina > 0f)
 			{
@@ -3945,9 +3945,9 @@ private sealed class RoomProjectileEffect
 			if (squad != null && clearVision)
 			{
 				Vector2 badge = nodePos + new Vector2(20f, 18f) * mapScale;
-				DrawCircle(badge, 9f * mapScale, new Color(0.42f, 0.08f, 0.08f, 0.95f));
-				DrawCircle(badge, 7f * mapScale, new Color(0.92f, 0.34f, 0.3f));
-				DrawString(ThemeDB.FallbackFont, nodePos + GetSquadLabelOffset(node.Id) * mapScale, squad.Name, HorizontalAlignment.Left, -1f, UiFont(11), new Color(1f, 0.84f, 0.8f));
+				DrawCircle(badge, 9f * mapScale, new Color(0.46f, 0.18f, 0.04f, 0.95f));
+				DrawCircle(badge, 7f * mapScale, new Color(0.96f, 0.62f, 0.22f));
+				DrawString(ThemeDB.FallbackFont, nodePos + GetSquadLabelOffset(node.Id) * mapScale, squad.Name, HorizontalAlignment.Left, -1f, UiFont(11), new Color(1f, 0.9f, 0.72f));
 				Vector2 intentPos = nodePos + GetSquadIntentOffset(node.Id) * mapScale;
 				DrawAiIntentIcon(intentPos + new Vector2(6f, -3f) * mapScale, squad.Intent);
 				DrawString(ThemeDB.FallbackFont, intentPos + new Vector2(18f, 0f), $"现：{GetAiIntentSummary(squad)}", HorizontalAlignment.Left, -1f, UiFont(10), new Color(0.92f, 0.92f, 0.84f));
@@ -4307,7 +4307,7 @@ private sealed class RoomProjectileEffect
 		}
 
 		if (node.Type == NodeType.Extract) return new Color(0.26f, 0.72f, 0.42f);
-		if (node.Threat > 0) return new Color(0.72f, 0.3f, 0.28f);
+		if (node.Threat > 0) return new Color(0.68f, 0.7f, 0.74f);
 		if (CountNodeLoot(node) > 0) return new Color(0.75f, 0.62f, 0.24f);
 		return node.Visited ? new Color(0.31f, 0.45f, 0.62f) : new Color(0.2f, 0.23f, 0.28f);
 	}
