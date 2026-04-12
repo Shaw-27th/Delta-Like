@@ -100,10 +100,10 @@ public partial class ShieldSoldierPreview : Node2D
 		DrawCircle(head, 6.1f, outline);
 		DrawCircle(head, 4.9f, body.Lerp(Colors.White, 0.1f));
 
-		Vector2 shoulderFront = chest + new Vector2(faceSide.X * 5.3f, -1.8f);
-		Vector2 shoulderBack = chest + new Vector2(-faceSide.X * 4.6f, -1.1f);
-		Vector2 elbowFront = shoulderFront + new Vector2(faceSide.X * 5.4f, 4.6f - attackPose * 2.2f);
-		Vector2 handFront = elbowFront + new Vector2(faceSide.X * 7.4f, 1.6f - attackPose * 2.8f);
+		Vector2 shoulderFront = chest + new Vector2(faceSide.X * 4.6f, -1.6f);
+		Vector2 shoulderBack = chest + new Vector2(-faceSide.X * 4.2f, -1.2f);
+		Vector2 elbowFront = shoulderFront + new Vector2(faceSide.X * (1.2f + attackPose * 0.4f), 5.2f - attackPose * 1f);
+		Vector2 handFront = elbowFront + new Vector2(faceSide.X * (0.4f + attackPose * 0.4f), 4.8f - attackPose * 0.4f);
 		Vector2 elbowBack = shoulderBack + new Vector2(-faceSide.X * 2.2f, 5.2f);
 		Vector2 handBack = elbowBack + new Vector2(-faceSide.X * 2.8f, 5.2f);
 		DrawLine(shoulderFront, elbowFront, outline, 3.2f);
@@ -130,38 +130,38 @@ public partial class ShieldSoldierPreview : Node2D
 		DrawLine(legRightStart, kneeRight, body.Lerp(Colors.Black, 0.16f), 1.5f);
 		DrawLine(kneeRight, footRight, body.Lerp(Colors.Black, 0.18f), 1.4f);
 
-		DrawShieldWeapon(handFront, faceSide, outline, accent, attackPose);
-		DrawShieldBody(handBack, faceSide, outline, accent);
+		Vector2 shieldCenter = chest + new Vector2(faceSide.X * (11.2f + attackPose * 4.4f), 7.8f - attackPose * 0.6f);
+		DrawShieldBody(shieldCenter, handFront, faceSide, outline, accent);
+		DrawRelaxedArm(shoulderBack, elbowBack, handBack, outline, accent);
 	}
 
-	private void DrawShieldWeapon(Vector2 handFront, Vector2 faceSide, Color outline, Color accent, float attackPose)
+	private void DrawShieldBody(Vector2 shieldCenter, Vector2 handFront, Vector2 faceSide, Color outline, Color accent)
 	{
-		Vector2 weaponBase = handFront + new Vector2(faceSide.X * 1.5f, -0.8f);
-		Vector2 weaponTip = weaponBase + new Vector2(faceSide.X * (13f + attackPose * 6f), -5.2f - attackPose * 4.8f);
-		DrawLine(weaponBase, weaponTip, outline, 3f);
-		DrawLine(weaponBase, weaponTip, accent, 1.5f);
-		Vector2 guardA = weaponBase + new Vector2(0f, -3f);
-		Vector2 guardB = weaponBase + new Vector2(0f, 3f);
-		DrawLine(guardA, guardB, outline, 2.2f);
-		DrawLine(guardA, guardB, accent.Lerp(Colors.White, 0.18f), 1.1f);
-	}
-
-	private void DrawShieldBody(Vector2 handBack, Vector2 faceSide, Color outline, Color accent)
-	{
-		Vector2 shieldCenter = handBack + new Vector2(-faceSide.X * 4.2f, 1.4f);
-		float shieldH = 11.4f;
-		float shieldW = 7.8f;
+		float shieldH = 24.5f;
+		float shieldW = 10.8f;
 		Vector2[] shield =
 		[
 			shieldCenter + new Vector2(0f, -shieldH),
-			shieldCenter + new Vector2(shieldW, -shieldH * 0.18f),
-			shieldCenter + new Vector2(shieldW * 0.84f, shieldH * 0.76f),
+			shieldCenter + new Vector2(shieldW, -shieldH * 0.34f),
+			shieldCenter + new Vector2(shieldW * 0.82f, shieldH * 0.42f),
 			shieldCenter + new Vector2(0f, shieldH),
-			shieldCenter + new Vector2(-shieldW * 0.84f, shieldH * 0.76f),
-			shieldCenter + new Vector2(-shieldW, -shieldH * 0.18f),
+			shieldCenter + new Vector2(-shieldW * 0.82f, shieldH * 0.42f),
+			shieldCenter + new Vector2(-shieldW, -shieldH * 0.34f),
 		];
 		DrawColoredPolygon(shield, accent.Lerp(Colors.Black, 0.34f));
 		DrawPolyline(new[] { shield[0], shield[1], shield[2], shield[3], shield[4], shield[5], shield[0] }, outline, 1.5f);
 		DrawLine(shieldCenter + new Vector2(0f, -shieldH * 0.72f), shieldCenter + new Vector2(0f, shieldH * 0.72f), accent.Lerp(Colors.White, 0.12f), 1f);
+
+		Vector2 gripFront = shieldCenter + new Vector2(-faceSide.X * 6.2f, 3.2f);
+		DrawLine(handFront, gripFront, outline, 2.6f);
+		DrawLine(handFront, gripFront, accent, 1.2f);
+	}
+
+	private void DrawRelaxedArm(Vector2 shoulder, Vector2 elbow, Vector2 hand, Color outline, Color accent)
+	{
+		DrawLine(shoulder, elbow, outline, 3f);
+		DrawLine(elbow, hand, outline, 2.8f);
+		DrawLine(shoulder, elbow, accent, 1.4f);
+		DrawLine(elbow, hand, accent, 1.3f);
 	}
 }

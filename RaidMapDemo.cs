@@ -3008,22 +3008,25 @@ private sealed class RoomProjectileEffect
 
 	private void DrawRoomShieldSilhouette(Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose, bool eliteShield)
 	{
-		DrawRoomBladeSilhouette(handFront, faceSide, outline, accent, attackPose);
-
-		Vector2 shieldCenter = handBack + new Vector2(-faceSide.X * 3.2f, 0.8f);
-		float shieldH = eliteShield ? 6.6f : 6.1f;
-		float shieldW = eliteShield ? 4.8f : 4.2f;
+		Vector2 shieldCenter = handFront + new Vector2(faceSide.X * (7.8f + attackPose * 2.2f), 7.2f - attackPose * 0.6f);
+		float shieldH = eliteShield ? 14.6f : 13.2f;
+		float shieldW = eliteShield ? 6.7f : 6f;
 		Vector2[] shield =
 		[
 			shieldCenter + new Vector2(0f, -shieldH),
-			shieldCenter + new Vector2(shieldW, -shieldH * 0.18f),
-			shieldCenter + new Vector2(shieldW * 0.78f, shieldH * 0.72f),
+			shieldCenter + new Vector2(shieldW, -shieldH * 0.34f),
+			shieldCenter + new Vector2(shieldW * 0.82f, shieldH * 0.42f),
 			shieldCenter + new Vector2(0f, shieldH),
-			shieldCenter + new Vector2(-shieldW * 0.78f, shieldH * 0.72f),
-			shieldCenter + new Vector2(-shieldW, -shieldH * 0.18f),
+			shieldCenter + new Vector2(-shieldW * 0.82f, shieldH * 0.42f),
+			shieldCenter + new Vector2(-shieldW, -shieldH * 0.34f),
 		];
 		DrawColoredPolygon(shield, accent.Lerp(Colors.Black, 0.34f));
 		DrawPolyline(new[] { shield[0], shield[1], shield[2], shield[3], shield[4], shield[5], shield[0] }, outline, 1.2f);
+		DrawLine(shieldCenter + new Vector2(0f, -shieldH * 0.72f), shieldCenter + new Vector2(0f, shieldH * 0.72f), accent.Lerp(Colors.White, 0.12f), 0.9f);
+
+		Vector2 gripFront = shieldCenter + new Vector2(-faceSide.X * 3.6f, 2.2f);
+		DrawLine(handFront, gripFront, outline, 2.4f);
+		DrawLine(handFront, gripFront, accent, 1.1f);
 	}
 
 	private void DrawRoomRecruitSilhouette(Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose)
