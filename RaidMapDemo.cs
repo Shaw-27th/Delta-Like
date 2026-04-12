@@ -71,6 +71,8 @@ public partial class RaidMapDemo : Node2D
 		Recruit,
 		Shield,
 		EliteShield,
+		ShieldPlusOne,
+		ShieldPlusTwo,
 		Pike,
 		Blade,
 		Archer,
@@ -303,6 +305,7 @@ public partial class RaidMapDemo : Node2D
 		public Vector2 SkillMoveDirection;
 		public float ShieldRushContactLock;
 		public float ProjectileDamageScale = 1f;
+		public float BlockAnyDamageChance;
 		public bool IsSprinting;
 		public bool IsAlive => Hp > 0;
 	}
@@ -333,6 +336,16 @@ private sealed class RoomProjectileEffect
 		public RoomUnit Owner;
 	}
 
+	private sealed class RoomShockwaveEffect
+	{
+		public Vector2 Origin;
+		public float Radius;
+		public float MaxRadius;
+		public float TimeLeft;
+		public float Duration;
+		public bool PlayerSide;
+	}
+
 	private readonly struct ButtonDef
 	{
 		public ButtonDef(Rect2 rect, string action, int index = -1)
@@ -361,6 +374,7 @@ private sealed class RoomProjectileEffect
 	private readonly List<RoomUnit> _roomUnits = new();
 	private readonly List<RoomProjectileEffect> _roomProjectileEffects = new();
 	private readonly List<RoomMeleeArcEffect> _roomMeleeArcEffects = new();
+	private readonly List<RoomShockwaveEffect> _roomShockwaveEffects = new();
 	private readonly List<RoomResourceOrb> _roomResourceOrbs = new();
 	private readonly List<AudioStreamPlayer> _sfxPlayers = new();
 	private readonly RandomNumberGenerator _rng = new();
@@ -761,6 +775,7 @@ private sealed class RoomProjectileEffect
 		_roomUnits.Clear();
 		_roomProjectileEffects.Clear();
 		_roomMeleeArcEffects.Clear();
+		_roomShockwaveEffects.Clear();
 		_roomResourceOrbs.Clear();
 		_heroHasMoveTarget = false;
 		_pendingExitNodeId = -1;
@@ -1991,8 +2006,7 @@ private sealed class RoomProjectileEffect
 
 	private bool TryStartShieldRush(RoomUnit attacker, RoomUnit target, Vector2 dir, float distance)
 	{
-		if (attacker.SoldierClass != SoldierClass.Shield
-			|| attacker.ActiveSkill != SoldierActiveSkill.ShieldRush
+		if (attacker.ActiveSkill != SoldierActiveSkill.ShieldRush
 			|| attacker.ActiveSkillCooldown > 0f
 			|| attacker.MaxStamina <= 0f
 			|| attacker.Stamina < 24f
@@ -2025,17 +2039,24 @@ private sealed class RoomProjectileEffect
 		if (attacker.SkillMoveTime <= 0f)
 		{
 			ApplyShieldRushHits(attacker, true);
+			if (attacker.SoldierClass == SoldierClass.ShieldPlusTwo)
+			{
+				SpawnShieldRushShockwave(attacker);
+			}
 		}
 	}
 
 	private void ApplyShieldRushHits(RoomUnit attacker, bool impact)
 	{
-		float radius = impact ? 24f : 16f;
-		int damage = impact ? Mathf.Max(1, attacker.DamageMax) : Mathf.Max(1, attacker.DamageMin);
-		float stagger = impact ? 0.6f : 0.3f;
-		float hitPause = impact ? 0.08f : 0.04f;
-		float force = impact ? 1220f : 610f;
-		float duration = impact ? 1.08f : 0.54f;
+		bool enhancedRush = attacker.SoldierClass == SoldierClass.ShieldPlusTwo;
+		float radius = impact ? (enhancedRush ? 34f : 24f) : (enhancedRush ? 22f : 16f);
+		int damage = impact
+			? Mathf.Max(1, enhancedRush ? attacker.DamageMax + 2 : attacker.DamageMax)
+			: Mathf.Max(1, enhancedRush ? attacker.DamageMin + 1 : attacker.DamageMin);
+		float stagger = impact ? (enhancedRush ? 0.95f : 0.6f) : (enhancedRush ? 0.45f : 0.3f);
+		float hitPause = impact ? (enhancedRush ? 0.11f : 0.08f) : (enhancedRush ? 0.05f : 0.04f);
+		float force = impact ? (enhancedRush ? 1580f : 1220f) : (enhancedRush ? 780f : 610f);
+		float duration = impact ? (enhancedRush ? 1.34f : 1.08f) : (enhancedRush ? 0.72f : 0.54f);
 		bool rangedHit = false;
 
 		for (int i = 0; i < _roomUnits.Count; i++)
@@ -2075,6 +2096,19 @@ private sealed class RoomProjectileEffect
 
 			ApplyDirectHit(target, damage, hitDir, stagger, hitPause, force, duration, rangedHit);
 		}
+	}
+
+	private void SpawnShieldRushShockwave(RoomUnit attacker)
+	{
+		_roomShockwaveEffects.Add(new RoomShockwaveEffect
+		{
+			Origin = attacker.Position,
+			Radius = 8f,
+			MaxRadius = 84f,
+			TimeLeft = 0.28f,
+			Duration = 0.28f,
+			PlayerSide = attacker.IsPlayerSide,
+		});
 	}
 
 	private void StepRangedUnitCombat(RoomUnit attacker, RoomUnit target, Vector2 dir, float distance, float delta)
@@ -2361,6 +2395,18 @@ private sealed class RoomProjectileEffect
 				_roomMeleeArcEffects.RemoveAt(i);
 			}
 		}
+
+		for (int i = _roomShockwaveEffects.Count - 1; i >= 0; i--)
+		{
+			RoomShockwaveEffect effect = _roomShockwaveEffects[i];
+			effect.TimeLeft -= delta;
+			float t = 1f - Mathf.Clamp(effect.TimeLeft / Mathf.Max(0.001f, effect.Duration), 0f, 1f);
+			effect.Radius = Mathf.Lerp(8f, effect.MaxRadius, t);
+			if (effect.TimeLeft <= 0f)
+			{
+				_roomShockwaveEffects.RemoveAt(i);
+			}
+		}
 	}
 
 	private void ApplyProjectileOrSlashHit(RoomUnit target, int damage, Vector2 dir, bool heavy, bool rangedHit)
@@ -2386,6 +2432,12 @@ private sealed class RoomProjectileEffect
 
 	private int GetMitigatedDamage(RoomUnit target, int damage, bool rangedHit)
 	{
+		if (target.BlockAnyDamageChance > 0f && _rng.Randf() < target.BlockAnyDamageChance)
+		{
+			target.HitFlash = Mathf.Max(target.HitFlash, 0.18f);
+			return 0;
+		}
+
 		float scaledDamage = damage;
 		if (rangedHit)
 		{
@@ -2997,11 +3049,12 @@ private sealed class RoomProjectileEffect
 		float runSwing = Mathf.Sin(runPhase);
 		float runLift = Mathf.Abs(Mathf.Sin(runPhase)) * (isRunning ? 1.2f : 0.2f);
 		float attackPose = GetRoomAttackPose(unit);
-		bool eliteSoldierClass = unit.SoldierClass == SoldierClass.EliteShield;
-		float sizeScale = unit.IsHero ? 1.46f : ((unit.IsElite || eliteSoldierClass) ? 1.34f : 1.1f);
+		bool armoredShieldClass = unit.SoldierClass is SoldierClass.EliteShield or SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo;
+		bool helmetShieldClass = unit.SoldierClass is SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo;
+		float sizeScale = unit.IsHero ? 1.46f : ((unit.IsElite || armoredShieldClass) ? 1.34f : 1.1f);
 		float torsoHalfWidth = (unit.IsRanged ? 4.2f : 5.2f) * sizeScale;
 		float torsoHeight = (unit.IsHero ? 13f : 11f) * sizeScale;
-		float shoulderWidth = torsoHalfWidth + ((unit.IsElite || eliteSoldierClass) ? 1.3f : 0.7f) * sizeScale;
+		float shoulderWidth = torsoHalfWidth + ((unit.IsElite || armoredShieldClass) ? 1.3f : 0.7f) * sizeScale;
 
 		Vector2 feet = unit.Position + new Vector2(0f, 12f * sizeScale + runLift);
 		Vector2 hip = feet + new Vector2(0f, -8f * sizeScale);
@@ -3032,7 +3085,7 @@ private sealed class RoomProjectileEffect
 		];
 		DrawColoredPolygon(torso, bodyColor);
 		DrawPolyline(new[] { torsoTopLeft, torsoTopRight, torsoBottomRight, torsoBottomLeft, torsoTopLeft }, outline, 1.6f);
-		if (eliteSoldierClass)
+		if (armoredShieldClass)
 		{
 			Vector2[] breastplate =
 			[
@@ -3049,7 +3102,7 @@ private sealed class RoomProjectileEffect
 		float headRadius = (unit.IsHero ? 4.8f : 4.1f) * sizeScale;
 		DrawCircle(headCenter, headRadius + 1.2f, outline);
 		DrawCircle(headCenter, headRadius, bodyColor.Lerp(Colors.White, unit.IsRanged ? 0.16f : 0.08f));
-		if (eliteSoldierClass)
+		if (helmetShieldClass)
 		{
 			Vector2[] helmet =
 			[
@@ -3142,7 +3195,7 @@ private sealed class RoomProjectileEffect
 
 	private void DrawRoomMeleeSilhouette(RoomUnit unit, Vector2 handFront, Vector2 handBack, Vector2 hip, Vector2 faceSide, Color outline, Color accent, float attackPose)
 	{
-		DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, unit.IsElite);
+		DrawRoomBladeSilhouette(handFront, faceSide, outline, accent, attackPose);
 	}
 
 	private void DrawRoomRangedSilhouette(RoomUnit unit, Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose)
@@ -3173,10 +3226,16 @@ private sealed class RoomProjectileEffect
 				DrawRoomRecruitSilhouette(handFront, handBack, faceSide, outline, accent, attackPose);
 				break;
 			case SoldierClass.Shield:
-				DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, unit.IsElite || unit.SoldierClass == SoldierClass.EliteShield);
+				DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, false, false);
 				break;
 			case SoldierClass.EliteShield:
-				DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, true);
+				DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, true, false);
+				break;
+			case SoldierClass.ShieldPlusOne:
+				DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, true, false);
+				break;
+			case SoldierClass.ShieldPlusTwo:
+				DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, true, true);
 				break;
 			case SoldierClass.Pike:
 				DrawRoomPikeSilhouette(handFront, handBack, faceSide, outline, accent, attackPose);
@@ -3207,11 +3266,11 @@ private sealed class RoomProjectileEffect
 		DrawLine(guardA, guardB, accent.Lerp(Colors.White, 0.2f), 1f);
 	}
 
-	private void DrawRoomShieldSilhouette(Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose, bool eliteShield)
+	private void DrawRoomShieldSilhouette(Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose, bool eliteShield, bool ornateShield)
 	{
 		Vector2 shieldCenter = handFront + new Vector2(faceSide.X * (2.2f + attackPose * 0.45f), 2.9f - attackPose * 0.2f);
-		float shieldH = eliteShield ? 14.6f : 13.2f;
-		float shieldW = eliteShield ? 6.7f : 6f;
+		float shieldH = ornateShield ? 16.8f : (eliteShield ? 14.6f : 13.2f);
+		float shieldW = ornateShield ? 7.8f : (eliteShield ? 6.7f : 6f);
 		Vector2[] shield =
 		[
 			shieldCenter + new Vector2(0f, -shieldH),
@@ -3224,6 +3283,11 @@ private sealed class RoomProjectileEffect
 		DrawColoredPolygon(shield, accent.Lerp(Colors.Black, 0.34f));
 		DrawPolyline(new[] { shield[0], shield[1], shield[2], shield[3], shield[4], shield[5], shield[0] }, outline, 1.2f);
 		DrawLine(shieldCenter + new Vector2(0f, -shieldH * 0.72f), shieldCenter + new Vector2(0f, shieldH * 0.72f), accent.Lerp(Colors.White, 0.12f), 0.9f);
+		if (ornateShield)
+		{
+			DrawLine(shieldCenter + new Vector2(-shieldW * 0.56f, -shieldH * 0.12f), shieldCenter + new Vector2(shieldW * 0.56f, -shieldH * 0.12f), accent.Lerp(Colors.White, 0.18f), 1f);
+			DrawLine(shieldCenter + new Vector2(-shieldW * 0.4f, shieldH * 0.34f), shieldCenter + new Vector2(shieldW * 0.4f, shieldH * 0.34f), accent.Lerp(Colors.White, 0.14f), 0.9f);
+		}
 
 		Vector2 gripFront = shieldCenter + new Vector2(-faceSide.X * 3.6f, 2.2f);
 		DrawLine(handFront, gripFront, outline, 2.4f);
@@ -3395,6 +3459,19 @@ private sealed class RoomProjectileEffect
 					}
 				}
 			}
+		}
+
+		for (int i = 0; i < _roomShockwaveEffects.Count; i++)
+		{
+			RoomShockwaveEffect effect = _roomShockwaveEffects[i];
+			float lifeRatio = effect.Duration > 0f ? effect.TimeLeft / effect.Duration : 0f;
+			float alpha = Mathf.Clamp(lifeRatio, 0f, 1f);
+			Color outer = effect.PlayerSide
+				? new Color(0.82f, 0.98f, 1f, alpha * 0.72f)
+				: new Color(1f, 0.88f, 0.72f, alpha * 0.72f);
+			Color inner = new Color(outer.R, outer.G, outer.B, alpha * 0.26f);
+			DrawArc(effect.Origin, effect.Radius, 0f, Mathf.Tau, 44, outer, 3.2f);
+			DrawArc(effect.Origin, effect.Radius * 0.72f, 0f, Mathf.Tau, 36, inner, 2.1f);
 		}
 
 	}
@@ -4286,6 +4363,12 @@ private sealed class RoomProjectileEffect
 					return;
 				case "promote_elite_shield":
 					PromoteSelectedSoldier(SoldierClass.EliteShield);
+					return;
+				case "promote_shield_plus_one":
+					PromoteSelectedSoldier(SoldierClass.ShieldPlusOne);
+					return;
+				case "promote_shield_plus_two":
+					PromoteSelectedSoldier(SoldierClass.ShieldPlusTwo);
 					return;
 				case "promote_pike":
 					PromoteSelectedSoldier(SoldierClass.Pike);
@@ -5893,6 +5976,8 @@ private sealed class RoomProjectileEffect
 		SoldierClass.Recruit => "新兵",
 		SoldierClass.Shield => "盾兵",
 		SoldierClass.EliteShield => "精锐盾兵",
+		SoldierClass.ShieldPlusOne => "盾兵+1",
+		SoldierClass.ShieldPlusTwo => "盾兵+2",
 		SoldierClass.Pike => "枪兵",
 		SoldierClass.Blade => "刀兵",
 		SoldierClass.Archer => "弓兵",
@@ -5904,6 +5989,8 @@ private sealed class RoomProjectileEffect
 	{
 		SoldierClass.Shield => 2,
 		SoldierClass.EliteShield => 6,
+		SoldierClass.ShieldPlusOne => 10,
+		SoldierClass.ShieldPlusTwo => 15,
 		SoldierClass.Pike => 2,
 		SoldierClass.Blade => 2,
 		SoldierClass.Archer => 2,
@@ -5915,6 +6002,8 @@ private sealed class RoomProjectileEffect
 	{
 		SoldierClass.Shield => 18,
 		SoldierClass.EliteShield => 42,
+		SoldierClass.ShieldPlusOne => 70,
+		SoldierClass.ShieldPlusTwo => 110,
 		SoldierClass.Pike => 18,
 		SoldierClass.Blade => 18,
 		SoldierClass.Archer => 22,
@@ -5928,6 +6017,8 @@ private sealed class RoomProjectileEffect
 		{
 			SoldierClass.Recruit => targetClass is not SoldierClass.Recruit and not SoldierClass.EliteShield,
 			SoldierClass.Shield => targetClass == SoldierClass.EliteShield,
+			SoldierClass.EliteShield => targetClass == SoldierClass.ShieldPlusOne,
+			SoldierClass.ShieldPlusOne => targetClass == SoldierClass.ShieldPlusTwo,
 			_ => false,
 		};
 
@@ -5941,6 +6032,8 @@ private sealed class RoomProjectileEffect
 		SoldierClass.Recruit => new Color(0.76f, 0.82f, 0.84f),
 		SoldierClass.Shield => new Color(0.46f, 0.84f, 0.7f),
 		SoldierClass.EliteShield => new Color(0.68f, 0.94f, 0.82f),
+		SoldierClass.ShieldPlusOne => new Color(0.74f, 1f, 0.86f),
+		SoldierClass.ShieldPlusTwo => new Color(0.9f, 1f, 0.9f),
 		SoldierClass.Pike => new Color(0.88f, 0.8f, 0.48f),
 		SoldierClass.Blade => new Color(0.94f, 0.52f, 0.44f),
 		SoldierClass.Archer => new Color(0.6f, 0.78f, 0.98f),
@@ -5954,6 +6047,8 @@ private sealed class RoomProjectileEffect
 	{
 		SoldierClass.Archer => SoldierActiveSkill.None,
 		SoldierClass.EliteShield => SoldierActiveSkill.ShieldRush,
+		SoldierClass.ShieldPlusOne => SoldierActiveSkill.ShieldRush,
+		SoldierClass.ShieldPlusTwo => SoldierActiveSkill.ShieldRush,
 		SoldierClass.Recruit or SoldierClass.Pike or SoldierClass.Blade or SoldierClass.Cavalry => SoldierActiveSkill.Sprint,
 		_ => SoldierActiveSkill.None,
 	};
@@ -5962,6 +6057,8 @@ private sealed class RoomProjectileEffect
 	{
 		SoldierClass.Shield => SoldierPassiveSkill.MissileGuard,
 		SoldierClass.EliteShield => SoldierPassiveSkill.MissileGuard,
+		SoldierClass.ShieldPlusOne => SoldierPassiveSkill.MissileGuard,
+		SoldierClass.ShieldPlusTwo => SoldierPassiveSkill.MissileGuard,
 		_ => SoldierPassiveSkill.None,
 	};
 
@@ -5974,7 +6071,11 @@ private sealed class RoomProjectileEffect
 
 	private string GetSoldierPassiveSkillLabel(SoldierClass soldierClass) => GetSoldierPassiveSkill(soldierClass) switch
 	{
-		SoldierPassiveSkill.MissileGuard => "被动：对远程攻击减伤 50%",
+		SoldierPassiveSkill.MissileGuard => soldierClass switch
+		{
+			SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo => "被动：对远程攻击减伤 50%，并有概率格挡任意伤害",
+			_ => "被动：对远程攻击减伤 50%",
+		},
 		_ => "被动：无",
 	};
 
@@ -5983,6 +6084,8 @@ private sealed class RoomProjectileEffect
 		SoldierClass.Recruit => 1,
 		SoldierClass.Shield => 2,
 		SoldierClass.EliteShield => 3,
+		SoldierClass.ShieldPlusOne => 4,
+		SoldierClass.ShieldPlusTwo => 5,
 		SoldierClass.Pike => 2,
 		SoldierClass.Blade => 2,
 		SoldierClass.Archer => 2,
@@ -6011,6 +6114,7 @@ private sealed class RoomProjectileEffect
 		unit.ActiveSkill = unit.CanSprint ? SoldierActiveSkill.Sprint : SoldierActiveSkill.None;
 		unit.PassiveSkill = SoldierPassiveSkill.None;
 		unit.ProjectileDamageScale = 1f;
+		unit.BlockAnyDamageChance = 0f;
 
 		switch (soldier.Class)
 		{
@@ -6043,6 +6147,40 @@ private sealed class RoomProjectileEffect
 				unit.PassiveSkill = SoldierPassiveSkill.MissileGuard;
 				unit.ProjectileDamageScale = 0.5f;
 				unit.AttackCycleScale = 0.9f;
+				break;
+			case SoldierClass.ShieldPlusOne:
+				unit.Hp = 24;
+				unit.MaxHp = 24;
+				unit.DamageMin = 3;
+				unit.DamageMax = 5;
+				unit.Armor = 4;
+				unit.AttackRange = 30f;
+				unit.Speed = 138f;
+				unit.MaxStamina = 112f;
+				unit.Stamina = 112f;
+				unit.CanSprint = false;
+				unit.ActiveSkill = SoldierActiveSkill.ShieldRush;
+				unit.PassiveSkill = SoldierPassiveSkill.MissileGuard;
+				unit.ProjectileDamageScale = 0.5f;
+				unit.BlockAnyDamageChance = 0.18f;
+				unit.AttackCycleScale = 0.86f;
+				break;
+			case SoldierClass.ShieldPlusTwo:
+				unit.Hp = 28;
+				unit.MaxHp = 28;
+				unit.DamageMin = 4;
+				unit.DamageMax = 7;
+				unit.Armor = 5;
+				unit.AttackRange = 32f;
+				unit.Speed = 144f;
+				unit.MaxStamina = 126f;
+				unit.Stamina = 126f;
+				unit.CanSprint = false;
+				unit.ActiveSkill = SoldierActiveSkill.ShieldRush;
+				unit.PassiveSkill = SoldierPassiveSkill.MissileGuard;
+				unit.ProjectileDamageScale = 0.45f;
+				unit.BlockAnyDamageChance = 0.28f;
+				unit.AttackCycleScale = 0.8f;
 				break;
 			case SoldierClass.Pike:
 				unit.Hp = 9;
@@ -6497,6 +6635,18 @@ private sealed class RoomProjectileEffect
 				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "精锐盾兵需求 XP 6 / 42 金。获得盾冲与全面强化。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
 				Rect2 eliteShieldRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
 				DrawPromotionButton(eliteShieldRect, "精盾", selectedSoldier, SoldierClass.EliteShield, "promote_elite_shield");
+			}
+			else if (selectedSoldier.Class == SoldierClass.EliteShield)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "盾兵+1 需求 XP 10 / 70 金。获得头盔与概率格挡。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 plusOneRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
+				DrawPromotionButton(plusOneRect, "+1", selectedSoldier, SoldierClass.ShieldPlusOne, "promote_shield_plus_one");
+			}
+			else if (selectedSoldier.Class == SoldierClass.ShieldPlusOne)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "盾兵+2 需求 XP 15 / 110 金。强化盾冲并获得更华丽的大盾。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 plusTwoRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
+				DrawPromotionButton(plusTwoRect, "+2", selectedSoldier, SoldierClass.ShieldPlusTwo, "promote_shield_plus_two");
 			}
 		}
 

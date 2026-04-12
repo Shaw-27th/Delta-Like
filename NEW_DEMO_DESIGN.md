@@ -169,6 +169,8 @@
 - `Recruit`,
 - `Shield`,
 - `Elite Shield`,
+- `Shield +1`,
+- `Shield +2`,
 - `Pike`,
 - `Blade`,
 - `Archer`,
@@ -188,12 +190,18 @@
 - A first minimal soldier skill framework now exists with active and passive slots.
 - Sprint is treated as a default active skill for most non-ranged soldiers.
 - Base shield soldiers currently do not sprint and only keep the ranged-damage mitigation passive.
-- `Elite Shield` is now the first live second-tier soldier upgrade.
-- `Elite Shield` receives the `Shield Rush` active skill and higher all-around stats than the base shield line.
+- The shield line now has a four-step progression:
+- `Shield`,
+- `Elite Shield`,
+- `Shield +1`,
+- `Shield +2`.
+- `Elite Shield` is the first shield upgrade and now owns the base `Shield Rush` active skill.
+- `Shield +1` adds a helmet and an upgraded passive with a chance to fully block any incoming damage.
+- `Shield +2` keeps the helmeted armor silhouette, upgrades the shield into a more ornate large version, and upgrades `Shield Rush` into a wider and more powerful impact with a visible shockwave.
 - `Shield Rush` spends stamina, has a `5s` cooldown, knocks units aside along the path, and applies a stronger endpoint impact.
 - Shield soldiers also have a live passive that reduces ranged damage by `50%`.
 - Armor is now a real combat stat in room combat damage resolution.
-- `Elite Shield` also has a stronger visual silhouette with added armor and a helmet.
+- Higher shield tiers now also change the visual silhouette with armor, helmet, and upgraded shield treatment.
 - Cavalry currently also gets a heavier-impact attack profile than baseline line troops.
 
 ## Inventory Progress Snapshot
