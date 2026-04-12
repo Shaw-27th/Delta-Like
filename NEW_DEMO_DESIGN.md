@@ -246,13 +246,61 @@
 - Some old helper code from earlier UI/container approaches may still remain in `RaidMapDemo.cs`.
 - The codebase still needs cleanup once the current systems stabilize.
 
-## Recommended Next Major Work
+## Current Strategic Priorities
 
-1. Continue the shared transfer pass until stash, backpack, and container interactions feel like one system rather than three partially different ones.
-2. Tighten the post-run settlement transfer UX until stash and outside-run backpack management feel native rather than provisional.
-3. Add the first real stash tab structure and typed storage boxes as a formalized hideout storage layer.
-4. Revisit logistics plans and advanced carry modifiers only after stash and extraction storage are stable.
-5. Do a cleanup pass in `RaidMapDemo.cs` after the current inventory push stops moving.
+### Current first priority: progression systems
+
+- Inventory work is no longer the immediate focus.
+- The next major push is progression, split into three unit layers:
+- the controlled lead hero,
+- secondary heroes,
+- soldiers.
+
+### Lead hero target
+
+- The controlled lead hero should remain the primary direct-play identity.
+- The lead hero should support:
+- level progression,
+- primary stats,
+- skill progression,
+- equipment-driven builds.
+- This layer should be the strongest source of direct combat expression and long-term player identity.
+
+### Secondary hero target
+
+- Secondary heroes should be hero-grade units rather than upgraded soldiers.
+- They should follow the lead hero in combat but still use the same core hero-style progression model:
+- levels,
+- stats,
+- skills,
+- equipment.
+- Secondary heroes should be limited by a party-slot cap rather than treated as general troop count.
+- The current intended cap is a small fixed number, such as `3`.
+- Their role is to provide party composition depth, specialist functions, and long-term roster investment without replacing the controlled lead hero.
+
+### Soldier progression target
+
+- Soldiers should become more than disposable headcount.
+- The soldier layer should support:
+- troop classes,
+- per-soldier experience gain,
+- out-of-run class advancement.
+- Soldiers should still be more replaceable than heroes, but not fully anonymous.
+- The system should create meaningful differences between low-tier recruits and upgraded veterans.
+- Soldiers are expected to fill the line-unit layer of the squad rather than the hero-specialist layer.
+
+### Progression structure rule
+
+- Lead hero and secondary heroes should ideally share one common hero-grade progression framework in code and data.
+- The lead hero is differentiated by direct player control.
+- Secondary heroes are differentiated by hero-slot limits and battlefield role, not by becoming a separate lower-grade system.
+
+### Other near-term pillars after progression
+
+1. Room events and search-event content density.
+2. Stronger map-presence behavior for AI squads.
+3. Extraction pressure and escalation systems.
+4. Further cleanup after the current gameplay direction stabilizes.
 
 ## Notes for Future Updates
 
