@@ -65,6 +65,16 @@ public partial class RaidMapDemo : Node2D
 		AllIn,
 	}
 
+	private enum SoldierClass
+	{
+		Recruit,
+		Shield,
+		Pike,
+		Blade,
+		Archer,
+		Cavalry,
+	}
+
 	private sealed class MapNode
 	{
 		public int Id;
@@ -193,6 +203,8 @@ public partial class RaidMapDemo : Node2D
 	private sealed class SoldierRecord
 	{
 		public string Name = "";
+		public SoldierClass Class = SoldierClass.Recruit;
+		public int Experience;
 	}
 
 	private sealed class AiSquad
@@ -237,6 +249,8 @@ public partial class RaidMapDemo : Node2D
 		public bool IsAiSquad;
 		public bool IsRanged;
 		public string Name = "";
+		public string RosterName = "";
+		public SoldierClass SoldierClass;
 		public Vector2 Position;
 		public Vector2 Facing = Vector2.Right;
 		public float Speed;
@@ -356,6 +370,8 @@ private sealed class RoomProjectileEffect
 	private int _selectedStashIndex = -1;
 	private int _selectedShopIndex = -1;
 	private int _selectedLoadoutIndex = -1;
+	private int _selectedSoldierIndex = -1;
+	private int _soldierRosterPage;
 	private int _pendingRevealContainerIndex = -1;
 	private bool _showMapOverlay;
 	private int _plannedExitNodeId = -1;
@@ -713,6 +729,8 @@ private sealed class RoomProjectileEffect
 		_selectedStashIndex = -1;
 		_selectedShopIndex = -1;
 		_selectedLoadoutIndex = -1;
+		_selectedSoldierIndex = -1;
+		_soldierRosterPage = 0;
 		_selectedSettlementIndex = -1;
 		_encounter = null;
 		_roomUnits.Clear();
@@ -725,7 +743,7 @@ private sealed class RoomProjectileEffect
 		_runSoldiers.Clear();
 		foreach (SoldierRecord soldier in _soldierRoster)
 		{
-			_runSoldiers.Add(new SoldierRecord { Name = soldier.Name });
+			_runSoldiers.Add(CloneSoldierRecord(soldier));
 		}
 
 		for (int i = 0; i < _hideoutLoadout.Count; i++)
@@ -739,10 +757,10 @@ private sealed class RoomProjectileEffect
 			_playerMaxHp = 260;
 			_playerHp = 260;
 			_runSoldiers.Clear();
-			_runSoldiers.Add(new SoldierRecord { Name = "前锋测试机" });
+			_runSoldiers.Add(new SoldierRecord { Name = "前锋测试机", Class = SoldierClass.Blade, Experience = 0 });
 		}
 
-		_playerStrength = 3 + _runSoldiers.Count;
+		RecalculatePlayerStrength();
 
 		if (_selectedMapTemplate == 1)
 		{
@@ -842,6 +860,8 @@ private sealed class RoomProjectileEffect
 		_selectedStashIndex = -1;
 		_selectedShopIndex = -1;
 		_selectedLoadoutIndex = -1;
+		_selectedSoldierIndex = -1;
+		_soldierRosterPage = 0;
 		_selectedSettlementIndex = -1;
 		_hasDraggedHideoutItem = false;
 		_draggedHideoutItem = null;
@@ -873,7 +893,7 @@ private sealed class RoomProjectileEffect
 		_soldierRoster.Clear();
 		for (int i = 0; i < _runSoldiers.Count; i++)
 		{
-			_soldierRoster.Add(new SoldierRecord { Name = _runSoldiers[i].Name });
+			_soldierRoster.Add(CloneSoldierRecord(_runSoldiers[i]));
 		}
 	}
 
@@ -1172,13 +1192,9 @@ private sealed class RoomProjectileEffect
 		for (int i = 0; i < _runSoldiers.Count; i++)
 		{
 			Vector2 offset = new Vector2(-28f - (i % 3) * 20f, (i / 3) * 24f - 24f);
-			RoomUnit soldier = CreateRoomUnit(true, false, false, false, false, _runSoldiers[i].Name, ClampToRoom(heroPos + offset));
-			soldier.Hp = 8;
-			soldier.MaxHp = 8;
-			soldier.DamageMin = 1;
-			soldier.DamageMax = 3;
-			soldier.AttackRange = 28f;
-			soldier.Speed = 152f;
+			RoomUnit soldier = CreateRoomUnit(true, false, false, false, IsSoldierRangedClass(_runSoldiers[i].Class), _runSoldiers[i].Name, ClampToRoom(heroPos + offset));
+			soldier.RosterName = _runSoldiers[i].Name;
+			ApplySoldierClassToRoomUnit(soldier, _runSoldiers[i]);
 			_roomUnits.Add(soldier);
 		}
 	}
@@ -2011,9 +2027,9 @@ private sealed class RoomProjectileEffect
 	{
 		attacker.PendingAttackTarget = target;
 		attacker.PendingAttackDamage = _rng.RandiRange(attacker.DamageMin, attacker.DamageMax);
-		attacker.PendingAttackHeavy = attacker.IsHero || attacker.IsElite;
+		attacker.PendingAttackHeavy = attacker.IsHero || attacker.IsElite || attacker.SoldierClass == SoldierClass.Cavalry;
 		attacker.PendingAttackRangeSlack = rangeSlack;
-		attacker.PendingAttackLungeDistance = 0f;
+		attacker.PendingAttackLungeDistance = attacker.SoldierClass == SoldierClass.Cavalry ? 16f : 0f;
 		attacker.AttackWindupTime = attacker.IsRanged ? 0.13f : (attacker.PendingAttackHeavy ? 0.12f : 0.09f);
 		attacker.RecoveryTime = attacker.IsRanged ? 0.1f : 0.08f;
 		float baseCooldown = attacker.IsRanged ? 0.42f : (attacker.PendingAttackHeavy ? 0.54f : 0.46f);
@@ -2279,15 +2295,17 @@ private sealed class RoomProjectileEffect
 					squad.Strength = 0;
 				}
 				node.Threat = 0;
+				GrantRunSoldierExperience(1, "清空房间");
 			}
 		}
 		else if (!dead.IsHero)
 		{
 			for (int i = _runSoldiers.Count - 1; i >= 0; i--)
 			{
-				if (_runSoldiers[i].Name == dead.Name)
+				if (_runSoldiers[i].Name == dead.RosterName)
 				{
 					_runSoldiers.RemoveAt(i);
+					RecalculatePlayerStrength();
 					break;
 				}
 			}
@@ -2747,7 +2765,7 @@ private sealed class RoomProjectileEffect
 	{
 		if (unit.IsPlayerSide)
 		{
-			return unit.IsHero ? new Color(0.34f, 0.84f, 1f) : new Color(0.5f, 0.92f, 0.72f);
+			return unit.IsHero ? new Color(0.34f, 0.84f, 1f) : GetSoldierClassColor(unit.SoldierClass);
 		}
 
 		if (unit.IsAiSquad)
@@ -3911,6 +3929,12 @@ private sealed class RoomProjectileEffect
 					_selectedStashIndex = -1;
 					_selectedShopIndex = -1;
 					return;
+				case "select_soldier":
+					_selectedSoldierIndex = button.Index;
+					_selectedStashIndex = -1;
+					_selectedShopIndex = -1;
+					_selectedLoadoutIndex = -1;
+					return;
 				case "auto_pack_hideout":
 					RepackHideoutLoadout();
 					_status = "已整理局外背包。";
@@ -3920,6 +3944,27 @@ private sealed class RoomProjectileEffect
 					return;
 				case "recruit_soldier":
 					RecruitSoldier();
+					return;
+				case "soldier_page_prev":
+					_soldierRosterPage = Mathf.Max(0, _soldierRosterPage - 1);
+					return;
+				case "soldier_page_next":
+					_soldierRosterPage = Mathf.Min(Mathf.Max(0, (_soldierRoster.Count - 1) / 3), _soldierRosterPage + 1);
+					return;
+				case "promote_shield":
+					PromoteSelectedSoldier(SoldierClass.Shield);
+					return;
+				case "promote_pike":
+					PromoteSelectedSoldier(SoldierClass.Pike);
+					return;
+				case "promote_blade":
+					PromoteSelectedSoldier(SoldierClass.Blade);
+					return;
+				case "promote_archer":
+					PromoteSelectedSoldier(SoldierClass.Archer);
+					return;
+				case "promote_cavalry":
+					PromoteSelectedSoldier(SoldierClass.Cavalry);
 					return;
 				case "select_map_prev":
 					_selectedMapTemplate = (_selectedMapTemplate + MapTemplateCount - 1) % MapTemplateCount;
@@ -4303,6 +4348,8 @@ private sealed class RoomProjectileEffect
 		_runFailed = false;
 		_showSettlementTransfer = false;
 		_selectedSettlementIndex = -1;
+		GrantRunSoldierExperience(1, "成功撤离");
+		CommitRunSoldierRoster();
 		_status = "撤离成功，等待结算转移。";
 		LogEvent("玩家成功撤离。");
 	}
@@ -5498,6 +5545,162 @@ private sealed class RoomProjectileEffect
 		}
 	}
 
+	private SoldierRecord CloneSoldierRecord(SoldierRecord soldier)
+	{
+		return new SoldierRecord
+		{
+			Name = soldier.Name,
+			Class = soldier.Class,
+			Experience = soldier.Experience,
+		};
+	}
+
+	private string GetSoldierClassLabel(SoldierClass soldierClass) => soldierClass switch
+	{
+		SoldierClass.Recruit => "新兵",
+		SoldierClass.Shield => "盾兵",
+		SoldierClass.Pike => "枪兵",
+		SoldierClass.Blade => "刀兵",
+		SoldierClass.Archer => "弓兵",
+		SoldierClass.Cavalry => "骑兵",
+		_ => "未知",
+	};
+
+	private int GetSoldierPromotionRequirement(SoldierClass targetClass) => targetClass switch
+	{
+		SoldierClass.Shield => 2,
+		SoldierClass.Pike => 2,
+		SoldierClass.Blade => 2,
+		SoldierClass.Archer => 2,
+		SoldierClass.Cavalry => 3,
+		_ => 0,
+	};
+
+	private int GetSoldierPromotionCost(SoldierClass targetClass) => targetClass switch
+	{
+		SoldierClass.Shield => 18,
+		SoldierClass.Pike => 18,
+		SoldierClass.Blade => 18,
+		SoldierClass.Archer => 22,
+		SoldierClass.Cavalry => 40,
+		_ => 0,
+	};
+
+	private bool CanPromoteSoldier(SoldierRecord soldier, SoldierClass targetClass)
+	{
+		return soldier.Class == SoldierClass.Recruit
+			&& targetClass != SoldierClass.Recruit
+			&& soldier.Experience >= GetSoldierPromotionRequirement(targetClass)
+			&& _money >= GetSoldierPromotionCost(targetClass);
+	}
+
+	private Color GetSoldierClassColor(SoldierClass soldierClass) => soldierClass switch
+	{
+		SoldierClass.Recruit => new Color(0.76f, 0.82f, 0.84f),
+		SoldierClass.Shield => new Color(0.46f, 0.84f, 0.7f),
+		SoldierClass.Pike => new Color(0.88f, 0.8f, 0.48f),
+		SoldierClass.Blade => new Color(0.94f, 0.52f, 0.44f),
+		SoldierClass.Archer => new Color(0.6f, 0.78f, 0.98f),
+		SoldierClass.Cavalry => new Color(0.92f, 0.7f, 0.34f),
+		_ => Colors.White,
+	};
+
+	private bool IsSoldierRangedClass(SoldierClass soldierClass) => soldierClass == SoldierClass.Archer;
+
+	private int GetSoldierStrengthValue(SoldierClass soldierClass) => soldierClass switch
+	{
+		SoldierClass.Recruit => 1,
+		SoldierClass.Shield => 2,
+		SoldierClass.Pike => 2,
+		SoldierClass.Blade => 2,
+		SoldierClass.Archer => 2,
+		SoldierClass.Cavalry => 3,
+		_ => 1,
+	};
+
+	private void RecalculatePlayerStrength()
+	{
+		int total = 3;
+		for (int i = 0; i < _runSoldiers.Count; i++)
+		{
+			total += GetSoldierStrengthValue(_runSoldiers[i].Class);
+		}
+
+		_playerStrength = total;
+	}
+
+	private void ApplySoldierClassToRoomUnit(RoomUnit unit, SoldierRecord soldier)
+	{
+		unit.SoldierClass = soldier.Class;
+		unit.IsRanged = IsSoldierRangedClass(soldier.Class);
+		unit.Name = $"{soldier.Name}·{GetSoldierClassLabel(soldier.Class)}";
+
+		switch (soldier.Class)
+		{
+			case SoldierClass.Shield:
+				unit.Hp = 12;
+				unit.MaxHp = 12;
+				unit.DamageMin = 1;
+				unit.DamageMax = 3;
+				unit.AttackRange = 28f;
+				unit.Speed = 142f;
+				unit.MaxStamina = 84f;
+				unit.Stamina = 84f;
+				break;
+			case SoldierClass.Pike:
+				unit.Hp = 9;
+				unit.MaxHp = 9;
+				unit.DamageMin = 2;
+				unit.DamageMax = 4;
+				unit.AttackRange = 44f;
+				unit.Speed = 146f;
+				unit.MaxStamina = 76f;
+				unit.Stamina = 76f;
+				break;
+			case SoldierClass.Blade:
+				unit.Hp = 8;
+				unit.MaxHp = 8;
+				unit.DamageMin = 2;
+				unit.DamageMax = 5;
+				unit.AttackRange = 28f;
+				unit.Speed = 164f;
+				unit.MaxStamina = 78f;
+				unit.Stamina = 78f;
+				break;
+			case SoldierClass.Archer:
+				unit.Hp = 7;
+				unit.MaxHp = 7;
+				unit.DamageMin = 1;
+				unit.DamageMax = 4;
+				unit.AttackRange = 176f;
+				unit.Speed = 148f;
+				unit.MaxStamina = 0f;
+				unit.Stamina = 0f;
+				break;
+			case SoldierClass.Cavalry:
+				unit.Hp = 11;
+				unit.MaxHp = 11;
+				unit.DamageMin = 3;
+				unit.DamageMax = 6;
+				unit.AttackRange = 34f;
+				unit.Speed = 176f;
+				unit.AttackCycleScale = 0.92f;
+				unit.MaxStamina = 104f;
+				unit.Stamina = 104f;
+				break;
+			default:
+				unit.Hp = 8;
+				unit.MaxHp = 8;
+				unit.DamageMin = 1;
+				unit.DamageMax = 3;
+				unit.AttackRange = 28f;
+				unit.Speed = 152f;
+				unit.MaxStamina = 72f;
+				unit.Stamina = 72f;
+				break;
+		}
+	}
+
 	private void SellStashItem(int index)
 	{
 		if (index < 0 || index >= _stash.Count)
@@ -5580,7 +5783,7 @@ private sealed class RoomProjectileEffect
 
 	private void RecruitSoldierInternal()
 	{
-		_soldierRoster.Add(new SoldierRecord { Name = $"士兵{_nextSoldierId}" });
+		_soldierRoster.Add(new SoldierRecord { Name = $"士兵{_nextSoldierId}", Class = SoldierClass.Recruit, Experience = 0 });
 		_nextSoldierId++;
 	}
 
@@ -5594,7 +5797,42 @@ private sealed class RoomProjectileEffect
 
 		_money -= RecruitCost;
 		RecruitSoldierInternal();
+		_soldierRosterPage = Mathf.Max(0, (_soldierRoster.Count - 1) / 3);
+		_selectedSoldierIndex = _soldierRoster.Count - 1;
 		_status = $"已征募新兵，当前士兵数：{_soldierRoster.Count}。";
+	}
+
+	private void PromoteSelectedSoldier(SoldierClass targetClass)
+	{
+		if (_selectedSoldierIndex < 0 || _selectedSoldierIndex >= _soldierRoster.Count)
+		{
+			return;
+		}
+
+		SoldierRecord soldier = _soldierRoster[_selectedSoldierIndex];
+		if (!CanPromoteSoldier(soldier, targetClass))
+		{
+			return;
+		}
+
+		_money -= GetSoldierPromotionCost(targetClass);
+		soldier.Class = targetClass;
+		_status = $"{soldier.Name} 已升阶为{GetSoldierClassLabel(targetClass)}。";
+	}
+
+	private void GrantRunSoldierExperience(int amount, string reason)
+	{
+		if (amount <= 0 || _runSoldiers.Count == 0)
+		{
+			return;
+		}
+
+		for (int i = 0; i < _runSoldiers.Count; i++)
+		{
+			_runSoldiers[i].Experience += amount;
+		}
+
+		LogEvent($"幸存士兵因{reason}获得了 {amount} 点经验。");
 	}
 
 	private void ApplySoldierLosses(int remainingSoldiers)
@@ -5629,6 +5867,8 @@ private sealed class RoomProjectileEffect
 
 			LogEvent($"{name} 阵亡。");
 		}
+
+		RecalculatePlayerStrength();
 	}
 
 	private string RollLootItem()
@@ -5787,6 +6027,67 @@ private sealed class RoomProjectileEffect
 		{
 			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
 		}
+
+		Rect2 soldierRect = new(new Vector2(panel.End.X - Ui(320f), panel.Position.Y + Ui(116f)), new Vector2(Ui(288f), Ui(148f)));
+		DrawRect(soldierRect, new Color(0.09f, 0.1f, 0.12f), true);
+		DrawRect(soldierRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
+		DrawString(ThemeDB.FallbackFont, soldierRect.Position + new Vector2(Ui(12f), Ui(22f)), "士兵 roster", HorizontalAlignment.Left, -1f, UiFont(16), Colors.White);
+		int soldierPageCount = Mathf.Max(1, (_soldierRoster.Count + 2) / 3);
+		_soldierRosterPage = Mathf.Clamp(_soldierRosterPage, 0, soldierPageCount - 1);
+		Rect2 soldierPrevRect = new(new Vector2(soldierRect.End.X - Ui(62f), soldierRect.Position.Y + Ui(8f)), new Vector2(Ui(22f), Ui(20f)));
+		Rect2 soldierNextRect = new(new Vector2(soldierRect.End.X - Ui(34f), soldierRect.Position.Y + Ui(8f)), new Vector2(Ui(22f), Ui(20f)));
+		DrawButton(soldierPrevRect, "<", new Color(0.22f, 0.24f, 0.29f));
+		DrawButton(soldierNextRect, ">", new Color(0.22f, 0.24f, 0.29f));
+		if (_soldierRosterPage > 0)
+		{
+			_buttons.Add(new ButtonDef(soldierPrevRect, "soldier_page_prev"));
+		}
+		if (_soldierRosterPage < soldierPageCount - 1)
+		{
+			_buttons.Add(new ButtonDef(soldierNextRect, "soldier_page_next"));
+		}
+		DrawString(ThemeDB.FallbackFont, soldierRect.Position + new Vector2(Ui(186f), Ui(22f)), $"{_soldierRosterPage + 1}/{soldierPageCount}", HorizontalAlignment.Left, Ui(42f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+		float soldierListY = soldierRect.Position.Y + Ui(34f);
+		int soldierStartIndex = _soldierRosterPage * 3;
+		int visibleSoldierCount = Mathf.Min(_soldierRoster.Count - soldierStartIndex, 3);
+		for (int rowIndex = 0; rowIndex < visibleSoldierCount; rowIndex++)
+		{
+			int soldierIndex = soldierStartIndex + rowIndex;
+			SoldierRecord soldier = _soldierRoster[soldierIndex];
+			Rect2 row = new(new Vector2(soldierRect.Position.X + Ui(10f), soldierListY), new Vector2(soldierRect.Size.X - Ui(20f), Ui(20f)));
+			DrawRect(row, new Color(0.12f, 0.13f, 0.16f), true);
+			DrawRect(row, soldierIndex == _selectedSoldierIndex ? new Color(0.95f, 0.86f, 0.48f, 0.95f) : new Color(0.28f, 0.31f, 0.36f), false, soldierIndex == _selectedSoldierIndex ? 2f : 1f);
+			DrawString(ThemeDB.FallbackFont, row.Position + new Vector2(Ui(6f), Ui(14f)), soldier.Name, HorizontalAlignment.Left, Ui(112f), UiFont(11), Colors.White);
+			DrawString(ThemeDB.FallbackFont, row.Position + new Vector2(Ui(122f), Ui(14f)), GetSoldierClassLabel(soldier.Class), HorizontalAlignment.Left, Ui(58f), UiFont(11), GetSoldierClassColor(soldier.Class));
+			DrawString(ThemeDB.FallbackFont, row.Position + new Vector2(Ui(184f), Ui(14f)), $"XP {soldier.Experience}", HorizontalAlignment.Left, Ui(56f), UiFont(10), new Color(0.82f, 0.88f, 0.94f));
+			_buttons.Add(new ButtonDef(row, "select_soldier", soldierIndex));
+			soldierListY += Ui(23f);
+		}
+		if (_soldierRoster.Count > visibleSoldierCount && _selectedSoldierIndex < 0)
+		{
+			DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X + Ui(12f), soldierRect.End.Y - Ui(12f)), $"总数 {_soldierRoster.Count}，可翻页查看其余成员", HorizontalAlignment.Left, soldierRect.Size.X - Ui(24f), UiFont(10), new Color(0.72f, 0.76f, 0.82f));
+		}
+		if (_selectedSoldierIndex >= 0 && _selectedSoldierIndex < _soldierRoster.Count)
+		{
+			SoldierRecord selectedSoldier = _soldierRoster[_selectedSoldierIndex];
+			float actionY = soldierRect.Position.Y + Ui(108f);
+			DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY), $"选中：{selectedSoldier.Name}  {GetSoldierClassLabel(selectedSoldier.Class)}  XP {selectedSoldier.Experience}", HorizontalAlignment.Left, Ui(320f), UiFont(12), Colors.White);
+			if (selectedSoldier.Class == SoldierClass.Recruit)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(18f)), "基础升阶需求 XP 2 / 18 金。骑兵需求 XP 3 / 40 金。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 shieldRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(38f)), new Vector2(Ui(54f), Ui(24f)));
+				Rect2 pikeRect = new(new Vector2(soldierRect.Position.X + Ui(60f), actionY + Ui(38f)), new Vector2(Ui(54f), Ui(24f)));
+				Rect2 bladeRect = new(new Vector2(soldierRect.Position.X + Ui(120f), actionY + Ui(38f)), new Vector2(Ui(54f), Ui(24f)));
+				Rect2 archerRect = new(new Vector2(soldierRect.Position.X + Ui(180f), actionY + Ui(38f)), new Vector2(Ui(54f), Ui(24f)));
+				Rect2 cavalryRect = new(new Vector2(soldierRect.Position.X + Ui(240f), actionY + Ui(38f)), new Vector2(Ui(54f), Ui(24f)));
+				DrawPromotionButton(shieldRect, "盾", selectedSoldier, SoldierClass.Shield, "promote_shield");
+				DrawPromotionButton(pikeRect, "枪", selectedSoldier, SoldierClass.Pike, "promote_pike");
+				DrawPromotionButton(bladeRect, "刀", selectedSoldier, SoldierClass.Blade, "promote_blade");
+				DrawPromotionButton(archerRect, "弓", selectedSoldier, SoldierClass.Archer, "promote_archer");
+				DrawPromotionButton(cavalryRect, "骑", selectedSoldier, SoldierClass.Cavalry, "promote_cavalry");
+			}
+		}
+
 		DrawRect(stashRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(shopRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(stashRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
@@ -6469,6 +6770,16 @@ private sealed class RoomProjectileEffect
 		DrawRect(rect, color, true);
 		DrawRect(rect, Colors.White, false, 1.5f);
 		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), rect.Size.Y - Ui(8f)), text, HorizontalAlignment.Left, rect.Size.X - Ui(16f), UiFont(13), Colors.White);
+	}
+
+	private void DrawPromotionButton(Rect2 rect, string text, SoldierRecord soldier, SoldierClass targetClass, string action)
+	{
+		bool canPromote = CanPromoteSoldier(soldier, targetClass);
+		DrawButton(rect, text, canPromote ? GetSoldierClassColor(targetClass) : new Color(0.24f, 0.24f, 0.28f));
+		if (canPromote)
+		{
+			_buttons.Add(new ButtonDef(rect, action));
+		}
 	}
 
 	private void DrawDashedRect(Rect2 rect, Color color)

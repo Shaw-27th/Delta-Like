@@ -155,9 +155,36 @@
 
 - Hideout buy/sell flow is active.
 - Recruitment flow is active.
+- Recruitment currently hires `Recruit` soldiers by default.
 - A default roster seed exists.
 - New-run starting money is currently boosted for testing.
 - Current test start money: `3000`
+
+## Soldier Progression Snapshot
+
+### Current live first wave
+
+- Soldiers now persist with both class and experience.
+- The first live class set is:
+- `Recruit`,
+- `Shield`,
+- `Pike`,
+- `Blade`,
+- `Archer`,
+- `Cavalry`.
+- The hideout now includes a simple soldier roster panel.
+- Recruits can be promoted out of run from that roster panel.
+- Promotion currently consumes money and requires stored experience.
+- Cavalry has the highest first-wave promotion requirement and cost.
+- Surviving soldiers gain experience when clearing rooms and when extracting successfully.
+- In room combat, soldier class now affects core combat parameters such as:
+- health,
+- speed,
+- damage,
+- range,
+- stamina,
+- ranged or melee behavior.
+- Cavalry currently also gets a heavier-impact attack profile than baseline line troops.
 
 ## Inventory Progress Snapshot
 
