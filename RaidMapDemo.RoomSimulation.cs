@@ -547,6 +547,11 @@ public partial class RaidMapDemo
 			return;
 		}
 
+		if (TryStartBladeRush(attacker, target, dir, distance))
+		{
+			return;
+		}
+
 		if (CanStartAttack(attacker) && distance <= attacker.AttackRange + 4f)
 		{
 			BeginRoomAttack(attacker, target, 14f);
@@ -623,6 +628,45 @@ public partial class RaidMapDemo
 		attacker.ActiveSkillCooldown = 5f;
 		attacker.Facing = dir;
 		BeginRoomAttack(attacker, target, attacker.SoldierClass == SoldierClass.VanguardPike ? 28f : 20f, SoldierActiveSkill.PikeThrust);
+		return true;
+	}
+
+	private bool TryStartBladeRush(RoomUnit attacker, RoomUnit target, Vector2 dir, float distance)
+	{
+		if (attacker.ActiveSkill != SoldierActiveSkill.BladeRush
+			|| attacker.ActiveSkillCooldown > 0f
+			|| attacker.MaxStamina <= 0f
+			|| attacker.Stamina < 18f
+			|| distance < attacker.AttackRange + 8f
+			|| distance > 96f
+			|| !CanStartAttack(attacker))
+		{
+			return false;
+		}
+
+		attacker.Stamina = Mathf.Max(0f, attacker.Stamina - 18f);
+		attacker.ActiveSkillCooldown = 4.5f;
+		attacker.Facing = dir;
+		BeginRoomAttack(attacker, target, HasEnhancedBladeRush(attacker.SoldierClass) ? 24f : 18f, SoldierActiveSkill.BladeRush);
+		return true;
+	}
+
+	private bool TryStartSplitArrow(RoomUnit attacker, RoomUnit target, float distance)
+	{
+		if (attacker.ActiveSkill != SoldierActiveSkill.SplitArrow
+			|| attacker.ActiveSkillCooldown > 0f
+			|| attacker.MaxStamina <= 0f
+			|| attacker.Stamina < 16f
+			|| distance < attacker.AttackRange * 0.46f
+			|| distance > attacker.AttackRange + 18f
+			|| !CanStartAttack(attacker))
+		{
+			return false;
+		}
+
+		attacker.Stamina = Mathf.Max(0f, attacker.Stamina - 16f);
+		attacker.ActiveSkillCooldown = 5f;
+		BeginRoomAttack(attacker, target, 36f, SoldierActiveSkill.SplitArrow);
 		return true;
 	}
 
@@ -736,7 +780,10 @@ public partial class RaidMapDemo
 		{
 			if (distance <= attacker.AttackRange + Ui(10f) && CanStartAttack(attacker))
 			{
-				BeginRoomAttack(attacker, target, 28f);
+				if (!TryStartSplitArrow(attacker, target, distance))
+				{
+					BeginRoomAttack(attacker, target, 28f);
+				}
 			}
 
 			attacker.CombatState = RoomCombatState.Retreat;
@@ -754,7 +801,10 @@ public partial class RaidMapDemo
 
 		if (CanStartAttack(attacker))
 		{
-			BeginRoomAttack(attacker, target, 28f);
+			if (!TryStartSplitArrow(attacker, target, distance))
+			{
+				BeginRoomAttack(attacker, target, 28f);
+			}
 			return;
 		}
 
@@ -797,13 +847,35 @@ public partial class RaidMapDemo
 		attacker.PendingAttackTarget = target;
 		attacker.PendingAttackDamage = _rng.RandiRange(attacker.DamageMin, attacker.DamageMax);
 		attacker.PendingAttackSkill = skill;
-		attacker.PendingAttackHeavy = attacker.IsHero || attacker.IsElite || attacker.SoldierClass == SoldierClass.Cavalry || attacker.SoldierClass == SoldierClass.VanguardPike;
+		attacker.PendingAttackHeavy = attacker.IsHero
+			|| attacker.IsElite
+			|| attacker.SoldierClass == SoldierClass.Cavalry
+			|| attacker.SoldierClass == SoldierClass.VanguardPike
+			|| attacker.SoldierClass == SoldierClass.VanguardBlade;
 		attacker.PendingAttackRangeSlack = rangeSlack;
-		attacker.PendingAttackLungeDistance = attacker.SoldierClass == SoldierClass.Cavalry ? 16f : (skill == SoldierActiveSkill.PikeThrust ? 6f : 0f);
+		attacker.PendingAttackLungeDistance = attacker.SoldierClass == SoldierClass.Cavalry
+			? 16f
+			: skill == SoldierActiveSkill.PikeThrust
+				? 6f
+				: skill == SoldierActiveSkill.BladeRush
+					? (HasEnhancedBladeRush(attacker.SoldierClass) ? 24f : 18f)
+					: skill == SoldierActiveSkill.SplitArrow
+						? 0f
+					: 0f;
 		if (skill == SoldierActiveSkill.PikeThrust)
 		{
 			attacker.AttackWindupTime = attacker.SoldierClass == SoldierClass.VanguardPike ? 0.13f : 0.11f;
 			attacker.RecoveryTime = attacker.SoldierClass == SoldierClass.VanguardPike ? 0.11f : 0.09f;
+		}
+		else if (skill == SoldierActiveSkill.BladeRush)
+		{
+			attacker.AttackWindupTime = HasEnhancedBladeRush(attacker.SoldierClass) ? 0.12f : 0.1f;
+			attacker.RecoveryTime = HasEnhancedBladeRush(attacker.SoldierClass) ? 0.12f : 0.1f;
+		}
+		else if (skill == SoldierActiveSkill.SplitArrow)
+		{
+			attacker.AttackWindupTime = HasEnhancedSplitArrow(attacker.SoldierClass) ? 0.14f : 0.12f;
+			attacker.RecoveryTime = HasEnhancedSplitArrow(attacker.SoldierClass) ? 0.12f : 0.1f;
 		}
 		else
 		{
@@ -812,6 +884,10 @@ public partial class RaidMapDemo
 		}
 		float baseCooldown = skill == SoldierActiveSkill.PikeThrust
 			? (attacker.SoldierClass == SoldierClass.VanguardPike ? 0.58f : 0.52f)
+			: skill == SoldierActiveSkill.BladeRush
+				? (HasEnhancedBladeRush(attacker.SoldierClass) ? 0.54f : 0.48f)
+				: skill == SoldierActiveSkill.SplitArrow
+					? (HasEnhancedSplitArrow(attacker.SoldierClass) ? 0.6f : 0.52f)
 			: attacker.IsRanged ? 0.42f : (attacker.PendingAttackHeavy ? 0.54f : 0.46f);
 		attacker.AttackCooldown = baseCooldown * Mathf.Max(0.1f, attacker.AttackCycleScale);
 		attacker.CombatState = RoomCombatState.AttackCommit;
@@ -891,17 +967,36 @@ public partial class RaidMapDemo
 			return;
 		}
 
-		PlayAttackSfx(attacker.IsRanged, heavy);
+		if (pendingSkill == SoldierActiveSkill.BladeRush)
+		{
+			ResolveBladeRush(attacker, target, dir, damage, heavy);
+			return;
+		}
+
 		if (attacker.IsRanged)
 		{
-			SpawnRoomProjectileEffect(attacker.Position + dir * 10f, target, damage, attacker.IsPlayerSide, heavy);
+			ApplyArcherCritBonus(attacker, target, ref damage, ref heavy);
+			PlayAttackSfx(true, heavy);
+			if (pendingSkill == SoldierActiveSkill.SplitArrow)
+			{
+				ResolveSplitArrow(attacker, target, damage, heavy);
+			}
+			else
+			{
+				SpawnRoomProjectileEffect(attacker.Position + dir * 10f, target, damage, attacker.IsPlayerSide, heavy);
+			}
 		}
 		else
 		{
+			PlayAttackSfx(false, heavy);
 			if (attacker.PassiveSkill == SoldierPassiveSkill.Brace && distance >= attacker.AttackRange * 0.72f)
 			{
 				damage += HasStrengthenedPikePassive(attacker.SoldierClass) ? 2 : 1;
 				heavy = true;
+			}
+			else if (attacker.PassiveSkill == SoldierPassiveSkill.Executioner)
+			{
+				ApplyBladePassiveBonus(attacker, target, ref damage, ref heavy);
 			}
 
 			ApplyProjectileOrSlashHit(target, damage, dir, heavy, false);
@@ -973,6 +1068,133 @@ public partial class RaidMapDemo
 
 		PlayAttackSfx(false, true);
 		SpawnPikeThrustShockwave(attacker, enhanced);
+	}
+
+	private void ResolveBladeRush(RoomUnit attacker, RoomUnit target, Vector2 dir, int damage, bool heavy)
+	{
+		bool enhanced = HasEnhancedBladeRush(attacker.SoldierClass);
+		if (attacker.PendingAttackLungeDistance > 0f)
+		{
+			attacker.Position = ClampToRoom(attacker.Position + dir * attacker.PendingAttackLungeDistance);
+		}
+
+		ApplyBladePassiveBonus(attacker, target, ref damage, ref heavy);
+		int strikeDamage = damage + (enhanced ? 3 : 2);
+		float stagger = enhanced ? 0.4f : 0.28f;
+		float force = enhanced ? 1280f : 960f;
+		float duration = enhanced ? 0.92f : 0.7f;
+		ApplyDirectHit(target, strikeDamage, dir, stagger, heavy ? 0.08f : 0.06f, force, duration, false);
+
+		if (enhanced)
+		{
+			for (int i = 0; i < _roomUnits.Count; i++)
+			{
+				RoomUnit candidate = _roomUnits[i];
+				if (!candidate.IsAlive || candidate == target || candidate.IsPlayerSide == attacker.IsPlayerSide)
+				{
+					continue;
+				}
+
+				float radius = 24f + GetRoomUnitCollisionRadius(candidate);
+				if (candidate.Position.DistanceSquaredTo(target.Position) > radius * radius)
+				{
+					continue;
+				}
+
+				ApplyDirectHit(candidate, Mathf.Max(2, strikeDamage - 3), dir, 0.22f, 0.05f, 720f, 0.48f, false);
+			}
+
+			_roomShockwaveEffects.Add(new RoomShockwaveEffect
+			{
+				Origin = attacker.Position,
+				Direction = dir,
+				Length = 44f,
+				Radius = 5f,
+				MaxRadius = 18f,
+				TimeLeft = 0.18f,
+				Duration = 0.18f,
+				PlayerSide = attacker.IsPlayerSide,
+			});
+		}
+
+		PlayAttackSfx(false, true);
+		SpawnRoomMeleeArcEffect(attacker, attacker.IsPlayerSide, true);
+	}
+
+	private void ApplyBladePassiveBonus(RoomUnit attacker, RoomUnit target, ref int damage, ref bool heavy)
+	{
+		if (attacker.PassiveSkill != SoldierPassiveSkill.Executioner || target == null || !target.IsAlive)
+		{
+			return;
+		}
+
+		bool wounded = target.MaxHp > 0 && target.Hp <= Mathf.CeilToInt(target.MaxHp * 0.5f);
+		bool controlled = target.StaggerTime > 0.05f || target.KnockbackTime > 0.05f || target.CombatState == RoomCombatState.Retreat;
+		if (!wounded && !controlled)
+		{
+			return;
+		}
+
+		damage += HasStrengthenedBladePassive(attacker.SoldierClass) ? 2 : 1;
+		heavy = true;
+		if (HasStrengthenedBladePassive(attacker.SoldierClass))
+		{
+			attacker.AttackCooldown *= 0.72f;
+		}
+	}
+
+	private void ApplyArcherCritBonus(RoomUnit attacker, RoomUnit target, ref int damage, ref bool heavy)
+	{
+		if (attacker.PassiveSkill != SoldierPassiveSkill.Deadeye)
+		{
+			return;
+		}
+
+		float critChance = HasStrengthenedArcherPassive(attacker.SoldierClass) ? 0.34f : 0.2f;
+		if (_rng.Randf() >= critChance)
+		{
+			return;
+		}
+
+		float critScale = HasStrengthenedArcherPassive(attacker.SoldierClass) ? 2.15f : 1.8f;
+		damage = Mathf.Max(damage + 1, Mathf.RoundToInt(damage * critScale));
+		heavy = true;
+		if (target != null && target.IsAlive)
+		{
+			target.HitFlash = Mathf.Max(target.HitFlash, 0.14f);
+		}
+	}
+
+	private void ResolveSplitArrow(RoomUnit attacker, RoomUnit primaryTarget, int damage, bool heavy)
+	{
+		bool enhanced = HasEnhancedSplitArrow(attacker.SoldierClass);
+		int extraShots = enhanced ? 3 : 2;
+		float searchRadius = enhanced ? 82f : 58f;
+		int splashDamage = Mathf.Max(1, enhanced ? damage - 1 : damage - 2);
+		Vector2 origin = attacker.Position + attacker.Facing.Normalized() * 10f;
+		SpawnRoomProjectileEffect(origin, primaryTarget, damage, attacker.IsPlayerSide, heavy);
+
+		int spawned = 0;
+		for (int i = 0; i < _roomUnits.Count; i++)
+		{
+			RoomUnit candidate = _roomUnits[i];
+			if (!candidate.IsAlive || candidate == primaryTarget || candidate.IsPlayerSide == attacker.IsPlayerSide)
+			{
+				continue;
+			}
+
+			if (candidate.Position.DistanceSquaredTo(primaryTarget.Position) > searchRadius * searchRadius)
+			{
+				continue;
+			}
+
+			SpawnRoomProjectileEffect(origin, candidate, splashDamage, attacker.IsPlayerSide, enhanced);
+			spawned++;
+			if (spawned >= extraShots)
+			{
+				break;
+			}
+		}
 	}
 
 	private void SpawnPikeThrustShockwave(RoomUnit attacker, bool enhanced)

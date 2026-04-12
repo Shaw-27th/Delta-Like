@@ -197,14 +197,71 @@
 
 ### Blade
 
-- HP: `8`
-- Damage: `2-5`
+- HP: `9`
+- Damage: `3-6`
 - Armor: `0`
-- Range: `28`
-- Speed: `164`
-- Stamina: `78`
-- Active: `Sprint`
-- Passive: none
+- Range: `30`
+- Speed: `168`
+- Stamina: `86`
+- AttackCycleScale: `0.92`
+- Active: none
+- Passive:
+- `Executioner`
+
+### Elite Blade
+
+- HP: `12`
+- Damage: `4-7`
+- Armor: `1`
+- Range: `32`
+- Speed: `174`
+- Stamina: `96`
+- AttackCycleScale: `0.86`
+- Active:
+- `Blade Rush`
+- Passive:
+- `Executioner`
+- Visual:
+- helmet,
+- upgraded blade
+
+### Ironhelm Bladeward
+
+- HP: `15`
+- Damage: `5-8`
+- Armor: `2`
+- Range: `34`
+- Speed: `178`
+- Stamina: `108`
+- AttackCycleScale: `0.82`
+- Active:
+- `Blade Rush`
+- Passive:
+- strengthened `Executioner`
+- Visual:
+- helmet,
+- torso armor,
+- upgraded blade
+
+### Vanguard Bladeward
+
+- HP: `19`
+- Damage: `6-10`
+- Armor: `3`
+- Range: `36`
+- Speed: `182`
+- Stamina: `120`
+- AttackCycleScale: `0.76`
+- Active:
+- `Blade Rush`
+- upgraded into a stronger cleaving assault
+- short shockwave flourish
+- Passive:
+- strengthened `Executioner`
+- Visual:
+- helmet,
+- torso armor,
+- ornate blade
 
 ### Archer
 
@@ -213,9 +270,65 @@
 - Armor: `0`
 - Range: `176`
 - Speed: `148`
-- Stamina: `0`
+- Stamina: `72`
+- AttackCycleScale: `0.96`
 - Active: none
-- Passive: none
+- Passive:
+- `Deadeye`
+
+### Elite Archer
+
+- HP: `10`
+- Damage: `2-5`
+- Armor: `1`
+- Range: `184`
+- Speed: `152`
+- Stamina: `82`
+- AttackCycleScale: `0.92`
+- Active:
+- `Split Arrow`
+- Passive:
+- `Deadeye`
+- Visual:
+- helmet,
+- upgraded bow
+
+### Ironhelm Huntsman
+
+- HP: `13`
+- Damage: `3-6`
+- Armor: `2`
+- Range: `190`
+- Speed: `156`
+- Stamina: `92`
+- AttackCycleScale: `0.88`
+- Active:
+- `Split Arrow`
+- Passive:
+- strengthened `Deadeye`
+- Visual:
+- helmet,
+- torso armor,
+- upgraded bow
+
+### Sky-Piercer Archer
+
+- HP: `16`
+- Damage: `4-8`
+- Armor: `3`
+- Range: `198`
+- Speed: `160`
+- Stamina: `104`
+- AttackCycleScale: `0.82`
+- Active:
+- `Split Arrow`
+- upgraded into a denser multishot volley
+- Passive:
+- strengthened `Deadeye`
+- Visual:
+- helmet,
+- torso armor,
+- ornate bow
 
 ## Shield Rush Rules
 
@@ -272,6 +385,60 @@
 - can pierce multiple enemies,
 - stronger route-aligned wave effect
 
+## Blade Rush Rules
+
+- Current users:
+- `Elite Blade`
+- `Ironhelm Bladeward`
+- `Vanguard Bladeward`
+- Cooldown: `4.5s`
+- Stamina cost: `18`
+- Base trigger window:
+- target farther than `AttackRange + 8`
+- target closer than or equal to `96`
+- attacker must be able to act and have enough stamina
+- Base rush:
+- short lunge into melee
+- front-loaded heavy slash
+- works as a committed gap-close instead of sprint
+- Passive interaction:
+- `Executioner` adds damage and extra impact against wounded or already controlled targets
+- strengthened `Executioner` also refunds part of attack cooldown on trigger
+
+### Vanguard Bladeward Blade Rush upgrade
+
+- Higher lunge distance
+- Higher damage
+- Stronger knockback and stagger
+- Cleaves nearby enemies around the main target
+- Adds a short shockwave flourish
+
+## Split Arrow Rules
+
+- Current users:
+- `Elite Archer`
+- `Ironhelm Huntsman`
+- `Sky-Piercer Archer`
+- Cooldown: `5s`
+- Stamina cost: `16`
+- Base trigger window:
+- target farther than `46%` of attack range
+- target within `AttackRange + 18`
+- attacker must be able to act and have enough stamina
+- Base split shot:
+- keeps ranged footing instead of dashing
+- fires at the primary target and up to `2` nearby extra targets
+- Passive interaction:
+- `Deadeye` gives ranged attacks a critical-hit chance
+- strengthened `Deadeye` raises both critical rate and critical damage
+
+### Sky-Piercer Archer Split Arrow upgrade
+
+- Up to `3` extra targets
+- Wider target search radius
+- Stronger secondary arrows
+- Heavier impact feel on the split volley
+
 ## Promotion Path
 
 - `Recruit -> Shield`
@@ -283,7 +450,13 @@
 - `Elite Pike -> Ironhelm Pikeward`
 - `Ironhelm Pikeward -> Vanguard Pikeward`
 - `Recruit -> Blade`
+- `Blade -> Elite Blade`
+- `Elite Blade -> Ironhelm Bladeward`
+- `Ironhelm Bladeward -> Vanguard Bladeward`
 - `Recruit -> Archer`
+- `Archer -> Elite Archer`
+- `Elite Archer -> Ironhelm Huntsman`
+- `Ironhelm Huntsman -> Sky-Piercer Archer`
 
 ## Promotion Costs And XP
 
@@ -296,7 +469,13 @@
 - `Ironhelm Pikeward`: `XP 10`, `70` money
 - `Vanguard Pikeward`: `XP 15`, `110` money
 - `Blade`: `XP 2`, `18` money
+- `Elite Blade`: `XP 6`, `42` money
+- `Ironhelm Bladeward`: `XP 10`, `70` money
+- `Vanguard Bladeward`: `XP 15`, `110` money
 - `Archer`: `XP 2`, `22` money
+- `Elite Archer`: `XP 6`, `42` money
+- `Ironhelm Huntsman`: `XP 10`, `70` money
+- `Sky-Piercer Archer`: `XP 15`, `110` money
 
 ## Soldier Experience Rules
 

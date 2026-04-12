@@ -255,8 +255,8 @@ public partial class RaidMapDemo
 		float runSwing = Mathf.Sin(runPhase);
 		float runLift = Mathf.Abs(Mathf.Sin(runPhase)) * (isRunning ? 1.2f : 0.2f);
 		float attackPose = GetRoomAttackPose(unit);
-		bool armoredClass = unit.SoldierClass is SoldierClass.EliteShield or SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo or SoldierClass.ElitePike or SoldierClass.IronhelmPike or SoldierClass.VanguardPike;
-		bool helmetClass = unit.SoldierClass is SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo or SoldierClass.IronhelmPike or SoldierClass.VanguardPike;
+		bool armoredClass = unit.SoldierClass is SoldierClass.EliteShield or SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo or SoldierClass.ElitePike or SoldierClass.IronhelmPike or SoldierClass.VanguardPike or SoldierClass.IronhelmBlade or SoldierClass.VanguardBlade or SoldierClass.IronhelmArcher or SoldierClass.VanguardArcher;
+		bool helmetClass = unit.SoldierClass is SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo or SoldierClass.IronhelmPike or SoldierClass.VanguardPike or SoldierClass.EliteBlade or SoldierClass.IronhelmBlade or SoldierClass.VanguardBlade or SoldierClass.EliteArcher or SoldierClass.IronhelmArcher or SoldierClass.VanguardArcher;
 		float sizeScale = unit.IsHero ? 1.46f : ((unit.IsElite || armoredClass) ? 1.34f : 1.1f);
 		float torsoHalfWidth = (unit.IsRanged ? 4.2f : 5.2f) * sizeScale;
 		float torsoHeight = (unit.IsHero ? 13f : 11f) * sizeScale;
@@ -401,13 +401,13 @@ public partial class RaidMapDemo
 
 	private void DrawRoomMeleeSilhouette(RoomUnit unit, Vector2 handFront, Vector2 handBack, Vector2 hip, Vector2 faceSide, Color outline, Color accent, float attackPose)
 	{
-		DrawRoomBladeSilhouette(handFront, faceSide, outline, accent, attackPose);
+		DrawRoomBladeSilhouette(handFront, faceSide, outline, accent, attackPose, false, false);
 	}
 
-	private void DrawRoomRangedSilhouette(RoomUnit unit, Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose)
+	private void DrawRoomRangedSilhouette(RoomUnit unit, Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose, bool eliteBow = false, bool ornateBow = false)
 	{
 		Vector2 bowCenter = handFront + new Vector2(faceSide.X * (3.2f + attackPose * 1.8f), -1.6f - attackPose * 1.2f);
-		float bowLen = unit.IsElite ? 8.6f : 7.8f;
+		float bowLen = ornateBow ? 9.8f : eliteBow || unit.IsElite ? 8.8f : 7.8f;
 		Vector2 bowTop = bowCenter + new Vector2(0f, -bowLen);
 		Vector2 bowBottom = bowCenter + new Vector2(0f, bowLen);
 		float bowStart = faceSide.X > 0f ? -1.25f : Mathf.Pi - 1.9f;
@@ -422,6 +422,11 @@ public partial class RaidMapDemo
 		DrawLine(arrowStart, arrowEnd, accent, 1.2f);
 		DrawLine(arrowEnd, arrowEnd + new Vector2(-faceSide.X * 3f, -1.8f), accent, 1f);
 		DrawLine(arrowEnd, arrowEnd + new Vector2(-faceSide.X * 3f, 1.8f), accent, 1f);
+		if (ornateBow)
+		{
+			DrawCircle(bowCenter + new Vector2(0f, -bowLen * 0.56f), 0.9f, accent.Lerp(Colors.White, 0.18f));
+			DrawCircle(bowCenter + new Vector2(0f, bowLen * 0.56f), 0.9f, accent.Lerp(Colors.White, 0.18f));
+		}
 	}
 
 	private void DrawRoomSoldierClassSilhouette(RoomUnit unit, Vector2 handFront, Vector2 handBack, Vector2 hip, Vector2 faceSide, Color outline, Color accent, float attackPose)
@@ -459,24 +464,51 @@ public partial class RaidMapDemo
 			case SoldierClass.Archer:
 				DrawRoomRangedSilhouette(unit, handFront, handBack, faceSide, outline, accent, attackPose);
 				break;
+			case SoldierClass.EliteArcher:
+			case SoldierClass.IronhelmArcher:
+				DrawRoomRangedSilhouette(unit, handFront, handBack, faceSide, outline, accent, attackPose, true, false);
+				break;
+			case SoldierClass.VanguardArcher:
+				DrawRoomRangedSilhouette(unit, handFront, handBack, faceSide, outline, accent, attackPose, true, true);
+				break;
+			case SoldierClass.EliteBlade:
+				DrawRoomBladeSilhouette(handFront, faceSide, outline, accent, attackPose, false, false);
+				break;
+			case SoldierClass.IronhelmBlade:
+				DrawRoomBladeSilhouette(handFront, faceSide, outline, accent, attackPose, false, false);
+				break;
+			case SoldierClass.VanguardBlade:
+				DrawRoomBladeSilhouette(handFront, faceSide, outline, accent, attackPose, true, true);
+				break;
 			default:
-				DrawRoomBladeSilhouette(handFront, faceSide, outline, accent, attackPose);
+				DrawRoomBladeSilhouette(handFront, faceSide, outline, accent, attackPose, false, false);
 				break;
 		}
 	}
 
-	private void DrawRoomBladeSilhouette(Vector2 handFront, Vector2 faceSide, Color outline, Color accent, float attackPose)
+	private void DrawRoomBladeSilhouette(Vector2 handFront, Vector2 faceSide, Color outline, Color accent, float attackPose, bool broadBlade, bool ornateBlade)
 	{
 		float slashBias = attackPose;
 		Vector2 weaponBase = handFront + new Vector2(faceSide.X * 1.6f, -0.8f);
-		Vector2 weaponTip = weaponBase + new Vector2(faceSide.X * (10f + slashBias * 5f), -4.5f - slashBias * 4.2f);
-		DrawLine(weaponBase, weaponTip, outline, 3f);
-		DrawLine(weaponBase, weaponTip, accent, 1.6f);
+		Vector2 weaponTip = weaponBase + new Vector2(faceSide.X * ((ornateBlade ? 12f : broadBlade ? 11f : 10f) + slashBias * 5f), -4.5f - slashBias * (ornateBlade ? 4.8f : 4.2f));
+		DrawLine(weaponBase, weaponTip, outline, ornateBlade ? 3.6f : 3f);
+		DrawLine(weaponBase, weaponTip, accent, ornateBlade ? 2f : 1.6f);
 
 		Vector2 guardA = weaponBase + new Vector2(0f, -2.6f);
 		Vector2 guardB = weaponBase + new Vector2(0f, 2.6f);
 		DrawLine(guardA, guardB, outline, 2f);
 		DrawLine(guardA, guardB, accent.Lerp(Colors.White, 0.2f), 1f);
+		if (broadBlade || ornateBlade)
+		{
+			Vector2 bladeMid = weaponBase.Lerp(weaponTip, 0.52f);
+			Vector2 bladeSide = new Vector2(-faceSide.Y, faceSide.X) * (ornateBlade ? 2.4f : 1.6f);
+			DrawLine(bladeMid - bladeSide, weaponTip, accent.Lerp(Colors.White, ornateBlade ? 0.24f : 0.12f), 1.2f);
+		}
+		if (ornateBlade)
+		{
+			Vector2 pommel = weaponBase - new Vector2(faceSide.X * 2f, 0f);
+			DrawCircle(pommel, 1.2f, accent.Lerp(Colors.White, 0.18f));
+		}
 	}
 
 	private void DrawRoomShieldSilhouette(Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose, bool eliteShield, bool ornateShield)

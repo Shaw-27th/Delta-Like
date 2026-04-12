@@ -178,7 +178,13 @@
 - `Ironhelm Pikeward`,
 - `Vanguard Pikeward`,
 - `Blade`,
+- `Elite Blade`,
+- `Ironhelm Bladeward`,
+- `Vanguard Bladeward`,
 - `Archer`,
+- `Elite Archer`,
+- `Ironhelm Huntsman`,
+- `Sky-Piercer Archer`,
 - The hideout now includes a simple soldier roster panel.
 - Recruits can be promoted out of run from that roster panel.
 - Promotion currently consumes money and requires stored experience.
@@ -210,11 +216,31 @@
 - `Elite Pike` is the first pike upgrade and now owns the base `Pike Thrust` active skill.
 - `Ironhelm Pikeward` adds a helmet and strengthens the `Brace` passive into a higher-impact first-contact control tool.
 - `Vanguard Pikeward` keeps the helmeted armored silhouette, upgrades the spear into a more ornate weapon, and upgrades `Pike Thrust` into a wider route-piercing strike with a stronger route-aligned wave effect.
+- The blade line now also has a four-step progression:
+- `Blade`,
+- `Elite Blade`,
+- `Ironhelm Bladeward`,
+- `Vanguard Bladeward`.
+- Base `Blade` now keeps only the `Executioner` passive and does not sprint.
+- `Elite Blade` is the first blade upgrade and now owns the base `Blade Rush` active skill.
+- `Ironhelm Bladeward` adds a helmet and strengthens the `Executioner` passive into a better wounded-target finisher with cooldown refund.
+- `Vanguard Bladeward` keeps the armored silhouette, upgrades the weapon into a more ornate blade, and upgrades `Blade Rush` into a stronger cleaving assault with a short shockwave flourish.
 - `Shield Rush` spends stamina, has a `5s` cooldown, knocks units aside along the path, and applies a stronger endpoint impact.
 - `Pike Thrust` also spends stamina, uses a `5s` cooldown, and now attacks along a narrow forward line instead of acting as a generic melee swing.
+- `Blade Rush` spends stamina, uses a `4.5s` cooldown, lunges into melee, and the highest blade tier can cleave nearby enemies on impact.
+- The archer line now also has a four-step progression:
+- `Archer`,
+- `Elite Archer`,
+- `Ironhelm Huntsman`,
+- `Sky-Piercer Archer`.
+- Base `Archer` now keeps only the `Deadeye` passive.
+- `Elite Archer` is the first archer upgrade and now owns the base `Split Arrow` active skill.
+- `Ironhelm Huntsman` adds a helmet and strengthens the `Deadeye` passive into a stronger critical-hit profile.
+- `Sky-Piercer Archer` keeps the armored silhouette, upgrades the bow into a more ornate version, and upgrades `Split Arrow` into a denser multishot volley.
+- `Split Arrow` spends stamina, uses a `5s` cooldown, and fires at multiple nearby targets from a single attack window.
 - Shield soldiers also have a live passive that reduces ranged damage by `50%`.
 - Armor is now a real combat stat in room combat damage resolution.
-- Higher shield and pike tiers now also change the visual silhouette with armor, helmet, and upgraded weapon treatment.
+- Higher shield, pike, blade, and archer tiers now also change the visual silhouette with armor, helmet, and upgraded weapon treatment.
 
 ## Inventory Progress Snapshot
 

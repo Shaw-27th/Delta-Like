@@ -78,7 +78,13 @@ public partial class RaidMapDemo : Node2D
 		IronhelmPike,
 		VanguardPike,
 		Blade,
+		EliteBlade,
+		IronhelmBlade,
+		VanguardBlade,
 		Archer,
+		EliteArcher,
+		IronhelmArcher,
+		VanguardArcher,
 		Cavalry,
 	}
 
@@ -88,6 +94,8 @@ public partial class RaidMapDemo : Node2D
 		Sprint,
 		ShieldRush,
 		PikeThrust,
+		BladeRush,
+		SplitArrow,
 	}
 
 	private enum SoldierPassiveSkill
@@ -95,6 +103,8 @@ public partial class RaidMapDemo : Node2D
 		None,
 		MissileGuard,
 		Brace,
+		Executioner,
+		Deadeye,
 	}
 
 	private sealed class MapNode
@@ -1657,8 +1667,26 @@ private sealed class RoomProjectileEffect
 				case "promote_blade":
 					PromoteSelectedSoldier(SoldierClass.Blade);
 					return;
+				case "promote_elite_blade":
+					PromoteSelectedSoldier(SoldierClass.EliteBlade);
+					return;
+				case "promote_ironhelm_blade":
+					PromoteSelectedSoldier(SoldierClass.IronhelmBlade);
+					return;
+				case "promote_vanguard_blade":
+					PromoteSelectedSoldier(SoldierClass.VanguardBlade);
+					return;
 				case "promote_archer":
 					PromoteSelectedSoldier(SoldierClass.Archer);
+					return;
+				case "promote_elite_archer":
+					PromoteSelectedSoldier(SoldierClass.EliteArcher);
+					return;
+				case "promote_ironhelm_archer":
+					PromoteSelectedSoldier(SoldierClass.IronhelmArcher);
+					return;
+				case "promote_vanguard_archer":
+					PromoteSelectedSoldier(SoldierClass.VanguardArcher);
 					return;
 				case "select_map_prev":
 					_selectedMapTemplate = (_selectedMapTemplate + MapTemplateCount - 1) % MapTemplateCount;
@@ -2121,6 +2149,42 @@ private sealed class RoomProjectileEffect
 				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "御锋枪卫需求 XP 15 / 110 金。强化挺枪突刺并获得更华丽的枪刃。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
 				Rect2 vanguardPikeRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
 				DrawPromotionButton(vanguardPikeRect, "御锋枪卫", selectedSoldier, SoldierClass.VanguardPike, "promote_vanguard_pike");
+			}
+			else if (selectedSoldier.Class == SoldierClass.Blade)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "精锐刀兵需求 XP 6 / 42 金。获得突进斩与全面强化。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 eliteBladeRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
+				DrawPromotionButton(eliteBladeRect, "精锐刀兵", selectedSoldier, SoldierClass.EliteBlade, "promote_elite_blade");
+			}
+			else if (selectedSoldier.Class == SoldierClass.EliteBlade)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "钢盔刀卫需求 XP 10 / 70 金。获得头盔并强化追猎被动。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 ironhelmBladeRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
+				DrawPromotionButton(ironhelmBladeRect, "钢盔刀卫", selectedSoldier, SoldierClass.IronhelmBlade, "promote_ironhelm_blade");
+			}
+			else if (selectedSoldier.Class == SoldierClass.IronhelmBlade)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "断阵刀卫需求 XP 15 / 110 金。强化突进斩并获得更华丽的刀。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 vanguardBladeRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
+				DrawPromotionButton(vanguardBladeRect, "断阵刀卫", selectedSoldier, SoldierClass.VanguardBlade, "promote_vanguard_blade");
+			}
+			else if (selectedSoldier.Class == SoldierClass.Archer)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "精锐弓兵需求 XP 6 / 42 金。获得分裂箭与全面强化。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 eliteArcherRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
+				DrawPromotionButton(eliteArcherRect, "精锐弓兵", selectedSoldier, SoldierClass.EliteArcher, "promote_elite_archer");
+			}
+			else if (selectedSoldier.Class == SoldierClass.EliteArcher)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "钢盔猎手需求 XP 10 / 70 金。获得头盔并强化暴击被动。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 ironhelmArcherRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
+				DrawPromotionButton(ironhelmArcherRect, "钢盔猎手", selectedSoldier, SoldierClass.IronhelmArcher, "promote_ironhelm_archer");
+			}
+			else if (selectedSoldier.Class == SoldierClass.IronhelmArcher)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "穿杨射手需求 XP 15 / 110 金。强化分裂箭并获得更华丽的弓。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 vanguardArcherRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
+				DrawPromotionButton(vanguardArcherRect, "穿杨射手", selectedSoldier, SoldierClass.VanguardArcher, "promote_vanguard_archer");
 			}
 		}
 
