@@ -3008,7 +3008,7 @@ private sealed class RoomProjectileEffect
 
 	private void DrawRoomShieldSilhouette(Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose, bool eliteShield)
 	{
-		Vector2 shieldCenter = handFront + new Vector2(faceSide.X * (7.8f + attackPose * 2.2f), 7.2f - attackPose * 0.6f);
+		Vector2 shieldCenter = handFront + new Vector2(faceSide.X * (2.2f + attackPose * 0.45f), 2.9f - attackPose * 0.2f);
 		float shieldH = eliteShield ? 14.6f : 13.2f;
 		float shieldW = eliteShield ? 6.7f : 6f;
 		Vector2[] shield =
