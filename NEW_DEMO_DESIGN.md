@@ -4,6 +4,8 @@
 
 - This document is for implementation tracking and assistant context.
 - From this revision onward, this file should stay English-only.
+- This is the English source document maintained for assistant-side tracking.
+- A Chinese mirror document should be refreshed after each meaningful update for player-facing review.
 - The document should describe the current playable state, not outdated plans that no longer match the code.
 
 ## Project Summary

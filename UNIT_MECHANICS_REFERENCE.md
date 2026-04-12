@@ -4,6 +4,8 @@
 
 - This document tracks the current live unit stats and combat rules implemented in code.
 - It should stay aligned with the actual state of `RaidMapDemo.cs`.
+- This is the English source document for assistant-side maintenance.
+- A Chinese mirror document should be refreshed after each meaningful update.
 - It is intended as a maintenance reference, not a pitch or wishlist file.
 
 ## Global Combat Rules
