@@ -70,6 +70,7 @@ public partial class RaidMapDemo : Node2D
 	{
 		Recruit,
 		Shield,
+		EliteShield,
 		Pike,
 		Blade,
 		Archer,
@@ -2996,10 +2997,11 @@ private sealed class RoomProjectileEffect
 		float runSwing = Mathf.Sin(runPhase);
 		float runLift = Mathf.Abs(Mathf.Sin(runPhase)) * (isRunning ? 1.2f : 0.2f);
 		float attackPose = GetRoomAttackPose(unit);
-		float sizeScale = unit.IsHero ? 1.46f : (unit.IsElite ? 1.34f : 1.1f);
+		bool eliteSoldierClass = unit.SoldierClass == SoldierClass.EliteShield;
+		float sizeScale = unit.IsHero ? 1.46f : ((unit.IsElite || eliteSoldierClass) ? 1.34f : 1.1f);
 		float torsoHalfWidth = (unit.IsRanged ? 4.2f : 5.2f) * sizeScale;
 		float torsoHeight = (unit.IsHero ? 13f : 11f) * sizeScale;
-		float shoulderWidth = torsoHalfWidth + (unit.IsElite ? 1.3f : 0.7f) * sizeScale;
+		float shoulderWidth = torsoHalfWidth + ((unit.IsElite || eliteSoldierClass) ? 1.3f : 0.7f) * sizeScale;
 
 		Vector2 feet = unit.Position + new Vector2(0f, 12f * sizeScale + runLift);
 		Vector2 hip = feet + new Vector2(0f, -8f * sizeScale);
@@ -3030,10 +3032,37 @@ private sealed class RoomProjectileEffect
 		];
 		DrawColoredPolygon(torso, bodyColor);
 		DrawPolyline(new[] { torsoTopLeft, torsoTopRight, torsoBottomRight, torsoBottomLeft, torsoTopLeft }, outline, 1.6f);
+		if (eliteSoldierClass)
+		{
+			Vector2[] breastplate =
+			[
+				chest + new Vector2(-torsoHalfWidth * 0.76f, -1.4f * sizeScale),
+				chest + new Vector2(torsoHalfWidth * 0.76f, -1.4f * sizeScale),
+				hip + new Vector2(torsoHalfWidth * 0.58f, 2.4f * sizeScale),
+				hip + new Vector2(-torsoHalfWidth * 0.58f, 2.4f * sizeScale),
+			];
+			Color armorColor = bodyColor.Lerp(Colors.White, 0.18f);
+			DrawColoredPolygon(breastplate, armorColor);
+			DrawPolyline(new[] { breastplate[0], breastplate[1], breastplate[2], breastplate[3], breastplate[0] }, outline, 1.3f);
+		}
 
 		float headRadius = (unit.IsHero ? 4.8f : 4.1f) * sizeScale;
 		DrawCircle(headCenter, headRadius + 1.2f, outline);
 		DrawCircle(headCenter, headRadius, bodyColor.Lerp(Colors.White, unit.IsRanged ? 0.16f : 0.08f));
+		if (eliteSoldierClass)
+		{
+			Vector2[] helmet =
+			[
+				headCenter + new Vector2(-headRadius * 0.92f, -headRadius * 0.35f),
+				headCenter + new Vector2(0f, -headRadius * 1.26f),
+				headCenter + new Vector2(headRadius * 0.92f, -headRadius * 0.35f),
+				headCenter + new Vector2(headRadius * 0.7f, headRadius * 0.25f),
+				headCenter + new Vector2(-headRadius * 0.7f, headRadius * 0.25f),
+			];
+			Color helmetColor = bodyColor.Lerp(Colors.White, 0.22f);
+			DrawColoredPolygon(helmet, helmetColor);
+			DrawPolyline(new[] { helmet[0], helmet[1], helmet[2], helmet[3], helmet[4], helmet[0] }, outline, 1.2f);
+		}
 		Vector2 eye = headCenter + new Vector2(faceSide.X * (headRadius * 0.32f), -0.3f);
 		DrawCircle(eye, 0.8f, new Color(0.06f, 0.07f, 0.09f, 0.9f));
 
@@ -3144,7 +3173,10 @@ private sealed class RoomProjectileEffect
 				DrawRoomRecruitSilhouette(handFront, handBack, faceSide, outline, accent, attackPose);
 				break;
 			case SoldierClass.Shield:
-				DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, unit.IsElite);
+				DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, unit.IsElite || unit.SoldierClass == SoldierClass.EliteShield);
+				break;
+			case SoldierClass.EliteShield:
+				DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, true);
 				break;
 			case SoldierClass.Pike:
 				DrawRoomPikeSilhouette(handFront, handBack, faceSide, outline, accent, attackPose);
@@ -4251,6 +4283,9 @@ private sealed class RoomProjectileEffect
 					return;
 				case "promote_shield":
 					PromoteSelectedSoldier(SoldierClass.Shield);
+					return;
+				case "promote_elite_shield":
+					PromoteSelectedSoldier(SoldierClass.EliteShield);
 					return;
 				case "promote_pike":
 					PromoteSelectedSoldier(SoldierClass.Pike);
@@ -5857,6 +5892,7 @@ private sealed class RoomProjectileEffect
 	{
 		SoldierClass.Recruit => "新兵",
 		SoldierClass.Shield => "盾兵",
+		SoldierClass.EliteShield => "精锐盾兵",
 		SoldierClass.Pike => "枪兵",
 		SoldierClass.Blade => "刀兵",
 		SoldierClass.Archer => "弓兵",
@@ -5867,6 +5903,7 @@ private sealed class RoomProjectileEffect
 	private int GetSoldierPromotionRequirement(SoldierClass targetClass) => targetClass switch
 	{
 		SoldierClass.Shield => 2,
+		SoldierClass.EliteShield => 6,
 		SoldierClass.Pike => 2,
 		SoldierClass.Blade => 2,
 		SoldierClass.Archer => 2,
@@ -5877,6 +5914,7 @@ private sealed class RoomProjectileEffect
 	private int GetSoldierPromotionCost(SoldierClass targetClass) => targetClass switch
 	{
 		SoldierClass.Shield => 18,
+		SoldierClass.EliteShield => 42,
 		SoldierClass.Pike => 18,
 		SoldierClass.Blade => 18,
 		SoldierClass.Archer => 22,
@@ -5886,8 +5924,14 @@ private sealed class RoomProjectileEffect
 
 	private bool CanPromoteSoldier(SoldierRecord soldier, SoldierClass targetClass)
 	{
-		return soldier.Class == SoldierClass.Recruit
-			&& targetClass != SoldierClass.Recruit
+		bool validTarget = soldier.Class switch
+		{
+			SoldierClass.Recruit => targetClass is not SoldierClass.Recruit and not SoldierClass.EliteShield,
+			SoldierClass.Shield => targetClass == SoldierClass.EliteShield,
+			_ => false,
+		};
+
+		return validTarget
 			&& soldier.Experience >= GetSoldierPromotionRequirement(targetClass)
 			&& _money >= GetSoldierPromotionCost(targetClass);
 	}
@@ -5896,6 +5940,7 @@ private sealed class RoomProjectileEffect
 	{
 		SoldierClass.Recruit => new Color(0.76f, 0.82f, 0.84f),
 		SoldierClass.Shield => new Color(0.46f, 0.84f, 0.7f),
+		SoldierClass.EliteShield => new Color(0.68f, 0.94f, 0.82f),
 		SoldierClass.Pike => new Color(0.88f, 0.8f, 0.48f),
 		SoldierClass.Blade => new Color(0.94f, 0.52f, 0.44f),
 		SoldierClass.Archer => new Color(0.6f, 0.78f, 0.98f),
@@ -5908,7 +5953,7 @@ private sealed class RoomProjectileEffect
 	private SoldierActiveSkill GetSoldierActiveSkill(SoldierClass soldierClass) => soldierClass switch
 	{
 		SoldierClass.Archer => SoldierActiveSkill.None,
-		SoldierClass.Shield => SoldierActiveSkill.ShieldRush,
+		SoldierClass.EliteShield => SoldierActiveSkill.ShieldRush,
 		SoldierClass.Recruit or SoldierClass.Pike or SoldierClass.Blade or SoldierClass.Cavalry => SoldierActiveSkill.Sprint,
 		_ => SoldierActiveSkill.None,
 	};
@@ -5916,6 +5961,7 @@ private sealed class RoomProjectileEffect
 	private SoldierPassiveSkill GetSoldierPassiveSkill(SoldierClass soldierClass) => soldierClass switch
 	{
 		SoldierClass.Shield => SoldierPassiveSkill.MissileGuard,
+		SoldierClass.EliteShield => SoldierPassiveSkill.MissileGuard,
 		_ => SoldierPassiveSkill.None,
 	};
 
@@ -5936,6 +5982,7 @@ private sealed class RoomProjectileEffect
 	{
 		SoldierClass.Recruit => 1,
 		SoldierClass.Shield => 2,
+		SoldierClass.EliteShield => 3,
 		SoldierClass.Pike => 2,
 		SoldierClass.Blade => 2,
 		SoldierClass.Archer => 2,
@@ -5978,9 +6025,24 @@ private sealed class RoomProjectileEffect
 				unit.MaxStamina = 86f;
 				unit.Stamina = 86f;
 				unit.CanSprint = false;
+				unit.PassiveSkill = SoldierPassiveSkill.MissileGuard;
+				unit.ProjectileDamageScale = 0.5f;
+				break;
+			case SoldierClass.EliteShield:
+				unit.Hp = 20;
+				unit.MaxHp = 20;
+				unit.DamageMin = 2;
+				unit.DamageMax = 4;
+				unit.Armor = 3;
+				unit.AttackRange = 28f;
+				unit.Speed = 132f;
+				unit.MaxStamina = 104f;
+				unit.Stamina = 104f;
+				unit.CanSprint = false;
 				unit.ActiveSkill = SoldierActiveSkill.ShieldRush;
 				unit.PassiveSkill = SoldierPassiveSkill.MissileGuard;
 				unit.ProjectileDamageScale = 0.5f;
+				unit.AttackCycleScale = 0.9f;
 				break;
 			case SoldierClass.Pike:
 				unit.Hp = 9;
@@ -6429,6 +6491,12 @@ private sealed class RoomProjectileEffect
 				DrawPromotionButton(bladeRect, "刀", selectedSoldier, SoldierClass.Blade, "promote_blade");
 				DrawPromotionButton(archerRect, "弓", selectedSoldier, SoldierClass.Archer, "promote_archer");
 				DrawPromotionButton(cavalryRect, "骑", selectedSoldier, SoldierClass.Cavalry, "promote_cavalry");
+			}
+			else if (selectedSoldier.Class == SoldierClass.Shield)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "精锐盾兵需求 XP 6 / 42 金。获得盾冲与全面强化。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 eliteShieldRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
+				DrawPromotionButton(eliteShieldRect, "精盾", selectedSoldier, SoldierClass.EliteShield, "promote_elite_shield");
 			}
 		}
 

@@ -168,6 +168,7 @@
 - The first live class set is:
 - `Recruit`,
 - `Shield`,
+- `Elite Shield`,
 - `Pike`,
 - `Blade`,
 - `Archer`,
@@ -186,10 +187,13 @@
 - ranged or melee behavior.
 - A first minimal soldier skill framework now exists with active and passive slots.
 - Sprint is treated as a default active skill for most non-ranged soldiers.
-- Shield soldiers currently replace sprint with `Shield Rush`.
+- Base shield soldiers currently do not sprint and only keep the ranged-damage mitigation passive.
+- `Elite Shield` is now the first live second-tier soldier upgrade.
+- `Elite Shield` receives the `Shield Rush` active skill and higher all-around stats than the base shield line.
 - `Shield Rush` spends stamina, has a `5s` cooldown, knocks units aside along the path, and applies a stronger endpoint impact.
 - Shield soldiers also have a live passive that reduces ranged damage by `50%`.
 - Armor is now a real combat stat in room combat damage resolution.
+- `Elite Shield` also has a stronger visual silhouette with added armor and a helmet.
 - Cavalry currently also gets a heavier-impact attack profile than baseline line troops.
 
 ## Inventory Progress Snapshot
