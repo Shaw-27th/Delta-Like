@@ -74,6 +74,9 @@ public partial class RaidMapDemo : Node2D
 		ShieldPlusOne,
 		ShieldPlusTwo,
 		Pike,
+		ElitePike,
+		IronhelmPike,
+		VanguardPike,
 		Blade,
 		Archer,
 		Cavalry,
@@ -84,12 +87,14 @@ public partial class RaidMapDemo : Node2D
 		None,
 		Sprint,
 		ShieldRush,
+		PikeThrust,
 	}
 
 	private enum SoldierPassiveSkill
 	{
 		None,
 		MissileGuard,
+		Brace,
 	}
 
 	private sealed class MapNode
@@ -288,6 +293,7 @@ public partial class RaidMapDemo : Node2D
 		public float PendingAttackRangeSlack;
 		public float PendingAttackLungeDistance;
 		public bool PendingAttackHeavy;
+		public SoldierActiveSkill PendingAttackSkill;
 		public float HitFlash;
 		public Vector2 KnockbackVelocity;
 		public float KnockbackTime;
@@ -1622,7 +1628,7 @@ private sealed class RoomProjectileEffect
 					_soldierRosterPage = Mathf.Max(0, _soldierRosterPage - 1);
 					return;
 				case "soldier_page_next":
-					_soldierRosterPage = Mathf.Min(Mathf.Max(0, (_soldierRoster.Count - 1) / 3), _soldierRosterPage + 1);
+					_soldierRosterPage = Mathf.Min(Mathf.Max(0, (_soldierRoster.Count - 1) / 4), _soldierRosterPage + 1);
 					return;
 				case "promote_shield":
 					PromoteSelectedSoldier(SoldierClass.Shield);
@@ -1638,6 +1644,15 @@ private sealed class RoomProjectileEffect
 					return;
 				case "promote_pike":
 					PromoteSelectedSoldier(SoldierClass.Pike);
+					return;
+				case "promote_elite_pike":
+					PromoteSelectedSoldier(SoldierClass.ElitePike);
+					return;
+				case "promote_ironhelm_pike":
+					PromoteSelectedSoldier(SoldierClass.IronhelmPike);
+					return;
+				case "promote_vanguard_pike":
+					PromoteSelectedSoldier(SoldierClass.VanguardPike);
 					return;
 				case "promote_blade":
 					PromoteSelectedSoldier(SoldierClass.Blade);
@@ -2093,6 +2108,24 @@ private sealed class RoomProjectileEffect
 				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "壁垒盾卫需求 XP 15 / 110 金。强化盾冲并获得更华丽的大盾。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
 				Rect2 plusTwoRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
 				DrawPromotionButton(plusTwoRect, "壁垒", selectedSoldier, SoldierClass.ShieldPlusTwo, "promote_shield_plus_two");
+			}
+			else if (selectedSoldier.Class == SoldierClass.Pike)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "精锐枪兵需求 XP 6 / 42 金。获得挺枪突刺与全面强化。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 elitePikeRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
+				DrawPromotionButton(elitePikeRect, "精枪", selectedSoldier, SoldierClass.ElitePike, "promote_elite_pike");
+			}
+			else if (selectedSoldier.Class == SoldierClass.ElitePike)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "钢盔枪卫需求 XP 10 / 70 金。获得头盔并强化拒马列阵。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 ironhelmPikeRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
+				DrawPromotionButton(ironhelmPikeRect, "钢盔枪卫", selectedSoldier, SoldierClass.IronhelmPike, "promote_ironhelm_pike");
+			}
+			else if (selectedSoldier.Class == SoldierClass.IronhelmPike)
+			{
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "御锋枪卫需求 XP 15 / 110 金。强化挺枪突刺并获得更华丽的枪刃。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 vanguardPikeRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
+				DrawPromotionButton(vanguardPikeRect, "御锋枪卫", selectedSoldier, SoldierClass.VanguardPike, "promote_vanguard_pike");
 			}
 		}
 

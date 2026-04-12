@@ -2,6 +2,8 @@ using Godot;
 
 public partial class RaidMapDemo
 {
+	private const int SoldierPageSize = 4;
+
 	private SoldierRecord CloneSoldierRecord(SoldierRecord soldier)
 	{
 		return new SoldierRecord
@@ -20,6 +22,9 @@ public partial class RaidMapDemo
 		SoldierClass.ShieldPlusOne => "钢盔盾卫",
 		SoldierClass.ShieldPlusTwo => "壁垒盾卫",
 		SoldierClass.Pike => "枪兵",
+		SoldierClass.ElitePike => "精锐枪兵",
+		SoldierClass.IronhelmPike => "钢盔枪卫",
+		SoldierClass.VanguardPike => "御锋枪卫",
 		SoldierClass.Blade => "刀兵",
 		SoldierClass.Archer => "弓兵",
 		SoldierClass.Cavalry => "骑兵",
@@ -33,6 +38,9 @@ public partial class RaidMapDemo
 		SoldierClass.ShieldPlusOne => 10,
 		SoldierClass.ShieldPlusTwo => 15,
 		SoldierClass.Pike => 2,
+		SoldierClass.ElitePike => 6,
+		SoldierClass.IronhelmPike => 10,
+		SoldierClass.VanguardPike => 15,
 		SoldierClass.Blade => 2,
 		SoldierClass.Archer => 2,
 		SoldierClass.Cavalry => 3,
@@ -46,6 +54,9 @@ public partial class RaidMapDemo
 		SoldierClass.ShieldPlusOne => 70,
 		SoldierClass.ShieldPlusTwo => 110,
 		SoldierClass.Pike => 18,
+		SoldierClass.ElitePike => 42,
+		SoldierClass.IronhelmPike => 70,
+		SoldierClass.VanguardPike => 110,
 		SoldierClass.Blade => 18,
 		SoldierClass.Archer => 22,
 		SoldierClass.Cavalry => 40,
@@ -56,10 +67,13 @@ public partial class RaidMapDemo
 	{
 		bool validTarget = soldier.Class switch
 		{
-			SoldierClass.Recruit => targetClass is not SoldierClass.Recruit and not SoldierClass.EliteShield,
+			SoldierClass.Recruit => targetClass is not SoldierClass.Recruit and not SoldierClass.EliteShield and not SoldierClass.ShieldPlusOne and not SoldierClass.ShieldPlusTwo and not SoldierClass.ElitePike and not SoldierClass.IronhelmPike and not SoldierClass.VanguardPike,
 			SoldierClass.Shield => targetClass == SoldierClass.EliteShield,
 			SoldierClass.EliteShield => targetClass == SoldierClass.ShieldPlusOne,
 			SoldierClass.ShieldPlusOne => targetClass == SoldierClass.ShieldPlusTwo,
+			SoldierClass.Pike => targetClass == SoldierClass.ElitePike,
+			SoldierClass.ElitePike => targetClass == SoldierClass.IronhelmPike,
+			SoldierClass.IronhelmPike => targetClass == SoldierClass.VanguardPike,
 			_ => false,
 		};
 
@@ -76,6 +90,9 @@ public partial class RaidMapDemo
 		SoldierClass.ShieldPlusOne => new Color(0.74f, 1f, 0.86f),
 		SoldierClass.ShieldPlusTwo => new Color(0.9f, 1f, 0.9f),
 		SoldierClass.Pike => new Color(0.88f, 0.8f, 0.48f),
+		SoldierClass.ElitePike => new Color(0.94f, 0.84f, 0.52f),
+		SoldierClass.IronhelmPike => new Color(1f, 0.88f, 0.58f),
+		SoldierClass.VanguardPike => new Color(1f, 0.94f, 0.7f),
 		SoldierClass.Blade => new Color(0.94f, 0.52f, 0.44f),
 		SoldierClass.Archer => new Color(0.6f, 0.78f, 0.98f),
 		SoldierClass.Cavalry => new Color(0.92f, 0.7f, 0.34f),
@@ -84,13 +101,36 @@ public partial class RaidMapDemo
 
 	private bool IsSoldierRangedClass(SoldierClass soldierClass) => soldierClass == SoldierClass.Archer;
 
+	private bool IsShieldLineClass(SoldierClass soldierClass)
+	{
+		return soldierClass is SoldierClass.Shield or SoldierClass.EliteShield or SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo;
+	}
+
+	private bool IsPikeLineClass(SoldierClass soldierClass)
+	{
+		return soldierClass is SoldierClass.Pike or SoldierClass.ElitePike or SoldierClass.IronhelmPike or SoldierClass.VanguardPike;
+	}
+
+	private bool HasStrengthenedPikePassive(SoldierClass soldierClass)
+	{
+		return soldierClass is SoldierClass.IronhelmPike or SoldierClass.VanguardPike;
+	}
+
+	private bool HasEnhancedPikeThrust(SoldierClass soldierClass)
+	{
+		return soldierClass == SoldierClass.VanguardPike;
+	}
+
 	private SoldierActiveSkill GetSoldierActiveSkill(SoldierClass soldierClass) => soldierClass switch
 	{
 		SoldierClass.Archer => SoldierActiveSkill.None,
 		SoldierClass.EliteShield => SoldierActiveSkill.ShieldRush,
 		SoldierClass.ShieldPlusOne => SoldierActiveSkill.ShieldRush,
 		SoldierClass.ShieldPlusTwo => SoldierActiveSkill.ShieldRush,
-		SoldierClass.Recruit or SoldierClass.Pike or SoldierClass.Blade or SoldierClass.Cavalry => SoldierActiveSkill.Sprint,
+		SoldierClass.ElitePike => SoldierActiveSkill.PikeThrust,
+		SoldierClass.IronhelmPike => SoldierActiveSkill.PikeThrust,
+		SoldierClass.VanguardPike => SoldierActiveSkill.PikeThrust,
+		SoldierClass.Recruit or SoldierClass.Blade or SoldierClass.Cavalry => SoldierActiveSkill.Sprint,
 		_ => SoldierActiveSkill.None,
 	};
 
@@ -100,13 +140,22 @@ public partial class RaidMapDemo
 		SoldierClass.EliteShield => SoldierPassiveSkill.MissileGuard,
 		SoldierClass.ShieldPlusOne => SoldierPassiveSkill.MissileGuard,
 		SoldierClass.ShieldPlusTwo => SoldierPassiveSkill.MissileGuard,
+		SoldierClass.Pike => SoldierPassiveSkill.Brace,
+		SoldierClass.ElitePike => SoldierPassiveSkill.Brace,
+		SoldierClass.IronhelmPike => SoldierPassiveSkill.Brace,
+		SoldierClass.VanguardPike => SoldierPassiveSkill.Brace,
 		_ => SoldierPassiveSkill.None,
 	};
 
 	private string GetSoldierActiveSkillLabel(SoldierClass soldierClass) => GetSoldierActiveSkill(soldierClass) switch
 	{
 		SoldierActiveSkill.Sprint => "主动：跑动",
-		SoldierActiveSkill.ShieldRush => "主动：盾冲（耗体力，5秒冷却）",
+		SoldierActiveSkill.ShieldRush => soldierClass == SoldierClass.ShieldPlusTwo
+			? "主动：盾冲·壁垒（耗体力，5秒冷却）"
+			: "主动：盾冲（耗体力，5秒冷却）",
+		SoldierActiveSkill.PikeThrust => HasEnhancedPikeThrust(soldierClass)
+			? "主动：贯阵突刺（耗体力，5秒冷却）"
+			: "主动：挺枪突刺（耗体力，5秒冷却）",
 		_ => "主动：无",
 	};
 
@@ -117,6 +166,9 @@ public partial class RaidMapDemo
 			SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo => "被动：对远程攻击减伤 50%，并有概率格挡任意伤害",
 			_ => "被动：对远程攻击减伤 50%",
 		},
+		SoldierPassiveSkill.Brace => HasStrengthenedPikePassive(soldierClass)
+			? "被动：拒马列阵强化，先手命中时额外增伤并显著加强击退与硬直"
+			: "被动：拒马列阵，攻击距离外缘命中时造成更强击退与硬直",
 		_ => "被动：无",
 	};
 
@@ -128,6 +180,9 @@ public partial class RaidMapDemo
 		SoldierClass.ShieldPlusOne => 4,
 		SoldierClass.ShieldPlusTwo => 5,
 		SoldierClass.Pike => 2,
+		SoldierClass.ElitePike => 3,
+		SoldierClass.IronhelmPike => 4,
+		SoldierClass.VanguardPike => 5,
 		SoldierClass.Blade => 2,
 		SoldierClass.Archer => 2,
 		SoldierClass.Cavalry => 3,
@@ -156,6 +211,7 @@ public partial class RaidMapDemo
 		unit.PassiveSkill = SoldierPassiveSkill.None;
 		unit.ProjectileDamageScale = 1f;
 		unit.BlockAnyDamageChance = 0f;
+		unit.AttackCycleScale = 1f;
 
 		switch (soldier.Class)
 		{
@@ -170,6 +226,7 @@ public partial class RaidMapDemo
 				unit.MaxStamina = 86f;
 				unit.Stamina = 86f;
 				unit.CanSprint = false;
+				unit.ActiveSkill = SoldierActiveSkill.None;
 				unit.PassiveSkill = SoldierPassiveSkill.MissileGuard;
 				unit.ProjectileDamageScale = 0.5f;
 				break;
@@ -228,10 +285,59 @@ public partial class RaidMapDemo
 				unit.MaxHp = 9;
 				unit.DamageMin = 2;
 				unit.DamageMax = 4;
-				unit.AttackRange = 44f;
+				unit.AttackRange = 52f;
 				unit.Speed = 146f;
 				unit.MaxStamina = 76f;
 				unit.Stamina = 76f;
+				unit.CanSprint = false;
+				unit.ActiveSkill = SoldierActiveSkill.None;
+				unit.PassiveSkill = SoldierPassiveSkill.Brace;
+				unit.AttackCycleScale = 0.98f;
+				break;
+			case SoldierClass.ElitePike:
+				unit.Hp = 12;
+				unit.MaxHp = 12;
+				unit.DamageMin = 3;
+				unit.DamageMax = 5;
+				unit.Armor = 1;
+				unit.AttackRange = 56f;
+				unit.Speed = 152f;
+				unit.MaxStamina = 88f;
+				unit.Stamina = 88f;
+				unit.CanSprint = false;
+				unit.ActiveSkill = SoldierActiveSkill.PikeThrust;
+				unit.PassiveSkill = SoldierPassiveSkill.Brace;
+				unit.AttackCycleScale = 0.92f;
+				break;
+			case SoldierClass.IronhelmPike:
+				unit.Hp = 15;
+				unit.MaxHp = 15;
+				unit.DamageMin = 4;
+				unit.DamageMax = 6;
+				unit.Armor = 2;
+				unit.AttackRange = 58f;
+				unit.Speed = 156f;
+				unit.MaxStamina = 98f;
+				unit.Stamina = 98f;
+				unit.CanSprint = false;
+				unit.ActiveSkill = SoldierActiveSkill.PikeThrust;
+				unit.PassiveSkill = SoldierPassiveSkill.Brace;
+				unit.AttackCycleScale = 0.88f;
+				break;
+			case SoldierClass.VanguardPike:
+				unit.Hp = 18;
+				unit.MaxHp = 18;
+				unit.DamageMin = 5;
+				unit.DamageMax = 8;
+				unit.Armor = 3;
+				unit.AttackRange = 62f;
+				unit.Speed = 160f;
+				unit.MaxStamina = 110f;
+				unit.Stamina = 110f;
+				unit.CanSprint = false;
+				unit.ActiveSkill = SoldierActiveSkill.PikeThrust;
+				unit.PassiveSkill = SoldierPassiveSkill.Brace;
+				unit.AttackCycleScale = 0.82f;
 				break;
 			case SoldierClass.Blade:
 				unit.Hp = 8;
@@ -284,7 +390,7 @@ public partial class RaidMapDemo
 		{
 			Name = $"士兵{_nextSoldierId}",
 			Class = SoldierClass.Recruit,
-			Experience = EnableSoldierBonusStartingXp ? 10 : 0,
+			Experience = EnableSoldierBonusStartingXp ? 20 : 0,
 		});
 		_nextSoldierId++;
 	}
@@ -299,7 +405,7 @@ public partial class RaidMapDemo
 
 		_money -= RecruitCost;
 		RecruitSoldierInternal();
-		_soldierRosterPage = Mathf.Max(0, (_soldierRoster.Count - 1) / 3);
+		_soldierRosterPage = Mathf.Max(0, (_soldierRoster.Count - 1) / SoldierPageSize);
 		_selectedSoldierIndex = _soldierRoster.Count - 1;
 		_status = $"已征募新兵，当前士兵数：{_soldierRoster.Count}。";
 	}
@@ -319,7 +425,7 @@ public partial class RaidMapDemo
 
 		_money -= GetSoldierPromotionCost(targetClass);
 		soldier.Class = targetClass;
-		_status = $"{soldier.Name} 已升阶为{GetSoldierClassLabel(targetClass)}。";
+		_status = $"{soldier.Name} 已升阶为 {GetSoldierClassLabel(targetClass)}。";
 	}
 
 	private void GrantRunSoldierExperience(int amount, string reason)
@@ -334,7 +440,7 @@ public partial class RaidMapDemo
 			_runSoldiers[i].Experience += amount;
 		}
 
-		LogEvent($"幸存士兵因{reason}获得了 {amount} 点经验。");
+		LogEvent($"幸存士兵因 {reason} 获得了 {amount} 点经验。");
 	}
 
 	private void ApplySoldierLosses(int remainingSoldiers)

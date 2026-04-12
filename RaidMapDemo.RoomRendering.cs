@@ -191,7 +191,15 @@ public partial class RaidMapDemo
 	{
 		if (unit.IsPlayerSide)
 		{
-			return unit.IsHero ? new Color(0.34f, 0.84f, 1f) : new Color(0.5f, 0.92f, 0.72f);
+			if (unit.IsHero)
+			{
+				return new Color(0.34f, 0.84f, 1f);
+			}
+
+			int tier = Mathf.Clamp(GetSoldierStrengthValue(unit.SoldierClass), 1, 5);
+			Color light = new(0.6f, 0.95f, 0.76f);
+			Color dark = new(0.22f, 0.6f, 0.38f);
+			return light.Lerp(dark, (tier - 1) / 4f);
 		}
 
 		if (unit.IsAiSquad)
@@ -247,12 +255,12 @@ public partial class RaidMapDemo
 		float runSwing = Mathf.Sin(runPhase);
 		float runLift = Mathf.Abs(Mathf.Sin(runPhase)) * (isRunning ? 1.2f : 0.2f);
 		float attackPose = GetRoomAttackPose(unit);
-		bool armoredShieldClass = unit.SoldierClass is SoldierClass.EliteShield or SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo;
-		bool helmetShieldClass = unit.SoldierClass is SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo;
-		float sizeScale = unit.IsHero ? 1.46f : ((unit.IsElite || armoredShieldClass) ? 1.34f : 1.1f);
+		bool armoredClass = unit.SoldierClass is SoldierClass.EliteShield or SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo or SoldierClass.ElitePike or SoldierClass.IronhelmPike or SoldierClass.VanguardPike;
+		bool helmetClass = unit.SoldierClass is SoldierClass.ShieldPlusOne or SoldierClass.ShieldPlusTwo or SoldierClass.IronhelmPike or SoldierClass.VanguardPike;
+		float sizeScale = unit.IsHero ? 1.46f : ((unit.IsElite || armoredClass) ? 1.34f : 1.1f);
 		float torsoHalfWidth = (unit.IsRanged ? 4.2f : 5.2f) * sizeScale;
 		float torsoHeight = (unit.IsHero ? 13f : 11f) * sizeScale;
-		float shoulderWidth = torsoHalfWidth + ((unit.IsElite || armoredShieldClass) ? 1.3f : 0.7f) * sizeScale;
+		float shoulderWidth = torsoHalfWidth + ((unit.IsElite || armoredClass) ? 1.3f : 0.7f) * sizeScale;
 
 		Vector2 feet = unit.Position + new Vector2(0f, 12f * sizeScale + runLift);
 		Vector2 hip = feet + new Vector2(0f, -8f * sizeScale);
@@ -283,7 +291,7 @@ public partial class RaidMapDemo
 		];
 		DrawColoredPolygon(torso, bodyColor);
 		DrawPolyline(new[] { torsoTopLeft, torsoTopRight, torsoBottomRight, torsoBottomLeft, torsoTopLeft }, outline, 1.6f);
-		if (armoredShieldClass)
+		if (armoredClass)
 		{
 			Vector2[] breastplate =
 			[
@@ -300,7 +308,7 @@ public partial class RaidMapDemo
 		float headRadius = (unit.IsHero ? 4.8f : 4.1f) * sizeScale;
 		DrawCircle(headCenter, headRadius + 1.2f, outline);
 		DrawCircle(headCenter, headRadius, bodyColor.Lerp(Colors.White, unit.IsRanged ? 0.16f : 0.08f));
-		if (helmetShieldClass)
+		if (helmetClass)
 		{
 			Vector2[] helmet =
 			[
@@ -436,7 +444,14 @@ public partial class RaidMapDemo
 				DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, true, true);
 				break;
 			case SoldierClass.Pike:
-				DrawRoomPikeSilhouette(handFront, handBack, faceSide, outline, accent, attackPose);
+				DrawRoomPikeSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, false, false);
+				break;
+			case SoldierClass.ElitePike:
+			case SoldierClass.IronhelmPike:
+				DrawRoomPikeSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, true, false);
+				break;
+			case SoldierClass.VanguardPike:
+				DrawRoomPikeSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, true, true);
 				break;
 			case SoldierClass.Cavalry:
 				DrawRoomCavalrySilhouette(handFront, handBack, hip, faceSide, outline, accent, attackPose);
@@ -506,18 +521,18 @@ public partial class RaidMapDemo
 		DrawLine(tineBase, tineBase + tineDir * 3.2f, accent, 1f);
 	}
 
-	private void DrawRoomPikeSilhouette(Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose)
+	private void DrawRoomPikeSilhouette(Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose, bool elitePike, bool ornatePike)
 	{
-		bool thrusting = attackPose > 0.35f;
-		Vector2 shaftDir = thrusting
-			? new Vector2(faceSide.X, -0.06f - attackPose * 0.04f).Normalized()
-			: new Vector2(faceSide.X, -0.28f - attackPose * 0.1f).Normalized();
-		Vector2 shaftStart = thrusting ? handBack - shaftDir * 10f : handBack - shaftDir * 18f;
-		Vector2 shaftEnd = thrusting ? handFront + shaftDir * 54f : handFront + shaftDir * 34f;
+		float thrustBlend = Mathf.SmoothStep(0f, 1f, Mathf.Clamp((attackPose - 0.08f) / 0.92f, 0f, 1f));
+		Vector2 shaftDir = new Vector2(faceSide.X, Mathf.Lerp(-0.3f, -0.08f, thrustBlend)).Normalized();
+		float rearLength = Mathf.Lerp(ornatePike ? 15f : 14f, ornatePike ? 9f : 10f, thrustBlend);
+		float frontLength = Mathf.Lerp(elitePike ? 26f : 24f, ornatePike ? 46f : 40f, thrustBlend);
+		Vector2 shaftStart = handBack - shaftDir * rearLength;
+		Vector2 shaftEnd = handFront + shaftDir * frontLength;
 		DrawLine(shaftStart, shaftEnd, outline, 3.2f);
 		DrawLine(shaftStart, shaftEnd, new Color(0.64f, 0.46f, 0.24f), 1.8f);
-		Vector2 spearBase = shaftEnd - shaftDir * 8f;
-		Vector2 spearSide = new Vector2(-shaftDir.Y, shaftDir.X) * 2.6f;
+		Vector2 spearBase = shaftEnd - shaftDir * (ornatePike ? 11f : 8f);
+		Vector2 spearSide = new Vector2(-shaftDir.Y, shaftDir.X) * (ornatePike ? 3.2f : elitePike ? 2.9f : 2.6f);
 		Vector2[] spearHead =
 		[
 			shaftEnd,
@@ -526,6 +541,12 @@ public partial class RaidMapDemo
 		];
 		DrawColoredPolygon(spearHead, accent);
 		DrawPolyline(new[] { spearHead[0], spearHead[1], spearHead[2], spearHead[0] }, outline, 1f);
+		if (ornatePike)
+		{
+			Vector2 finBase = spearBase - shaftDir * 4f;
+			Vector2 finSide = new Vector2(-shaftDir.Y, shaftDir.X) * 2.1f;
+			DrawLine(finBase + finSide, finBase - finSide, accent.Lerp(Colors.White, 0.18f), 1.1f);
+		}
 	}
 
 	private void DrawRoomCavalrySilhouette(Vector2 handFront, Vector2 handBack, Vector2 hip, Vector2 faceSide, Color outline, Color accent, float attackPose)

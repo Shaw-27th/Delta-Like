@@ -174,6 +174,9 @@
 - `Ironhelm Guard`,
 - `Bulwark Guard`,
 - `Pike`,
+- `Elite Pike`,
+- `Ironhelm Pikeward`,
+- `Vanguard Pikeward`,
 - `Blade`,
 - `Archer`,
 - `Cavalry`.
@@ -200,10 +203,20 @@
 - `Elite Shield` is the first shield upgrade and now owns the base `Shield Rush` active skill.
 - `Ironhelm Guard` adds a helmet and an upgraded passive with a chance to fully block any incoming damage.
 - `Bulwark Guard` keeps the helmeted armor silhouette, upgrades the shield into a more ornate large version, and upgrades `Shield Rush` into a wider and more powerful impact with a visible route-aligned shockwave.
+- The pike line now also has a four-step progression:
+- `Pike`,
+- `Elite Pike`,
+- `Ironhelm Pikeward`,
+- `Vanguard Pikeward`.
+- Base `Pike` now keeps only the `Brace` passive and does not sprint.
+- `Elite Pike` is the first pike upgrade and now owns the base `Pike Thrust` active skill.
+- `Ironhelm Pikeward` adds a helmet and strengthens the `Brace` passive into a higher-impact first-contact control tool.
+- `Vanguard Pikeward` keeps the helmeted armored silhouette, upgrades the spear into a more ornate weapon, and upgrades `Pike Thrust` into a wider route-piercing strike with a stronger route-aligned wave effect.
 - `Shield Rush` spends stamina, has a `5s` cooldown, knocks units aside along the path, and applies a stronger endpoint impact.
+- `Pike Thrust` also spends stamina, uses a `5s` cooldown, and now attacks along a narrow forward line instead of acting as a generic melee swing.
 - Shield soldiers also have a live passive that reduces ranged damage by `50%`.
 - Armor is now a real combat stat in room combat damage resolution.
-- Higher shield tiers now also change the visual silhouette with armor, helmet, and upgraded shield treatment.
+- Higher shield and pike tiers now also change the visual silhouette with armor, helmet, and upgraded weapon treatment.
 - Cavalry currently also gets a heavier-impact attack profile than baseline line troops.
 
 ## Inventory Progress Snapshot

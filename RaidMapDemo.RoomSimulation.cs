@@ -542,6 +542,11 @@ public partial class RaidMapDemo
 			return;
 		}
 
+		if (TryStartPikeThrust(attacker, target, dir, distance))
+		{
+			return;
+		}
+
 		if (CanStartAttack(attacker) && distance <= attacker.AttackRange + 4f)
 		{
 			BeginRoomAttack(attacker, target, 14f);
@@ -598,6 +603,26 @@ public partial class RaidMapDemo
 		attacker.PendingAttackTarget = target;
 		attacker.CombatState = RoomCombatState.Advance;
 		attacker.CombatStateTimer = attacker.SkillMoveTime;
+		return true;
+	}
+
+	private bool TryStartPikeThrust(RoomUnit attacker, RoomUnit target, Vector2 dir, float distance)
+	{
+		if (attacker.ActiveSkill != SoldierActiveSkill.PikeThrust
+			|| attacker.ActiveSkillCooldown > 0f
+			|| attacker.MaxStamina <= 0f
+			|| attacker.Stamina < 18f
+			|| distance < attacker.AttackRange * 0.72f
+			|| distance > attacker.AttackRange + 26f
+			|| !CanStartAttack(attacker))
+		{
+			return false;
+		}
+
+		attacker.Stamina = Mathf.Max(0f, attacker.Stamina - 18f);
+		attacker.ActiveSkillCooldown = 5f;
+		attacker.Facing = dir;
+		BeginRoomAttack(attacker, target, attacker.SoldierClass == SoldierClass.VanguardPike ? 28f : 20f, SoldierActiveSkill.PikeThrust);
 		return true;
 	}
 
@@ -767,16 +792,27 @@ public partial class RaidMapDemo
 			&& attacker.HitPauseTime <= 0f;
 	}
 
-	private void BeginRoomAttack(RoomUnit attacker, RoomUnit target, float rangeSlack)
+	private void BeginRoomAttack(RoomUnit attacker, RoomUnit target, float rangeSlack, SoldierActiveSkill skill = SoldierActiveSkill.None)
 	{
 		attacker.PendingAttackTarget = target;
 		attacker.PendingAttackDamage = _rng.RandiRange(attacker.DamageMin, attacker.DamageMax);
-		attacker.PendingAttackHeavy = attacker.IsHero || attacker.IsElite || attacker.SoldierClass == SoldierClass.Cavalry;
+		attacker.PendingAttackSkill = skill;
+		attacker.PendingAttackHeavy = attacker.IsHero || attacker.IsElite || attacker.SoldierClass == SoldierClass.Cavalry || attacker.SoldierClass == SoldierClass.VanguardPike;
 		attacker.PendingAttackRangeSlack = rangeSlack;
-		attacker.PendingAttackLungeDistance = attacker.SoldierClass == SoldierClass.Cavalry ? 16f : 0f;
-		attacker.AttackWindupTime = attacker.IsRanged ? 0.13f : (attacker.PendingAttackHeavy ? 0.12f : 0.09f);
-		attacker.RecoveryTime = attacker.IsRanged ? 0.1f : 0.08f;
-		float baseCooldown = attacker.IsRanged ? 0.42f : (attacker.PendingAttackHeavy ? 0.54f : 0.46f);
+		attacker.PendingAttackLungeDistance = attacker.SoldierClass == SoldierClass.Cavalry ? 16f : (skill == SoldierActiveSkill.PikeThrust ? 6f : 0f);
+		if (skill == SoldierActiveSkill.PikeThrust)
+		{
+			attacker.AttackWindupTime = attacker.SoldierClass == SoldierClass.VanguardPike ? 0.13f : 0.11f;
+			attacker.RecoveryTime = attacker.SoldierClass == SoldierClass.VanguardPike ? 0.11f : 0.09f;
+		}
+		else
+		{
+			attacker.AttackWindupTime = attacker.IsRanged ? 0.13f : (attacker.PendingAttackHeavy ? 0.12f : 0.09f);
+			attacker.RecoveryTime = attacker.IsRanged ? 0.1f : 0.08f;
+		}
+		float baseCooldown = skill == SoldierActiveSkill.PikeThrust
+			? (attacker.SoldierClass == SoldierClass.VanguardPike ? 0.58f : 0.52f)
+			: attacker.IsRanged ? 0.42f : (attacker.PendingAttackHeavy ? 0.54f : 0.46f);
 		attacker.AttackCooldown = baseCooldown * Mathf.Max(0.1f, attacker.AttackCycleScale);
 		attacker.CombatState = RoomCombatState.AttackCommit;
 		attacker.CombatStateTimer = attacker.AttackWindupTime + attacker.RecoveryTime;
@@ -825,11 +861,13 @@ public partial class RaidMapDemo
 		int damage = attacker.PendingAttackDamage;
 		float rangeSlack = attacker.PendingAttackRangeSlack;
 		bool heavy = attacker.PendingAttackHeavy;
+		SoldierActiveSkill pendingSkill = attacker.PendingAttackSkill;
 		attacker.PendingAttackTarget = null;
 		attacker.PendingAttackDamage = 0;
 		attacker.PendingAttackRangeSlack = 0f;
 		attacker.PendingAttackLungeDistance = 0f;
 		attacker.PendingAttackHeavy = false;
+		attacker.PendingAttackSkill = SoldierActiveSkill.None;
 
 		if (!attacker.IsAlive || target == null || !target.IsAlive)
 		{
@@ -846,6 +884,13 @@ public partial class RaidMapDemo
 
 		Vector2 dir = distance > 0.001f ? toTarget / distance : (attacker.IsPlayerSide ? Vector2.Right : Vector2.Left);
 		attacker.Facing = dir;
+
+		if (pendingSkill == SoldierActiveSkill.PikeThrust)
+		{
+			ResolvePikeThrust(attacker, target, dir, damage, heavy);
+			return;
+		}
+
 		PlayAttackSfx(attacker.IsRanged, heavy);
 		if (attacker.IsRanged)
 		{
@@ -853,9 +898,97 @@ public partial class RaidMapDemo
 		}
 		else
 		{
+			if (attacker.PassiveSkill == SoldierPassiveSkill.Brace && distance >= attacker.AttackRange * 0.72f)
+			{
+				damage += HasStrengthenedPikePassive(attacker.SoldierClass) ? 2 : 1;
+				heavy = true;
+			}
+
 			ApplyProjectileOrSlashHit(target, damage, dir, heavy, false);
 			SpawnRoomMeleeArcEffect(attacker, attacker.IsPlayerSide, heavy);
 		}
+	}
+
+	private void ResolvePikeThrust(RoomUnit attacker, RoomUnit target, Vector2 dir, int damage, bool heavy)
+	{
+		bool enhanced = HasEnhancedPikeThrust(attacker.SoldierClass);
+		float length = enhanced ? 82f : 64f;
+		float halfWidth = enhanced ? 18f : 10f;
+		float force = enhanced ? 1280f : 920f;
+		float duration = enhanced ? 0.9f : 0.72f;
+		float stagger = enhanced ? 0.42f : 0.28f;
+		int bonusDamage = enhanced ? 2 : 1;
+		Vector2 origin = attacker.Position + dir * 10f;
+		Vector2 side = new(-dir.Y, dir.X);
+		bool hitAny = false;
+		float nearestAlong = float.MaxValue;
+		RoomUnit nearestTarget = null;
+
+		for (int i = 0; i < _roomUnits.Count; i++)
+		{
+			RoomUnit candidate = _roomUnits[i];
+			if (!candidate.IsAlive || candidate.IsPlayerSide == attacker.IsPlayerSide)
+			{
+				continue;
+			}
+
+			Vector2 toCandidate = candidate.Position - origin;
+			float along = toCandidate.Dot(dir);
+			if (along < -4f || along > length)
+			{
+				continue;
+			}
+
+			float lateral = Mathf.Abs(toCandidate.Dot(side));
+			float allowance = halfWidth + GetRoomUnitCollisionRadius(candidate);
+			if (lateral > allowance)
+			{
+				continue;
+			}
+
+			if (!enhanced)
+			{
+				if (along < nearestAlong)
+				{
+					nearestAlong = along;
+					nearestTarget = candidate;
+				}
+				continue;
+			}
+
+			ApplyDirectHit(candidate, damage + bonusDamage, dir, stagger, heavy ? 0.08f : 0.06f, force, duration, false);
+			hitAny = true;
+		}
+
+		if (!enhanced && nearestTarget != null)
+		{
+			ApplyDirectHit(nearestTarget, damage + bonusDamage, dir, stagger, heavy ? 0.08f : 0.06f, force, duration, false);
+			hitAny = true;
+		}
+
+		if (!hitAny)
+		{
+			return;
+		}
+
+		PlayAttackSfx(false, true);
+		SpawnPikeThrustShockwave(attacker, enhanced);
+	}
+
+	private void SpawnPikeThrustShockwave(RoomUnit attacker, bool enhanced)
+	{
+		Vector2 dir = attacker.Facing == Vector2.Zero ? (attacker.IsPlayerSide ? Vector2.Right : Vector2.Left) : attacker.Facing.Normalized();
+		_roomShockwaveEffects.Add(new RoomShockwaveEffect
+		{
+			Origin = attacker.Position + dir * 12f,
+			Direction = dir,
+			Length = enhanced ? 84f : 62f,
+			Radius = enhanced ? 5f : 4f,
+			MaxRadius = enhanced ? 24f : 14f,
+			TimeLeft = enhanced ? 0.24f : 0.18f,
+			Duration = enhanced ? 0.24f : 0.18f,
+			PlayerSide = attacker.IsPlayerSide,
+		});
 	}
 
 	private void ApplyRoomHit(RoomUnit attacker, RoomUnit target, int damage, Vector2 dir, bool heavy)

@@ -3,39 +3,40 @@
 ## Scope
 
 - This document tracks the current live unit stats and combat rules implemented in code.
-- It should stay aligned with the actual state of `RaidMapDemo.cs`.
-- This is the English source document for assistant-side maintenance.
+- It should stay aligned with the actual state of the playable demo.
+- This is the English source document for maintenance.
 - A Chinese mirror document should be refreshed after each meaningful update.
-- It is intended as a maintenance reference, not a pitch or wishlist file.
 
 ## Global Combat Rules
 
 - `HP`: current and maximum health.
-- `Damage`: inclusive random range rolled per attack.
-- `Armor`: flat damage reduction applied after any special scaling.
+- `Damage`: inclusive random attack roll.
+- `Armor`: flat post-scaling damage reduction.
 - `AttackRange`: melee or ranged engagement distance.
-- `Speed`: base movement speed before sprint or skill overrides.
-- `AttackCycleScale`: attack cadence multiplier. Lower is faster.
-- `Stamina`: required for sprinting and some active skills.
-- `ProjectileDamageScale`: multiplier applied before armor against ranged damage.
-- `BlockAnyDamageChance`: chance to negate a hit entirely before damage is applied.
+- `Speed`: base move speed before skill overrides.
+- `AttackCycleScale`: lower means faster attack cadence.
+- `Stamina`: consumed by sprinting and active skills.
+- `ProjectileDamageScale`: multiplier applied to ranged damage before armor.
+- `BlockAnyDamageChance`: chance to negate a hit completely before damage.
 
 ## Shared Soldier Skill Rules
 
-- Most non-ranged soldiers use `Sprint` as their default active skill.
+- Most non-ranged, non-specialist line soldiers use `Sprint`.
 - Archers do not sprint.
 - Shield-line soldiers do not sprint.
+- Pike-line soldiers do not sprint.
 - Shield-line passive baseline:
 - `Missile Guard`: `50%` ranged damage reduction.
-- Higher shield tiers can also gain `BlockAnyDamageChance`.
+- Pike-line passive baseline:
+- `Brace`: outer-range hits gain stronger knockback and stagger.
 
 ## Controlled Hero
 
-- HP: `24` base hideout state, but the live run value persists and can be lower or higher through current run state.
+- HP: `24` base hideout template, but live run state persists.
 - Damage: `2-5`
 - Range: `164`
 - Speed: `165`
-- Stamina: base hero template uses `88`
+- Stamina: `88`
 - Current role:
 - direct player-controlled fighter,
 - ranged-capable,
@@ -83,7 +84,7 @@
 - Visual:
 - armored torso,
 - larger shield,
-- no helmet yet
+- no helmet
 
 ### Ironhelm Guard
 
@@ -102,7 +103,7 @@
 - Visual:
 - armored torso,
 - helmet,
-- upgraded shield-line silhouette
+- upgraded shield
 
 ### Bulwark Guard
 
@@ -115,7 +116,7 @@
 - AttackCycleScale: `0.8`
 - Active:
 - `Shield Rush`
-- enhanced endpoint shockwave visual
+- enhanced route-aligned shockwave visual
 - Passive:
 - `Missile Guard`
 - `BlockAnyDamageChance = 0.28`
@@ -130,11 +131,69 @@
 - HP: `9`
 - Damage: `2-4`
 - Armor: `0`
-- Range: `44`
+- Range: `52`
 - Speed: `146`
 - Stamina: `76`
-- Active: `Sprint`
-- Passive: none
+- AttackCycleScale: `0.98`
+- Active: none
+- Passive:
+- `Brace`
+
+### Elite Pike
+
+- HP: `12`
+- Damage: `3-5`
+- Armor: `1`
+- Range: `56`
+- Speed: `152`
+- Stamina: `88`
+- AttackCycleScale: `0.92`
+- Active:
+- `Pike Thrust`
+- Passive:
+- `Brace`
+- Visual:
+- armored torso,
+- standard upgraded pike,
+- no helmet
+
+### Ironhelm Pikeward
+
+- HP: `15`
+- Damage: `4-6`
+- Armor: `2`
+- Range: `58`
+- Speed: `156`
+- Stamina: `98`
+- AttackCycleScale: `0.88`
+- Active:
+- `Pike Thrust`
+- Passive:
+- strengthened `Brace`
+- Visual:
+- armored torso,
+- helmet,
+- reinforced pike
+
+### Vanguard Pikeward
+
+- HP: `18`
+- Damage: `5-8`
+- Armor: `3`
+- Range: `62`
+- Speed: `160`
+- Stamina: `110`
+- AttackCycleScale: `0.82`
+- Active:
+- `Pike Thrust`
+- upgraded into a wider piercing line strike
+- stronger route-aligned wave effect
+- Passive:
+- strengthened `Brace`
+- Visual:
+- armored torso,
+- helmet,
+- ornate spearhead
 
 ### Blade
 
@@ -171,7 +230,7 @@
 - Passive: none
 - Special:
 - heavier melee profile than baseline line troops,
-- heavier attack setup than standard melee soldiers
+- stronger impact feel on contact.
 
 ## Shield Rush Rules
 
@@ -202,7 +261,31 @@
 - Higher stagger
 - Higher knockback force and duration
 - Adds a route-aligned shockwave visual
-- The shockwave is visual only and does not add separate collision logic
+- The shockwave is visual only
+
+## Pike Thrust Rules
+
+- Current users:
+- `Elite Pike`
+- `Ironhelm Pikeward`
+- `Vanguard Pikeward`
+- Cooldown: `5s`
+- Stamina cost: `18`
+- Base trigger window:
+- target outside `72%` of attack range
+- target within `AttackRange + 26`
+- attacker must be able to act and have enough stamina
+- Base thrust:
+- no dash movement skill
+- uses a dedicated windup and recovery
+- attacks along a forward narrow line
+- Elite and Ironhelm tiers:
+- hit the nearest valid enemy in the thrust line
+- Vanguard tier:
+- wider line,
+- longer line,
+- can pierce multiple enemies,
+- stronger route-aligned wave effect
 
 ## Promotion Path
 
@@ -210,6 +293,13 @@
 - `Shield -> Elite Shield`
 - `Elite Shield -> Ironhelm Guard`
 - `Ironhelm Guard -> Bulwark Guard`
+- `Recruit -> Pike`
+- `Pike -> Elite Pike`
+- `Elite Pike -> Ironhelm Pikeward`
+- `Ironhelm Pikeward -> Vanguard Pikeward`
+- `Recruit -> Blade`
+- `Recruit -> Archer`
+- `Recruit -> Cavalry`
 
 ## Promotion Costs And XP
 
@@ -218,6 +308,9 @@
 - `Ironhelm Guard`: `XP 10`, `70` money
 - `Bulwark Guard`: `XP 15`, `110` money
 - `Pike`: `XP 2`, `18` money
+- `Elite Pike`: `XP 6`, `42` money
+- `Ironhelm Pikeward`: `XP 10`, `70` money
+- `Vanguard Pikeward`: `XP 15`, `110` money
 - `Blade`: `XP 2`, `18` money
 - `Archer`: `XP 2`, `22` money
 - `Cavalry`: `XP 3`, `40` money
@@ -259,10 +352,3 @@
 - Range:
 - ranged variant: `152`
 - melee variant: `28`
-- Distribution:
-- roughly one in three is ranged
-
-## Debug-Only Combat Units
-
-- The code still contains debug-only ally and enemy spawns used for combat preview / effects testing.
-- These are not part of the normal progression balance and should not be treated as live economy-facing roster units.
