@@ -6028,11 +6028,12 @@ private sealed class RoomProjectileEffect
 			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
 		}
 
-		Rect2 soldierRect = new(new Vector2(panel.End.X - Ui(320f), panel.Position.Y + Ui(116f)), new Vector2(Ui(288f), Ui(148f)));
+		Rect2 soldierRect = new(new Vector2(startRect.Position.X - Ui(304f), panel.Position.Y + Ui(28f)), new Vector2(Ui(288f), Ui(190f)));
 		DrawRect(soldierRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(soldierRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
 		DrawString(ThemeDB.FallbackFont, soldierRect.Position + new Vector2(Ui(12f), Ui(22f)), "士兵 roster", HorizontalAlignment.Left, -1f, UiFont(16), Colors.White);
-		int soldierPageCount = Mathf.Max(1, (_soldierRoster.Count + 2) / 3);
+		const int SoldierPageSize = 4;
+		int soldierPageCount = Mathf.Max(1, (_soldierRoster.Count + SoldierPageSize - 1) / SoldierPageSize);
 		_soldierRosterPage = Mathf.Clamp(_soldierRosterPage, 0, soldierPageCount - 1);
 		Rect2 soldierPrevRect = new(new Vector2(soldierRect.End.X - Ui(62f), soldierRect.Position.Y + Ui(8f)), new Vector2(Ui(22f), Ui(20f)));
 		Rect2 soldierNextRect = new(new Vector2(soldierRect.End.X - Ui(34f), soldierRect.Position.Y + Ui(8f)), new Vector2(Ui(22f), Ui(20f)));
@@ -6048,8 +6049,8 @@ private sealed class RoomProjectileEffect
 		}
 		DrawString(ThemeDB.FallbackFont, soldierRect.Position + new Vector2(Ui(186f), Ui(22f)), $"{_soldierRosterPage + 1}/{soldierPageCount}", HorizontalAlignment.Left, Ui(42f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
 		float soldierListY = soldierRect.Position.Y + Ui(34f);
-		int soldierStartIndex = _soldierRosterPage * 3;
-		int visibleSoldierCount = Mathf.Min(_soldierRoster.Count - soldierStartIndex, 3);
+		int soldierStartIndex = _soldierRosterPage * SoldierPageSize;
+		int visibleSoldierCount = Mathf.Min(_soldierRoster.Count - soldierStartIndex, SoldierPageSize);
 		for (int rowIndex = 0; rowIndex < visibleSoldierCount; rowIndex++)
 		{
 			int soldierIndex = soldierStartIndex + rowIndex;
@@ -6070,7 +6071,7 @@ private sealed class RoomProjectileEffect
 		if (_selectedSoldierIndex >= 0 && _selectedSoldierIndex < _soldierRoster.Count)
 		{
 			SoldierRecord selectedSoldier = _soldierRoster[_selectedSoldierIndex];
-			float actionY = soldierRect.Position.Y + Ui(108f);
+			float actionY = soldierRect.Position.Y + Ui(132f);
 			DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY), $"选中：{selectedSoldier.Name}  {GetSoldierClassLabel(selectedSoldier.Class)}  XP {selectedSoldier.Experience}", HorizontalAlignment.Left, Ui(320f), UiFont(12), Colors.White);
 			if (selectedSoldier.Class == SoldierClass.Recruit)
 			{
