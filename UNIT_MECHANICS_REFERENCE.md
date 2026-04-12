@@ -217,21 +217,6 @@
 - Active: none
 - Passive: none
 
-### Cavalry
-
-- HP: `11`
-- Damage: `3-6`
-- Armor: `0`
-- Range: `34`
-- Speed: `176`
-- Stamina: `104`
-- AttackCycleScale: `0.92`
-- Active: `Sprint`
-- Passive: none
-- Special:
-- heavier melee profile than baseline line troops,
-- stronger impact feel on contact.
-
 ## Shield Rush Rules
 
 - Current users:
@@ -299,7 +284,6 @@
 - `Ironhelm Pikeward -> Vanguard Pikeward`
 - `Recruit -> Blade`
 - `Recruit -> Archer`
-- `Recruit -> Cavalry`
 
 ## Promotion Costs And XP
 
@@ -313,7 +297,6 @@
 - `Vanguard Pikeward`: `XP 15`, `110` money
 - `Blade`: `XP 2`, `18` money
 - `Archer`: `XP 2`, `22` money
-- `Cavalry`: `XP 3`, `40` money
 
 ## Soldier Experience Rules
 

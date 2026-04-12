@@ -179,11 +179,9 @@
 - `Vanguard Pikeward`,
 - `Blade`,
 - `Archer`,
-- `Cavalry`.
 - The hideout now includes a simple soldier roster panel.
 - Recruits can be promoted out of run from that roster panel.
 - Promotion currently consumes money and requires stored experience.
-- Cavalry has the highest first-wave promotion requirement and cost.
 - Surviving soldiers gain experience when clearing rooms and when extracting successfully.
 - In room combat, soldier class now affects core combat parameters such as:
 - health,
@@ -217,7 +215,6 @@
 - Shield soldiers also have a live passive that reduces ranged damage by `50%`.
 - Armor is now a real combat stat in room combat damage resolution.
 - Higher shield and pike tiers now also change the visual silhouette with armor, helmet, and upgraded weapon treatment.
-- Cavalry currently also gets a heavier-impact attack profile than baseline line troops.
 
 ## Inventory Progress Snapshot
 
@@ -357,7 +354,6 @@
 - `Pike`,
 - `Blade`,
 - `Archer`,
-- `Cavalry`.
 - The first implementation should prioritize tactical clarity over roster breadth.
 - Class identity should come from battlefield behavior and combat parameters, not only raw stat inflation.
 
@@ -368,7 +364,6 @@
 - `Pike`: longer melee reach, stronger anti-charge and doorway control role.
 - `Blade`: faster close-range attacker with higher damage but lower staying power.
 - `Archer`: rear-line ranged support that requires protection.
-- `Cavalry`: faster movement, stronger stamina, heavier impact, higher damage, and higher deployment cost.
 
 ### Intended first soldier progression loop
 

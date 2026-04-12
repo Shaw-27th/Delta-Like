@@ -1660,9 +1660,6 @@ private sealed class RoomProjectileEffect
 				case "promote_archer":
 					PromoteSelectedSoldier(SoldierClass.Archer);
 					return;
-				case "promote_cavalry":
-					PromoteSelectedSoldier(SoldierClass.Cavalry);
-					return;
 				case "select_map_prev":
 					_selectedMapTemplate = (_selectedMapTemplate + MapTemplateCount - 1) % MapTemplateCount;
 					ClampSelectedDifficulty();
@@ -2079,17 +2076,15 @@ private sealed class RoomProjectileEffect
 			DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(31f)), GetSoldierPassiveSkillLabel(selectedSoldier.Class), HorizontalAlignment.Left, Ui(320f), UiFont(10), new Color(0.86f, 0.9f, 0.96f));
 			if (selectedSoldier.Class == SoldierClass.Recruit)
 			{
-				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "基础升阶需求 XP 2 / 18 金。骑兵需求 XP 3 / 40 金。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "基础升阶需求 XP 2 / 18 金。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
 				Rect2 shieldRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(54f), Ui(24f)));
 				Rect2 pikeRect = new(new Vector2(soldierRect.Position.X + Ui(60f), actionY + Ui(67f)), new Vector2(Ui(54f), Ui(24f)));
 				Rect2 bladeRect = new(new Vector2(soldierRect.Position.X + Ui(120f), actionY + Ui(67f)), new Vector2(Ui(54f), Ui(24f)));
 				Rect2 archerRect = new(new Vector2(soldierRect.Position.X + Ui(180f), actionY + Ui(67f)), new Vector2(Ui(54f), Ui(24f)));
-				Rect2 cavalryRect = new(new Vector2(soldierRect.Position.X + Ui(240f), actionY + Ui(67f)), new Vector2(Ui(54f), Ui(24f)));
 				DrawPromotionButton(shieldRect, "盾", selectedSoldier, SoldierClass.Shield, "promote_shield");
 				DrawPromotionButton(pikeRect, "枪", selectedSoldier, SoldierClass.Pike, "promote_pike");
 				DrawPromotionButton(bladeRect, "刀", selectedSoldier, SoldierClass.Blade, "promote_blade");
 				DrawPromotionButton(archerRect, "弓", selectedSoldier, SoldierClass.Archer, "promote_archer");
-				DrawPromotionButton(cavalryRect, "骑", selectedSoldier, SoldierClass.Cavalry, "promote_cavalry");
 			}
 			else if (selectedSoldier.Class == SoldierClass.Shield)
 			{
