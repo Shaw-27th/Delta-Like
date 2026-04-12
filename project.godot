@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="节点突袭 Demo"
-run/main_scene="res://NodeRaidDemo.tscn"
+run/main_scene="res://ShieldSoldierPreview.tscn"
 config/features=PackedStringArray("4.6", "C#", "Mobile")
 config/icon="res://icon.svg"
 
