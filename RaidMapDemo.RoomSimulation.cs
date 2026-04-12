@@ -612,7 +612,7 @@ public partial class RaidMapDemo
 		if (attacker.SkillMoveTime <= 0f)
 		{
 			ApplyShieldRushHits(attacker, true);
-			if (attacker.SoldierClass == SoldierClass.BulwarkShield)
+			if (attacker.SoldierClass == SoldierClass.ShieldPlusTwo)
 			{
 				SpawnShieldRushShockwave(attacker);
 			}
@@ -621,7 +621,7 @@ public partial class RaidMapDemo
 
 	private void ApplyShieldRushHits(RoomUnit attacker, bool impact)
 	{
-		bool enhancedRush = attacker.SoldierClass == SoldierClass.BulwarkShield;
+		bool enhancedRush = attacker.SoldierClass == SoldierClass.ShieldPlusTwo;
 		float radius = impact ? (enhancedRush ? 34f : 24f) : (enhancedRush ? 22f : 16f);
 		int damage = impact
 			? Mathf.Max(1, enhancedRush ? attacker.DamageMax + 2 : attacker.DamageMax)
