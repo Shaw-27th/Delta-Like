@@ -289,6 +289,35 @@
 - The system should create meaningful differences between low-tier recruits and upgraded veterans.
 - Soldiers are expected to fill the line-unit layer of the squad rather than the hero-specialist layer.
 
+### First soldier-class implementation target
+
+- The first live soldier roster should start from `Recruit`.
+- Recruits should be promotable out of run into a small set of clear battlefield roles:
+- `Shield`,
+- `Pike`,
+- `Blade`,
+- `Archer`,
+- `Cavalry`.
+- The first implementation should prioritize tactical clarity over roster breadth.
+- Class identity should come from battlefield behavior and combat parameters, not only raw stat inflation.
+
+### Intended first-wave class roles
+
+- `Recruit`: cheap baseline unit and default hiring result.
+- `Shield`: slower, tougher, better at holding the line and absorbing pressure.
+- `Pike`: longer melee reach, stronger anti-charge and doorway control role.
+- `Blade`: faster close-range attacker with higher damage but lower staying power.
+- `Archer`: rear-line ranged support that requires protection.
+- `Cavalry`: faster movement, stronger stamina, heavier impact, higher damage, and higher deployment cost.
+
+### Intended first soldier progression loop
+
+- Soldiers gain experience by surviving combat and returning from runs.
+- Experience should persist per soldier rather than only by class bucket.
+- Promotion should happen out of run in the hideout rather than instantly in combat.
+- Hiring should initially create `Recruit` units only.
+- Promotion is what creates differentiated line troops.
+
 ### Progression structure rule
 
 - Lead hero and secondary heroes should ideally share one common hero-grade progression framework in code and data.
