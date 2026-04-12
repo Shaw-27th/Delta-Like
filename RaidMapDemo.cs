@@ -2703,7 +2703,10 @@ private sealed class RoomProjectileEffect
 				DrawRect(new Rect2(staminaBg.Position, new Vector2(staminaBg.Size.X * staminaRatio, staminaBg.Size.Y)), staminaColor, true);
 				DrawRect(staminaBg, new Color(1f, 0.96f, 0.72f, 0.7f), false, 0.8f);
 			}
-			DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-28f, -20f), unit.Name, HorizontalAlignment.Left, 110f, UiFont(12), Colors.White);
+			if (!unit.IsPlayerSide && (unit.IsElite || unit.IsAiSquad))
+			{
+				DrawString(ThemeDB.FallbackFont, unit.Position + new Vector2(-28f, -20f), unit.Name, HorizontalAlignment.Left, 110f, UiFont(12), Colors.White);
+			}
 		}
 	}
 
