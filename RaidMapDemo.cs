@@ -8,6 +8,7 @@ public partial class RaidMapDemo : Node2D
 	private const int MapTemplateCount = 2;
 	private const int DifficultyCount = 3;
 	private const bool EnableCombatFxDebugOpening = false;
+	private const bool EnableSoldierBonusStartingXp = true;
 	private const int SfxSampleRate = 22050;
 	private const int TeamBackpackMaxWidth = 12;
 	private const int TeamBackpackMaxRows = 12;
@@ -1191,7 +1192,9 @@ private sealed class RoomProjectileEffect
 
 		for (int i = 0; i < _runSoldiers.Count; i++)
 		{
-			Vector2 offset = new Vector2(-28f - (i % 3) * 20f, (i / 3) * 24f - 24f);
+			int column = i % 2;
+			int row = i / 2;
+			Vector2 offset = new Vector2(-42f - column * 34f, row * 28f - 34f);
 			RoomUnit soldier = CreateRoomUnit(true, false, false, false, IsSoldierRangedClass(_runSoldiers[i].Class), _runSoldiers[i].Name, ClampToRoom(heroPos + offset));
 			soldier.RosterName = _runSoldiers[i].Name;
 			ApplySoldierClassToRoomUnit(soldier, _runSoldiers[i]);
@@ -2765,7 +2768,7 @@ private sealed class RoomProjectileEffect
 	{
 		if (unit.IsPlayerSide)
 		{
-			return unit.IsHero ? new Color(0.34f, 0.84f, 1f) : GetSoldierClassColor(unit.SoldierClass);
+			return unit.IsHero ? new Color(0.34f, 0.84f, 1f) : new Color(0.5f, 0.92f, 0.72f);
 		}
 
 		if (unit.IsAiSquad)
@@ -2895,7 +2898,16 @@ private sealed class RoomProjectileEffect
 		DrawLine(legRightStart, kneeRight, bodyColor.Lerp(Colors.Black, 0.17f), 1.5f);
 		DrawLine(kneeRight, footRight, bodyColor.Lerp(Colors.Black, 0.18f), 1.4f);
 
-		if (unit.IsRanged)
+		if (unit.IsPlayerSide && !unit.IsHero && unit.SoldierClass == SoldierClass.Cavalry)
+		{
+			DrawRoomCavalryMount(hip, faceSide, outline, bodyColor.Lerp(Colors.Black, 0.18f), attackPose, sizeScale, runSwing);
+		}
+
+		if (unit.IsPlayerSide && !unit.IsHero)
+		{
+			DrawRoomSoldierClassSilhouette(unit, handFront, handBack, hip, faceSide, outline, accent, attackPose);
+		}
+		else if (unit.IsRanged)
 		{
 			DrawRoomRangedSilhouette(unit, handFront, handBack, faceSide, outline, accent, attackPose);
 		}
@@ -2929,29 +2941,7 @@ private sealed class RoomProjectileEffect
 
 	private void DrawRoomMeleeSilhouette(RoomUnit unit, Vector2 handFront, Vector2 handBack, Vector2 hip, Vector2 faceSide, Color outline, Color accent, float attackPose)
 	{
-		float slashBias = attackPose;
-		Vector2 weaponBase = handFront + new Vector2(faceSide.X * 1.6f, -0.8f);
-		Vector2 weaponTip = weaponBase + new Vector2(faceSide.X * (10f + slashBias * 5f), -4.5f - slashBias * 4.2f);
-		DrawLine(weaponBase, weaponTip, outline, 3f);
-		DrawLine(weaponBase, weaponTip, accent, 1.6f);
-
-		Vector2 guardA = weaponBase + new Vector2(0f, -2.6f);
-		Vector2 guardB = weaponBase + new Vector2(0f, 2.6f);
-		DrawLine(guardA, guardB, outline, 2f);
-		DrawLine(guardA, guardB, accent.Lerp(Colors.White, 0.2f), 1f);
-
-		Vector2 shieldCenter = handBack + new Vector2(-faceSide.X * 3.2f, 0.8f);
-		float shieldH = unit.IsElite ? 5.8f : 5.1f;
-		float shieldW = unit.IsElite ? 3.9f : 3.4f;
-		Vector2[] shield =
-		[
-			shieldCenter + new Vector2(0f, -shieldH),
-			shieldCenter + new Vector2(shieldW, -shieldH * 0.2f),
-			shieldCenter + new Vector2(0f, shieldH),
-			shieldCenter + new Vector2(-shieldW, -shieldH * 0.2f),
-		];
-		DrawColoredPolygon(shield, accent.Lerp(Colors.Black, 0.28f));
-		DrawPolyline(new[] { shield[0], shield[1], shield[2], shield[3], shield[0] }, outline, 1.2f);
+		DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, unit.IsElite);
 	}
 
 	private void DrawRoomRangedSilhouette(RoomUnit unit, Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose)
@@ -2972,6 +2962,139 @@ private sealed class RoomProjectileEffect
 		DrawLine(arrowStart, arrowEnd, accent, 1.2f);
 		DrawLine(arrowEnd, arrowEnd + new Vector2(-faceSide.X * 3f, -1.8f), accent, 1f);
 		DrawLine(arrowEnd, arrowEnd + new Vector2(-faceSide.X * 3f, 1.8f), accent, 1f);
+	}
+
+	private void DrawRoomSoldierClassSilhouette(RoomUnit unit, Vector2 handFront, Vector2 handBack, Vector2 hip, Vector2 faceSide, Color outline, Color accent, float attackPose)
+	{
+		switch (unit.SoldierClass)
+		{
+			case SoldierClass.Recruit:
+				DrawRoomRecruitSilhouette(handFront, handBack, faceSide, outline, accent, attackPose);
+				break;
+			case SoldierClass.Shield:
+				DrawRoomShieldSilhouette(handFront, handBack, faceSide, outline, accent, attackPose, unit.IsElite);
+				break;
+			case SoldierClass.Pike:
+				DrawRoomPikeSilhouette(handFront, handBack, faceSide, outline, accent, attackPose);
+				break;
+			case SoldierClass.Cavalry:
+				DrawRoomCavalrySilhouette(handFront, handBack, hip, faceSide, outline, accent, attackPose);
+				break;
+			case SoldierClass.Archer:
+				DrawRoomRangedSilhouette(unit, handFront, handBack, faceSide, outline, accent, attackPose);
+				break;
+			default:
+				DrawRoomBladeSilhouette(handFront, faceSide, outline, accent, attackPose);
+				break;
+		}
+	}
+
+	private void DrawRoomBladeSilhouette(Vector2 handFront, Vector2 faceSide, Color outline, Color accent, float attackPose)
+	{
+		float slashBias = attackPose;
+		Vector2 weaponBase = handFront + new Vector2(faceSide.X * 1.6f, -0.8f);
+		Vector2 weaponTip = weaponBase + new Vector2(faceSide.X * (10f + slashBias * 5f), -4.5f - slashBias * 4.2f);
+		DrawLine(weaponBase, weaponTip, outline, 3f);
+		DrawLine(weaponBase, weaponTip, accent, 1.6f);
+
+		Vector2 guardA = weaponBase + new Vector2(0f, -2.6f);
+		Vector2 guardB = weaponBase + new Vector2(0f, 2.6f);
+		DrawLine(guardA, guardB, outline, 2f);
+		DrawLine(guardA, guardB, accent.Lerp(Colors.White, 0.2f), 1f);
+	}
+
+	private void DrawRoomShieldSilhouette(Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose, bool eliteShield)
+	{
+		DrawRoomBladeSilhouette(handFront, faceSide, outline, accent, attackPose);
+
+		Vector2 shieldCenter = handBack + new Vector2(-faceSide.X * 3.2f, 0.8f);
+		float shieldH = eliteShield ? 6.6f : 6.1f;
+		float shieldW = eliteShield ? 4.8f : 4.2f;
+		Vector2[] shield =
+		[
+			shieldCenter + new Vector2(0f, -shieldH),
+			shieldCenter + new Vector2(shieldW, -shieldH * 0.18f),
+			shieldCenter + new Vector2(shieldW * 0.78f, shieldH * 0.72f),
+			shieldCenter + new Vector2(0f, shieldH),
+			shieldCenter + new Vector2(-shieldW * 0.78f, shieldH * 0.72f),
+			shieldCenter + new Vector2(-shieldW, -shieldH * 0.18f),
+		];
+		DrawColoredPolygon(shield, accent.Lerp(Colors.Black, 0.34f));
+		DrawPolyline(new[] { shield[0], shield[1], shield[2], shield[3], shield[4], shield[5], shield[0] }, outline, 1.2f);
+	}
+
+	private void DrawRoomRecruitSilhouette(Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose)
+	{
+		Vector2 shaftStart = handBack.Lerp(handFront, 0.46f) + new Vector2(-faceSide.X * 1.2f, 2.2f);
+		Vector2 shaftEnd = shaftStart + new Vector2(faceSide.X * (14f + attackPose * 4f), -8.5f - attackPose * 3f);
+		DrawLine(shaftStart, shaftEnd, outline, 3f);
+		DrawLine(shaftStart, shaftEnd, new Color(0.64f, 0.46f, 0.24f), 1.6f);
+		Vector2 tineBase = shaftEnd;
+		Vector2 tineDir = (shaftEnd - shaftStart).Normalized();
+		Vector2 tineNormal = new(-tineDir.Y, tineDir.X);
+		DrawLine(tineBase, tineBase + tineNormal * 4.2f, accent, 1f);
+		DrawLine(tineBase, tineBase - tineNormal * 4.2f, accent, 1f);
+		DrawLine(tineBase, tineBase + tineDir * 3.2f, accent, 1f);
+	}
+
+	private void DrawRoomPikeSilhouette(Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose)
+	{
+		Vector2 shaftStart = handBack + new Vector2(-faceSide.X * 5f, 0.8f);
+		Vector2 shaftEnd = handFront + new Vector2(faceSide.X * (16f + attackPose * 7f), -6.4f - attackPose * 2.6f);
+		DrawLine(shaftStart, shaftEnd, outline, 3.2f);
+		DrawLine(shaftStart, shaftEnd, new Color(0.64f, 0.46f, 0.24f), 1.8f);
+		Vector2 spearBase = shaftEnd - new Vector2(faceSide.X * 5.2f, 0f);
+		Vector2[] spearHead =
+		[
+			shaftEnd,
+			spearBase + new Vector2(0f, -2.4f),
+			spearBase + new Vector2(0f, 2.4f),
+		];
+		DrawColoredPolygon(spearHead, accent);
+		DrawPolyline(new[] { spearHead[0], spearHead[1], spearHead[2], spearHead[0] }, outline, 1f);
+	}
+
+	private void DrawRoomCavalrySilhouette(Vector2 handFront, Vector2 handBack, Vector2 hip, Vector2 faceSide, Color outline, Color accent, float attackPose)
+	{
+		Vector2 lanceStart = handBack.Lerp(handFront, 0.4f) + new Vector2(-faceSide.X * 2f, -1.2f);
+		Vector2 lanceEnd = lanceStart + new Vector2(faceSide.X * (22f + attackPose * 8f), -6.2f - attackPose * 1.8f);
+		DrawLine(lanceStart, lanceEnd, outline, 3.2f);
+		DrawLine(lanceStart, lanceEnd, new Color(0.7f, 0.52f, 0.28f), 1.9f);
+		Vector2 lanceHeadBase = lanceEnd - new Vector2(faceSide.X * 5.8f, 0f);
+		Vector2[] lanceHead =
+		[
+			lanceEnd,
+			lanceHeadBase + new Vector2(0f, -2.6f),
+			lanceHeadBase + new Vector2(0f, 2.6f),
+		];
+		DrawColoredPolygon(lanceHead, accent.Lerp(Colors.White, 0.08f));
+		DrawPolyline(new[] { lanceHead[0], lanceHead[1], lanceHead[2], lanceHead[0] }, outline, 1f);
+	}
+
+	private void DrawRoomCavalryMount(Vector2 hip, Vector2 faceSide, Color outline, Color bodyShade, float attackPose, float sizeScale, float runSwing)
+	{
+		Vector2 horseCenter = hip + new Vector2(0f, 10f * sizeScale);
+		float bodyHalfW = 10f * sizeScale;
+		float bodyHalfH = 4.2f * sizeScale;
+		Rect2 bodyRect = new(horseCenter + new Vector2(-bodyHalfW, -bodyHalfH), new Vector2(bodyHalfW * 2f, bodyHalfH * 2f));
+		DrawRect(bodyRect, bodyShade, true);
+		DrawRect(bodyRect, outline, false, 1.2f);
+
+		Vector2 chest = horseCenter + new Vector2(faceSide.X * (bodyHalfW + 3.4f * sizeScale), -1.6f * sizeScale);
+		Vector2 nose = chest + new Vector2(faceSide.X * (6.2f * sizeScale + attackPose * 1.4f), -2.4f * sizeScale);
+		DrawLine(chest, nose, outline, 3f);
+		DrawLine(chest, nose, bodyShade.Lerp(Colors.White, 0.08f), 1.6f);
+		DrawCircle(nose, 2.1f * sizeScale, bodyShade.Lerp(Colors.White, 0.12f));
+
+		float legSwing = runSwing * 2.2f * sizeScale;
+		Vector2 frontLegA = horseCenter + new Vector2(faceSide.X * 5.8f * sizeScale, bodyHalfH - 0.6f);
+		Vector2 frontLegB = horseCenter + new Vector2(faceSide.X * 2.4f * sizeScale, bodyHalfH - 0.4f);
+		Vector2 backLegA = horseCenter + new Vector2(-faceSide.X * 2.4f * sizeScale, bodyHalfH - 0.4f);
+		Vector2 backLegB = horseCenter + new Vector2(-faceSide.X * 6f * sizeScale, bodyHalfH - 0.6f);
+		DrawLine(frontLegA, frontLegA + new Vector2(faceSide.X * legSwing * 0.35f, 10f * sizeScale), outline, 2.2f);
+		DrawLine(frontLegB, frontLegB + new Vector2(-faceSide.X * legSwing * 0.25f, 10f * sizeScale), outline, 2.2f);
+		DrawLine(backLegA, backLegA + new Vector2(-faceSide.X * legSwing * 0.3f, 10f * sizeScale), outline, 2.2f);
+		DrawLine(backLegB, backLegB + new Vector2(faceSide.X * legSwing * 0.28f, 10f * sizeScale), outline, 2.2f);
 	}
 
 	private void DrawRoomImpactEffects()
@@ -5783,7 +5906,12 @@ private sealed class RoomProjectileEffect
 
 	private void RecruitSoldierInternal()
 	{
-		_soldierRoster.Add(new SoldierRecord { Name = $"士兵{_nextSoldierId}", Class = SoldierClass.Recruit, Experience = 0 });
+		_soldierRoster.Add(new SoldierRecord
+		{
+			Name = $"士兵{_nextSoldierId}",
+			Class = SoldierClass.Recruit,
+			Experience = EnableSoldierBonusStartingXp ? 10 : 0,
+		});
 		_nextSoldierId++;
 	}
 
