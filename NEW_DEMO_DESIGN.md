@@ -169,8 +169,8 @@
 - `Recruit`,
 - `Shield`,
 - `Elite Shield`,
-- `Shield +1`,
-- `Shield +2`,
+- `Ironhelm Guard`,
+- `Bulwark Guard`,
 - `Pike`,
 - `Blade`,
 - `Archer`,
@@ -193,11 +193,11 @@
 - The shield line now has a four-step progression:
 - `Shield`,
 - `Elite Shield`,
-- `Shield +1`,
-- `Shield +2`.
+- `Ironhelm Guard`,
+- `Bulwark Guard`.
 - `Elite Shield` is the first shield upgrade and now owns the base `Shield Rush` active skill.
-- `Shield +1` adds a helmet and an upgraded passive with a chance to fully block any incoming damage.
-- `Shield +2` keeps the helmeted armor silhouette, upgrades the shield into a more ornate large version, and upgrades `Shield Rush` into a wider and more powerful impact with a visible shockwave.
+- `Ironhelm Guard` adds a helmet and an upgraded passive with a chance to fully block any incoming damage.
+- `Bulwark Guard` keeps the helmeted armor silhouette, upgrades the shield into a more ornate large version, and upgrades `Shield Rush` into a wider and more powerful impact with a visible route-aligned shockwave.
 - `Shield Rush` spends stamina, has a `5s` cooldown, knocks units aside along the path, and applies a stronger endpoint impact.
 - Shield soldiers also have a live passive that reduces ranged damage by `50%`.
 - Armor is now a real combat stat in room combat damage resolution.

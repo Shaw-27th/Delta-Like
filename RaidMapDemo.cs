@@ -339,6 +339,8 @@ private sealed class RoomProjectileEffect
 	private sealed class RoomShockwaveEffect
 	{
 		public Vector2 Origin;
+		public Vector2 Direction;
+		public float Length;
 		public float Radius;
 		public float MaxRadius;
 		public float TimeLeft;
@@ -2100,9 +2102,12 @@ private sealed class RoomProjectileEffect
 
 	private void SpawnShieldRushShockwave(RoomUnit attacker)
 	{
+		Vector2 dir = attacker.Facing == Vector2.Zero ? (attacker.IsPlayerSide ? Vector2.Right : Vector2.Left) : attacker.Facing.Normalized();
 		_roomShockwaveEffects.Add(new RoomShockwaveEffect
 		{
 			Origin = attacker.Position,
+			Direction = dir,
+			Length = 72f,
 			Radius = 8f,
 			MaxRadius = 84f,
 			TimeLeft = 0.28f,
@@ -3469,9 +3474,18 @@ private sealed class RoomProjectileEffect
 			Color outer = effect.PlayerSide
 				? new Color(0.82f, 0.98f, 1f, alpha * 0.72f)
 				: new Color(1f, 0.88f, 0.72f, alpha * 0.72f);
-			Color inner = new Color(outer.R, outer.G, outer.B, alpha * 0.26f);
-			DrawArc(effect.Origin, effect.Radius, 0f, Mathf.Tau, 44, outer, 3.2f);
-			DrawArc(effect.Origin, effect.Radius * 0.72f, 0f, Mathf.Tau, 36, inner, 2.1f);
+			Color inner = new Color(outer.R, outer.G, outer.B, alpha * 0.3f);
+			Vector2 dir = effect.Direction == Vector2.Zero ? Vector2.Right : effect.Direction.Normalized();
+			Vector2 normal = new(-dir.Y, dir.X);
+			Vector2 routeStart = effect.Origin - dir * (effect.Length * 0.78f);
+			for (int sample = 0; sample < 6; sample++)
+			{
+				float t = sample / 5f;
+				Vector2 center = routeStart + dir * (effect.Length * t);
+				float width = effect.Radius * (0.45f + 0.55f * Mathf.Sin(t * Mathf.Pi));
+				DrawLine(center - normal * width, center + normal * width, outer, 2.6f);
+				DrawLine(center - normal * (width * 0.62f), center + normal * (width * 0.62f), inner, 1.4f);
+			}
 		}
 
 	}
@@ -5976,8 +5990,8 @@ private sealed class RoomProjectileEffect
 		SoldierClass.Recruit => "新兵",
 		SoldierClass.Shield => "盾兵",
 		SoldierClass.EliteShield => "精锐盾兵",
-		SoldierClass.ShieldPlusOne => "盾兵+1",
-		SoldierClass.ShieldPlusTwo => "盾兵+2",
+		SoldierClass.ShieldPlusOne => "钢盔盾卫",
+		SoldierClass.ShieldPlusTwo => "壁垒盾卫",
 		SoldierClass.Pike => "枪兵",
 		SoldierClass.Blade => "刀兵",
 		SoldierClass.Archer => "弓兵",
@@ -6638,15 +6652,15 @@ private sealed class RoomProjectileEffect
 			}
 			else if (selectedSoldier.Class == SoldierClass.EliteShield)
 			{
-				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "盾兵+1 需求 XP 10 / 70 金。获得头盔与概率格挡。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "钢盔盾卫需求 XP 10 / 70 金。获得头盔与概率格挡。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
 				Rect2 plusOneRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
-				DrawPromotionButton(plusOneRect, "+1", selectedSoldier, SoldierClass.ShieldPlusOne, "promote_shield_plus_one");
+				DrawPromotionButton(plusOneRect, "钢盔", selectedSoldier, SoldierClass.ShieldPlusOne, "promote_shield_plus_one");
 			}
 			else if (selectedSoldier.Class == SoldierClass.ShieldPlusOne)
 			{
-				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "盾兵+2 需求 XP 15 / 110 金。强化盾冲并获得更华丽的大盾。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "壁垒盾卫需求 XP 15 / 110 金。强化盾冲并获得更华丽的大盾。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
 				Rect2 plusTwoRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(96f), Ui(24f)));
-				DrawPromotionButton(plusTwoRect, "+2", selectedSoldier, SoldierClass.ShieldPlusTwo, "promote_shield_plus_two");
+				DrawPromotionButton(plusTwoRect, "壁垒", selectedSoldier, SoldierClass.ShieldPlusTwo, "promote_shield_plus_two");
 			}
 		}
 
