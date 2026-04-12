@@ -184,6 +184,12 @@
 - range,
 - stamina,
 - ranged or melee behavior.
+- A first minimal soldier skill framework now exists with active and passive slots.
+- Sprint is treated as a default active skill for most non-ranged soldiers.
+- Shield soldiers currently replace sprint with `Shield Rush`.
+- `Shield Rush` spends stamina, has a `5s` cooldown, knocks units aside along the path, and applies a stronger endpoint impact.
+- Shield soldiers also have a live passive that reduces ranged damage by `50%`.
+- Armor is now a real combat stat in room combat damage resolution.
 - Cavalry currently also gets a heavier-impact attack profile than baseline line troops.
 
 ## Inventory Progress Snapshot

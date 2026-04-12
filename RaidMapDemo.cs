@@ -76,6 +76,19 @@ public partial class RaidMapDemo : Node2D
 		Cavalry,
 	}
 
+	private enum SoldierActiveSkill
+	{
+		None,
+		Sprint,
+		ShieldRush,
+	}
+
+	private enum SoldierPassiveSkill
+	{
+		None,
+		MissileGuard,
+	}
+
 	private sealed class MapNode
 	{
 		public int Id;
@@ -259,6 +272,7 @@ public partial class RaidMapDemo : Node2D
 		public int MaxHp;
 		public int DamageMin;
 		public int DamageMax;
+		public int Armor;
 		public float AttackRange;
 		public float AttackCooldown;
 		public float AttackCycleScale = 1f;
@@ -279,6 +293,15 @@ public partial class RaidMapDemo : Node2D
 		public Vector2 TacticalAnchor;
 		public float Stamina;
 		public float MaxStamina;
+		public bool CanSprint = true;
+		public SoldierActiveSkill ActiveSkill;
+		public SoldierPassiveSkill PassiveSkill;
+		public float ActiveSkillCooldown;
+		public float SkillMoveTime;
+		public float SkillMoveSpeed;
+		public Vector2 SkillMoveDirection;
+		public float ShieldRushContactLock;
+		public float ProjectileDamageScale = 1f;
 		public bool IsSprinting;
 		public bool IsAlive => Hp > 0;
 	}
@@ -1481,6 +1504,12 @@ private sealed class RoomProjectileEffect
 				continue;
 			}
 
+			if (unit.SkillMoveTime > 0f)
+			{
+				AdvanceShieldRush(unit, delta);
+				continue;
+			}
+
 			if (unit.StaggerTime > 0f || unit.AttackWindupTime > 0f || unit.RecoveryTime > 0f)
 			{
 				continue;
@@ -1520,6 +1549,12 @@ private sealed class RoomProjectileEffect
 			if (unit.KnockbackTime > 0f)
 			{
 				AdvanceKnockback(unit, delta);
+				continue;
+			}
+
+			if (unit.SkillMoveTime > 0f)
+			{
+				AdvanceShieldRush(unit, delta);
 				continue;
 			}
 
@@ -1859,10 +1894,12 @@ private sealed class RoomProjectileEffect
 		}
 
 		unit.AttackCooldown = Mathf.Max(0f, unit.AttackCooldown - delta);
+		unit.ActiveSkillCooldown = Mathf.Max(0f, unit.ActiveSkillCooldown - delta);
 		unit.HitFlash = Mathf.Max(0f, unit.HitFlash - delta);
 		unit.StaggerTime = Mathf.Max(0f, unit.StaggerTime - delta);
 		unit.RecoveryTime = Mathf.Max(0f, unit.RecoveryTime - delta);
 		unit.KnockbackTime = Mathf.Max(0f, unit.KnockbackTime - delta);
+		unit.ShieldRushContactLock = Mathf.Max(0f, unit.ShieldRushContactLock - delta);
 		unit.CombatStateTimer = Mathf.Max(0f, unit.CombatStateTimer - delta);
 		if (unit.MaxStamina > 0f)
 		{
@@ -1911,6 +1948,11 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
+		if (TryStartShieldRush(attacker, target, dir, distance))
+		{
+			return;
+		}
+
 		if (CanStartAttack(attacker) && distance <= attacker.AttackRange + 4f)
 		{
 			BeginRoomAttack(attacker, target, 14f);
@@ -1944,6 +1986,94 @@ private sealed class RoomProjectileEffect
 		attacker.CombatState = RoomCombatState.Regroup;
 		Vector2 regroupTarget = target.Position - dir * regroupBand + side * Ui(6f);
 		MoveUnitToward(attacker, regroupTarget, controlSpeed * 0.6f, delta);
+	}
+
+	private bool TryStartShieldRush(RoomUnit attacker, RoomUnit target, Vector2 dir, float distance)
+	{
+		if (attacker.SoldierClass != SoldierClass.Shield
+			|| attacker.ActiveSkill != SoldierActiveSkill.ShieldRush
+			|| attacker.ActiveSkillCooldown > 0f
+			|| attacker.MaxStamina <= 0f
+			|| attacker.Stamina < 24f
+			|| distance < attacker.AttackRange + 18f
+			|| distance > 150f
+			|| !CanStartAttack(attacker))
+		{
+			return false;
+		}
+
+		attacker.Stamina = Mathf.Max(0f, attacker.Stamina - 24f);
+		attacker.ActiveSkillCooldown = 5f;
+		attacker.SkillMoveTime = 0.28f;
+		attacker.SkillMoveSpeed = 520f;
+		attacker.SkillMoveDirection = dir;
+		attacker.PendingAttackTarget = target;
+		attacker.CombatState = RoomCombatState.Advance;
+		attacker.CombatStateTimer = attacker.SkillMoveTime;
+		return true;
+	}
+
+	private void AdvanceShieldRush(RoomUnit attacker, float delta)
+	{
+		Vector2 dashDir = attacker.SkillMoveDirection == Vector2.Zero ? attacker.Facing : attacker.SkillMoveDirection;
+		dashDir = dashDir == Vector2.Zero ? (attacker.IsPlayerSide ? Vector2.Right : Vector2.Left) : dashDir.Normalized();
+		attacker.Facing = dashDir;
+		attacker.Position = ClampToRoom(attacker.Position + dashDir * attacker.SkillMoveSpeed * delta);
+		ApplyShieldRushHits(attacker, false);
+		attacker.SkillMoveTime = Mathf.Max(0f, attacker.SkillMoveTime - delta);
+		if (attacker.SkillMoveTime <= 0f)
+		{
+			ApplyShieldRushHits(attacker, true);
+		}
+	}
+
+	private void ApplyShieldRushHits(RoomUnit attacker, bool impact)
+	{
+		float radius = impact ? 24f : 16f;
+		int damage = impact ? Mathf.Max(1, attacker.DamageMax) : Mathf.Max(1, attacker.DamageMin);
+		float stagger = impact ? 0.6f : 0.3f;
+		float hitPause = impact ? 0.08f : 0.04f;
+		float force = impact ? 1220f : 610f;
+		float duration = impact ? 1.08f : 0.54f;
+		bool rangedHit = false;
+
+		for (int i = 0; i < _roomUnits.Count; i++)
+		{
+			RoomUnit target = _roomUnits[i];
+			if (!target.IsAlive || target == attacker)
+			{
+				continue;
+			}
+
+			float maxDistance = radius + GetRoomUnitCollisionRadius(target);
+			if (attacker.Position.DistanceSquaredTo(target.Position) > maxDistance * maxDistance)
+			{
+				continue;
+			}
+
+			if (!impact && target.ShieldRushContactLock > 0f)
+			{
+				continue;
+			}
+
+			target.ShieldRushContactLock = impact ? 0.32f : 0.2f;
+			Vector2 hitDir = (target.Position - attacker.Position).Normalized();
+			if (hitDir == Vector2.Zero)
+			{
+				hitDir = attacker.Facing == Vector2.Zero ? (attacker.IsPlayerSide ? Vector2.Right : Vector2.Left) : attacker.Facing.Normalized();
+			}
+
+			if (target.IsPlayerSide == attacker.IsPlayerSide)
+			{
+				target.HitFlash = Mathf.Max(target.HitFlash, 0.16f);
+				target.StaggerTime = Mathf.Max(target.StaggerTime, stagger * 0.7f);
+				target.KnockbackVelocity = hitDir * (force * 0.72f);
+				target.KnockbackTime = Mathf.Max(target.KnockbackTime, duration * 0.72f);
+				continue;
+			}
+
+			ApplyDirectHit(target, damage, hitDir, stagger, hitPause, force, duration, rangedHit);
+		}
 	}
 
 	private void StepRangedUnitCombat(RoomUnit attacker, RoomUnit target, Vector2 dir, float distance, float delta)
@@ -2045,7 +2175,7 @@ private sealed class RoomProjectileEffect
 	private float GetRoomMoveSpeed(RoomUnit unit, bool sprint, float delta, float scale)
 	{
 		float speed = unit.Speed * scale;
-		if (!sprint || unit.MaxStamina <= 0f || unit.Stamina <= 0f)
+		if (!sprint || !unit.CanSprint || unit.MaxStamina <= 0f || unit.Stamina <= 0f)
 		{
 			return speed;
 		}
@@ -2119,7 +2249,8 @@ private sealed class RoomProjectileEffect
 
 	private void ApplyRoomHit(RoomUnit attacker, RoomUnit target, int damage, Vector2 dir, bool heavy)
 	{
-		target.Hp = Mathf.Max(0, target.Hp - damage);
+		int finalDamage = GetMitigatedDamage(target, damage, attacker.IsRanged);
+		target.Hp = Mathf.Max(0, target.Hp - finalDamage);
 		target.HitFlash = heavy ? 0.32f : 0.24f;
 		target.StaggerTime = Mathf.Max(target.StaggerTime, attacker.IsRanged ? 0.12f : (heavy ? 0.24f : 0.18f));
 		target.HitPauseTime = Mathf.Max(target.HitPauseTime, heavy ? 0.08f : 0.055f);
@@ -2238,12 +2369,50 @@ private sealed class RoomProjectileEffect
 			return;
 		}
 
-		target.Hp = Mathf.Max(0, target.Hp - damage);
+		int finalDamage = GetMitigatedDamage(target, damage, rangedHit);
+		target.Hp = Mathf.Max(0, target.Hp - finalDamage);
 		target.HitFlash = heavy ? 0.32f : 0.24f;
 		target.StaggerTime = Mathf.Max(target.StaggerTime, rangedHit ? 0.14f : (heavy ? 0.24f : 0.18f));
 		target.HitPauseTime = Mathf.Max(target.HitPauseTime, heavy ? 0.08f : 0.055f);
 		ApplyRoomKnockback(target, dir, rangedHit, heavy);
 		PlayHitSfx(heavy, target.Hp <= 0);
+
+		if (target.Hp <= 0)
+		{
+			HandleUnitDeath(target);
+		}
+	}
+
+	private int GetMitigatedDamage(RoomUnit target, int damage, bool rangedHit)
+	{
+		float scaledDamage = damage;
+		if (rangedHit)
+		{
+			scaledDamage *= target.ProjectileDamageScale;
+		}
+
+		scaledDamage -= target.Armor;
+		return Mathf.Max(1, Mathf.RoundToInt(scaledDamage));
+	}
+
+	private void ApplyDirectHit(RoomUnit target, int damage, Vector2 dashDir, float stagger, float hitPause, float knockbackForce, float knockbackDuration, bool rangedHit)
+	{
+		if (target == null || !target.IsAlive)
+		{
+			return;
+		}
+
+		int finalDamage = GetMitigatedDamage(target, damage, rangedHit);
+		target.Hp = Mathf.Max(0, target.Hp - finalDamage);
+		target.HitFlash = 0.28f;
+		target.StaggerTime = Mathf.Max(target.StaggerTime, stagger);
+		target.HitPauseTime = Mathf.Max(target.HitPauseTime, hitPause);
+		if (dashDir != Vector2.Zero)
+		{
+			target.KnockbackVelocity = dashDir * knockbackForce;
+			target.KnockbackTime = Mathf.Max(target.KnockbackTime, knockbackDuration);
+		}
+		PlayHitSfx(true, target.Hp <= 0);
 
 		if (target.Hp <= 0)
 		{
@@ -5736,6 +5905,33 @@ private sealed class RoomProjectileEffect
 
 	private bool IsSoldierRangedClass(SoldierClass soldierClass) => soldierClass == SoldierClass.Archer;
 
+	private SoldierActiveSkill GetSoldierActiveSkill(SoldierClass soldierClass) => soldierClass switch
+	{
+		SoldierClass.Archer => SoldierActiveSkill.None,
+		SoldierClass.Shield => SoldierActiveSkill.ShieldRush,
+		SoldierClass.Recruit or SoldierClass.Pike or SoldierClass.Blade or SoldierClass.Cavalry => SoldierActiveSkill.Sprint,
+		_ => SoldierActiveSkill.None,
+	};
+
+	private SoldierPassiveSkill GetSoldierPassiveSkill(SoldierClass soldierClass) => soldierClass switch
+	{
+		SoldierClass.Shield => SoldierPassiveSkill.MissileGuard,
+		_ => SoldierPassiveSkill.None,
+	};
+
+	private string GetSoldierActiveSkillLabel(SoldierClass soldierClass) => GetSoldierActiveSkill(soldierClass) switch
+	{
+		SoldierActiveSkill.Sprint => "主动：跑动",
+		SoldierActiveSkill.ShieldRush => "主动：盾冲（耗体力，5秒冷却）",
+		_ => "主动：无",
+	};
+
+	private string GetSoldierPassiveSkillLabel(SoldierClass soldierClass) => GetSoldierPassiveSkill(soldierClass) switch
+	{
+		SoldierPassiveSkill.MissileGuard => "被动：对远程攻击减伤 50%",
+		_ => "被动：无",
+	};
+
 	private int GetSoldierStrengthValue(SoldierClass soldierClass) => soldierClass switch
 	{
 		SoldierClass.Recruit => 1,
@@ -5763,18 +5959,28 @@ private sealed class RoomProjectileEffect
 		unit.SoldierClass = soldier.Class;
 		unit.IsRanged = IsSoldierRangedClass(soldier.Class);
 		unit.Name = $"{soldier.Name}·{GetSoldierClassLabel(soldier.Class)}";
+		unit.Armor = 0;
+		unit.CanSprint = !unit.IsRanged;
+		unit.ActiveSkill = unit.CanSprint ? SoldierActiveSkill.Sprint : SoldierActiveSkill.None;
+		unit.PassiveSkill = SoldierPassiveSkill.None;
+		unit.ProjectileDamageScale = 1f;
 
 		switch (soldier.Class)
 		{
 			case SoldierClass.Shield:
-				unit.Hp = 12;
-				unit.MaxHp = 12;
+				unit.Hp = 15;
+				unit.MaxHp = 15;
 				unit.DamageMin = 1;
-				unit.DamageMax = 3;
-				unit.AttackRange = 28f;
-				unit.Speed = 142f;
-				unit.MaxStamina = 84f;
-				unit.Stamina = 84f;
+				unit.DamageMax = 2;
+				unit.Armor = 2;
+				unit.AttackRange = 26f;
+				unit.Speed = 122f;
+				unit.MaxStamina = 86f;
+				unit.Stamina = 86f;
+				unit.CanSprint = false;
+				unit.ActiveSkill = SoldierActiveSkill.ShieldRush;
+				unit.PassiveSkill = SoldierPassiveSkill.MissileGuard;
+				unit.ProjectileDamageScale = 0.5f;
 				break;
 			case SoldierClass.Pike:
 				unit.Hp = 9;
@@ -5805,6 +6011,7 @@ private sealed class RoomProjectileEffect
 				unit.Speed = 148f;
 				unit.MaxStamina = 0f;
 				unit.Stamina = 0f;
+				unit.ActiveSkill = SoldierActiveSkill.None;
 				break;
 			case SoldierClass.Cavalry:
 				unit.Hp = 11;
@@ -6207,14 +6414,16 @@ private sealed class RoomProjectileEffect
 			SoldierRecord selectedSoldier = _soldierRoster[_selectedSoldierIndex];
 			float actionY = soldierRect.Position.Y + Ui(132f);
 			DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY), $"选中：{selectedSoldier.Name}  {GetSoldierClassLabel(selectedSoldier.Class)}  XP {selectedSoldier.Experience}", HorizontalAlignment.Left, Ui(320f), UiFont(12), Colors.White);
+			DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(16f)), GetSoldierActiveSkillLabel(selectedSoldier.Class), HorizontalAlignment.Left, Ui(320f), UiFont(10), new Color(0.86f, 0.9f, 0.96f));
+			DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(31f)), GetSoldierPassiveSkillLabel(selectedSoldier.Class), HorizontalAlignment.Left, Ui(320f), UiFont(10), new Color(0.86f, 0.9f, 0.96f));
 			if (selectedSoldier.Class == SoldierClass.Recruit)
 			{
-				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(18f)), "基础升阶需求 XP 2 / 18 金。骑兵需求 XP 3 / 40 金。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
-				Rect2 shieldRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(38f)), new Vector2(Ui(54f), Ui(24f)));
-				Rect2 pikeRect = new(new Vector2(soldierRect.Position.X + Ui(60f), actionY + Ui(38f)), new Vector2(Ui(54f), Ui(24f)));
-				Rect2 bladeRect = new(new Vector2(soldierRect.Position.X + Ui(120f), actionY + Ui(38f)), new Vector2(Ui(54f), Ui(24f)));
-				Rect2 archerRect = new(new Vector2(soldierRect.Position.X + Ui(180f), actionY + Ui(38f)), new Vector2(Ui(54f), Ui(24f)));
-				Rect2 cavalryRect = new(new Vector2(soldierRect.Position.X + Ui(240f), actionY + Ui(38f)), new Vector2(Ui(54f), Ui(24f)));
+				DrawString(ThemeDB.FallbackFont, new Vector2(soldierRect.Position.X, actionY + Ui(47f)), "基础升阶需求 XP 2 / 18 金。骑兵需求 XP 3 / 40 金。", HorizontalAlignment.Left, Ui(320f), UiFont(11), new Color(0.82f, 0.88f, 0.94f));
+				Rect2 shieldRect = new(new Vector2(soldierRect.Position.X, actionY + Ui(67f)), new Vector2(Ui(54f), Ui(24f)));
+				Rect2 pikeRect = new(new Vector2(soldierRect.Position.X + Ui(60f), actionY + Ui(67f)), new Vector2(Ui(54f), Ui(24f)));
+				Rect2 bladeRect = new(new Vector2(soldierRect.Position.X + Ui(120f), actionY + Ui(67f)), new Vector2(Ui(54f), Ui(24f)));
+				Rect2 archerRect = new(new Vector2(soldierRect.Position.X + Ui(180f), actionY + Ui(67f)), new Vector2(Ui(54f), Ui(24f)));
+				Rect2 cavalryRect = new(new Vector2(soldierRect.Position.X + Ui(240f), actionY + Ui(67f)), new Vector2(Ui(54f), Ui(24f)));
 				DrawPromotionButton(shieldRect, "盾", selectedSoldier, SoldierClass.Shield, "promote_shield");
 				DrawPromotionButton(pikeRect, "枪", selectedSoldier, SoldierClass.Pike, "promote_pike");
 				DrawPromotionButton(bladeRect, "刀", selectedSoldier, SoldierClass.Blade, "promote_blade");
