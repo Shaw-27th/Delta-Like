@@ -508,16 +508,21 @@ public partial class RaidMapDemo
 
 	private void DrawRoomPikeSilhouette(Vector2 handFront, Vector2 handBack, Vector2 faceSide, Color outline, Color accent, float attackPose)
 	{
-		Vector2 shaftStart = handBack + new Vector2(-faceSide.X * 5f, 0.8f);
-		Vector2 shaftEnd = handFront + new Vector2(faceSide.X * (16f + attackPose * 7f), -6.4f - attackPose * 2.6f);
+		bool thrusting = attackPose > 0.35f;
+		Vector2 shaftDir = thrusting
+			? new Vector2(faceSide.X, -0.06f - attackPose * 0.04f).Normalized()
+			: new Vector2(faceSide.X, -0.28f - attackPose * 0.1f).Normalized();
+		Vector2 shaftStart = thrusting ? handBack - shaftDir * 10f : handBack - shaftDir * 18f;
+		Vector2 shaftEnd = thrusting ? handFront + shaftDir * 54f : handFront + shaftDir * 34f;
 		DrawLine(shaftStart, shaftEnd, outline, 3.2f);
 		DrawLine(shaftStart, shaftEnd, new Color(0.64f, 0.46f, 0.24f), 1.8f);
-		Vector2 spearBase = shaftEnd - new Vector2(faceSide.X * 5.2f, 0f);
+		Vector2 spearBase = shaftEnd - shaftDir * 8f;
+		Vector2 spearSide = new Vector2(-shaftDir.Y, shaftDir.X) * 2.6f;
 		Vector2[] spearHead =
 		[
 			shaftEnd,
-			spearBase + new Vector2(0f, -2.4f),
-			spearBase + new Vector2(0f, 2.4f),
+			spearBase + spearSide,
+			spearBase - spearSide,
 		];
 		DrawColoredPolygon(spearHead, accent);
 		DrawPolyline(new[] { spearHead[0], spearHead[1], spearHead[2], spearHead[0] }, outline, 1f);
