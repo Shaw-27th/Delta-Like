@@ -202,13 +202,21 @@
 
 ### Skill-tree direction
 
-- The lead hero skill tree should be organized under the four attributes rather than as one flat list.
-- Each attribute should later own its own branch of hero skills.
-- `Intelligence` is expected to matter mainly through future non-combat and support skills rather than immediate raw stat scaling.
+- The lead hero skill tree is now scaffolded under the four attributes rather than as one flat list.
+- Each attribute currently has:
+- one live first-pass skill with a real gameplay effect,
+- additional placeholder entries for future expansion.
+- Current live first-pass hero skills are:
+- `Strength` / `Momentum Follow-Through`: after a lead-hero melee kill, the next melee attack gains extra impact.
+- `Agility` / `Slip Away`: when the lead hero is hit, they gain a short escape-speed window.
+- `Intelligence` / `Field Medicine`: after a room clear, a medicine-point pool is distributed one point at a time to the most injured player-side unit.
+- `Charm` / `Rally Order`: after a room clear, the squad gains a temporary multi-turn command buff.
+- `Intelligence` is still expected to grow mainly through later non-combat and support skills rather than direct baseline stat scaling.
 
 ### First implementation boundary
 
 - The first implementation should focus on the persistent stat scaffold and direct attribute effects only.
+- The current implementation now also includes the first minimal hero-skill scaffold.
 - Secondary heroes should remain future work even though `Charm` already reserves design space for them.
 - Equipment-driven builds remain part of the long-term hero plan, but not the first implementation pass.
 

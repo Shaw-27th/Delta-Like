@@ -484,6 +484,8 @@ public partial class RaidMapDemo
 		unit.AttackCooldown = Mathf.Max(0f, unit.AttackCooldown - delta);
 		unit.ActiveSkillCooldown = Mathf.Max(0f, unit.ActiveSkillCooldown - delta);
 		unit.HitFlash = Mathf.Max(0f, unit.HitFlash - delta);
+		unit.HeroMomentumTime = Mathf.Max(0f, unit.HeroMomentumTime - delta);
+		unit.HeroEvasiveTime = Mathf.Max(0f, unit.HeroEvasiveTime - delta);
 		unit.StaggerTime = Mathf.Max(0f, unit.StaggerTime - delta);
 		unit.RecoveryTime = Mathf.Max(0f, unit.RecoveryTime - delta);
 		unit.KnockbackTime = Mathf.Max(0f, unit.KnockbackTime - delta);
@@ -897,7 +899,7 @@ public partial class RaidMapDemo
 
 	private float GetRoomMoveSpeed(RoomUnit unit, bool sprint, float delta, float scale)
 	{
-		float speed = unit.Speed * scale;
+		float speed = unit.Speed * scale * GetLeadHeroEvasiveSpeedMultiplier(unit);
 		if (!sprint || !unit.CanSprint || unit.MaxStamina <= 0f || unit.Stamina <= 0f)
 		{
 			return speed;
@@ -961,6 +963,12 @@ public partial class RaidMapDemo
 		Vector2 dir = distance > 0.001f ? toTarget / distance : (attacker.IsPlayerSide ? Vector2.Right : Vector2.Left);
 		attacker.Facing = dir;
 		damage = ApplyLeadHeroCriticalStrike(attacker, damage, ref heavy);
+		if (attacker.IsHero && !attacker.IsRanged && attacker.HeroMomentumTime > 0f)
+		{
+			damage += 3;
+			heavy = true;
+			attacker.HeroMomentumTime = 0f;
+		}
 
 		if (pendingSkill == SoldierActiveSkill.PikeThrust)
 		{
@@ -1000,7 +1008,12 @@ public partial class RaidMapDemo
 				ApplyBladePassiveBonus(attacker, target, ref damage, ref heavy);
 			}
 
+			bool targetAliveBefore = target.IsAlive;
 			ApplyProjectileOrSlashHit(target, damage, dir, heavy, false);
+			if (attacker.IsHero && !attacker.IsRanged && targetAliveBefore && !target.IsAlive)
+			{
+				TriggerLeadHeroMomentum(attacker);
+			}
 			SpawnRoomMeleeArcEffect(attacker, attacker.IsPlayerSide, heavy);
 		}
 	}
@@ -1353,6 +1366,10 @@ public partial class RaidMapDemo
 		target.HitFlash = heavy ? 0.32f : 0.24f;
 		target.StaggerTime = Mathf.Max(target.StaggerTime, rangedHit ? 0.14f : (heavy ? 0.24f : 0.18f));
 		target.HitPauseTime = Mathf.Max(target.HitPauseTime, heavy ? 0.08f : 0.055f);
+		if (target.IsHero)
+		{
+			TriggerLeadHeroEvasiveStep(target);
+		}
 		ApplyRoomKnockback(target, dir, rangedHit, heavy);
 		PlayHitSfx(heavy, target.Hp <= 0);
 
@@ -1392,6 +1409,10 @@ public partial class RaidMapDemo
 		target.HitFlash = 0.28f;
 		target.StaggerTime = Mathf.Max(target.StaggerTime, stagger);
 		target.HitPauseTime = Mathf.Max(target.HitPauseTime, hitPause);
+		if (target.IsHero)
+		{
+			TriggerLeadHeroEvasiveStep(target);
+		}
 		if (dashDir != Vector2.Zero)
 		{
 			target.KnockbackVelocity = dashDir * knockbackForce;
@@ -1454,6 +1475,8 @@ public partial class RaidMapDemo
 				}
 
 				node.Threat = 0;
+				ApplyLeadHeroRoomClearSupport();
+				ApplyLeadHeroCommandBuff();
 				GrantLeadHeroExperience(1, "清空房间");
 				GrantRunSoldierExperience(1, "清空房间");
 			}

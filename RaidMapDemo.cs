@@ -245,10 +245,15 @@ public partial class RaidMapDemo : Node2D
 		public int Level = 1;
 		public int Experience;
 		public int UnspentStatPoints;
+		public int UnspentSkillPoints = 1;
 		public int Strength = 1;
 		public int Agility = 1;
 		public int Intelligence = 1;
 		public int Charm = 1;
+		public bool LearnedStrengthSkill;
+		public bool LearnedAgilitySkill;
+		public bool LearnedIntelligenceSkill;
+		public bool LearnedCharmSkill;
 	}
 
 	private sealed class AiSquad
@@ -335,6 +340,8 @@ public partial class RaidMapDemo : Node2D
 		public float ProjectileDamageScale = 1f;
 		public float BlockAnyDamageChance;
 		public bool IsSprinting;
+		public float HeroMomentumTime;
+		public float HeroEvasiveTime;
 		public bool IsAlive => Hp > 0;
 	}
 
@@ -427,6 +434,7 @@ private sealed class RoomProjectileEffect
 	private int _lootValue;
 	private int _money;
 	private int _runMoneyLooted;
+	private int _leadHeroCommandBuffTurns;
 	private int _nextSoldierId = 1;
 	private bool _runEnded;
 	private bool _runFailed;
@@ -1655,6 +1663,18 @@ private sealed class RoomProjectileEffect
 				case "hero_add_charm":
 					SpendLeadHeroAttributePoint(HeroAttribute.Charm);
 					return;
+				case "learn_strength_skill":
+					LearnHeroSkill(HeroSkill.StrengthCore);
+					return;
+				case "learn_agility_skill":
+					LearnHeroSkill(HeroSkill.AgilityCore);
+					return;
+				case "learn_intelligence_skill":
+					LearnHeroSkill(HeroSkill.IntelligenceCore);
+					return;
+				case "learn_charm_skill":
+					LearnHeroSkill(HeroSkill.CharmCore);
+					return;
 				case "soldier_page_prev":
 					_soldierRosterPage = Mathf.Max(0, _soldierRosterPage - 1);
 					return;
@@ -2078,8 +2098,10 @@ private sealed class RoomProjectileEffect
 			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
 		}
 
-		Rect2 heroRect = new(new Vector2(panel.End.X - Ui(184f), panel.Position.Y + Ui(112f)), new Vector2(Ui(152f), Ui(152f)));
+		Rect2 heroRect = new(new Vector2(panel.End.X - Ui(184f), panel.Position.Y + Ui(104f)), new Vector2(Ui(152f), Ui(158f)));
 		DrawLeadHeroPanel(heroRect);
+		Rect2 heroSkillRect = new(new Vector2(panel.Position.X + Ui(336f), panel.Position.Y + Ui(104f)), new Vector2(Ui(272f), Ui(152f)));
+		DrawLeadHeroSkillPanel(heroSkillRect);
 
 		Rect2 soldierRect = new(new Vector2(startRect.Position.X - Ui(304f), panel.Position.Y + Ui(28f)), new Vector2(Ui(288f), Ui(190f)));
 		DrawRect(soldierRect, new Color(0.09f, 0.1f, 0.12f), true);

@@ -97,6 +97,10 @@ public partial class RaidMapDemo
 		for (int i = 0; i < amount; i++)
 		{
 			_turn++;
+			if (_leadHeroCommandBuffTurns > 0)
+			{
+				_leadHeroCommandBuffTurns--;
+			}
 			SimulateAiTurn();
 			CheckPlayerNodeEncounterAfterTimeAdvance();
 		}
