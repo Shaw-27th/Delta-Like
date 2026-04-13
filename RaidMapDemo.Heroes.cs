@@ -10,6 +10,12 @@ public partial class RaidMapDemo
 		Charm,
 	}
 
+	private enum HeroWeaponKind
+	{
+		Saber,
+		HunterBow,
+	}
+
 	private enum HeroSkill
 	{
 		StrengthCore,
@@ -55,17 +61,50 @@ public partial class RaidMapDemo
 
 	private float GetLeadHeroAttackCycleScale()
 	{
-		return Mathf.Clamp(1f - _leadHero.Agility * 0.04f, 0.72f, 1f);
+		float cycle = Mathf.Clamp(1f - _leadHero.Agility * 0.04f, 0.72f, 1f);
+		return _leadHero.Weapon == HeroWeaponKind.HunterBow ? cycle * 1.06f : cycle;
 	}
 
 	private float GetLeadHeroCritChance()
 	{
-		return Mathf.Clamp(0.05f + _leadHero.Agility * 0.025f, 0.05f, 0.35f);
+		float chance = Mathf.Clamp(0.05f + _leadHero.Agility * 0.025f, 0.05f, 0.35f);
+		return _leadHero.Weapon == HeroWeaponKind.HunterBow ? Mathf.Min(0.42f, chance + 0.04f) : chance;
 	}
 
 	private float GetLeadHeroCritMultiplier()
 	{
 		return 1.5f + _leadHero.Strength * 0.12f;
+	}
+
+	private float GetLeadHeroAttackRange()
+	{
+		return _leadHero.Weapon switch
+		{
+			HeroWeaponKind.HunterBow => 182f,
+			_ => 34f,
+		};
+	}
+
+	private bool IsLeadHeroWeaponRanged()
+	{
+		return _leadHero.Weapon == HeroWeaponKind.HunterBow;
+	}
+
+	private string GetLeadHeroWeaponLabel() => _leadHero.Weapon switch
+	{
+		HeroWeaponKind.HunterBow => "猎弓",
+		_ => "军刀",
+	};
+
+	private string GetLeadHeroWeaponModeLabel()
+	{
+		return IsLeadHeroWeaponRanged() ? "远程" : "近战";
+	}
+
+	private void CycleLeadHeroWeapon()
+	{
+		_leadHero.Weapon = _leadHero.Weapon == HeroWeaponKind.Saber ? HeroWeaponKind.HunterBow : HeroWeaponKind.Saber;
+		_status = $"{_leadHero.Name} 现在装备 {GetLeadHeroWeaponLabel()}。";
 	}
 
 	private float GetLeadHeroSearchSpeedMultiplier()
@@ -218,12 +257,19 @@ public partial class RaidMapDemo
 
 	private void ApplyLeadHeroStatsToRoomUnit(RoomUnit hero)
 	{
+		hero.Name = $"{_leadHero.Name}·{GetLeadHeroWeaponLabel()}";
+		hero.IsRanged = IsLeadHeroWeaponRanged();
 		hero.MaxHp = GetLeadHeroMaxHp();
 		hero.Hp = Mathf.Clamp(_playerHp, 1, hero.MaxHp);
 		hero.DamageMin = GetLeadHeroDamageMin();
 		hero.DamageMax = GetLeadHeroDamageMax();
+		hero.AttackRange = GetLeadHeroAttackRange();
 		hero.Speed = GetLeadHeroSpeed();
 		hero.AttackCycleScale = GetLeadHeroAttackCycleScale();
+		hero.MaxStamina = 88f + _leadHero.Agility * 4f;
+		hero.Stamina = hero.MaxStamina;
+		hero.CanSprint = true;
+		hero.CombatState = hero.IsRanged ? RoomCombatState.Idle : RoomCombatState.Advance;
 	}
 
 	private int ApplyLeadHeroCriticalStrike(RoomUnit attacker, int damage, ref bool heavy)
@@ -396,14 +442,17 @@ public partial class RaidMapDemo
 		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), Ui(48f)), $"XP {_leadHero.Experience}/{GetLeadHeroExperienceToNextLevel()}  属性点 {_leadHero.UnspentStatPoints}", HorizontalAlignment.Left, rect.Size.X - Ui(20f), UiFont(9), new Color(0.82f, 0.88f, 0.94f));
 		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), Ui(61f)), $"技能点 {_leadHero.UnspentSkillPoints}", HorizontalAlignment.Left, rect.Size.X - Ui(20f), UiFont(9), _leadHero.UnspentSkillPoints > 0 ? new Color(0.98f, 0.84f, 0.46f) : new Color(0.82f, 0.88f, 0.94f));
 		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), Ui(74f)), $"HP {GetLeadHeroMaxHp()}  伤害 {GetLeadHeroDamageMin()}-{GetLeadHeroDamageMax()}", HorizontalAlignment.Left, rect.Size.X - Ui(20f), UiFont(9), new Color(0.86f, 0.9f, 0.96f));
-		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), Ui(87f)), $"暴击 {Mathf.RoundToInt(GetLeadHeroCritChance() * 100f)}%  x{GetLeadHeroCritMultiplier():0.00}", HorizontalAlignment.Left, rect.Size.X - Ui(20f), UiFont(9), new Color(0.86f, 0.9f, 0.96f));
-		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), Ui(100f)), $"移速 {Mathf.RoundToInt(GetLeadHeroSpeed())}  搜索 x{GetLeadHeroSearchSpeedMultiplier():0.00}", HorizontalAlignment.Left, rect.Size.X - Ui(20f), UiFont(9), new Color(0.86f, 0.9f, 0.96f));
-		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), Ui(113f)), $"背包 {GetLeadHeroBackpackCells()}  士兵上限 {GetLeadHeroSoldierLimit()}", HorizontalAlignment.Left, rect.Size.X - Ui(20f), UiFont(9), new Color(0.86f, 0.9f, 0.96f));
-
-		DrawHeroAttributeControl(new Rect2(rect.Position + new Vector2(Ui(10f), Ui(126f)), new Vector2(Ui(64f), Ui(16f))), HeroAttribute.Strength, "hero_add_strength");
-		DrawHeroAttributeControl(new Rect2(rect.Position + new Vector2(Ui(78f), Ui(126f)), new Vector2(Ui(64f), Ui(16f))), HeroAttribute.Agility, "hero_add_agility");
-		DrawHeroAttributeControl(new Rect2(rect.Position + new Vector2(Ui(10f), Ui(140f)), new Vector2(Ui(64f), Ui(16f))), HeroAttribute.Intelligence, "hero_add_intelligence");
-		DrawHeroAttributeControl(new Rect2(rect.Position + new Vector2(Ui(78f), Ui(140f)), new Vector2(Ui(64f), Ui(16f))), HeroAttribute.Charm, "hero_add_charm");
+		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), Ui(87f)), $"武器 {GetLeadHeroWeaponLabel()}  形态 {GetLeadHeroWeaponModeLabel()}", HorizontalAlignment.Left, rect.Size.X - Ui(20f), UiFont(9), new Color(0.86f, 0.9f, 0.96f));
+		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), Ui(100f)), $"射程 {Mathf.RoundToInt(GetLeadHeroAttackRange())}  暴击 {Mathf.RoundToInt(GetLeadHeroCritChance() * 100f)}%", HorizontalAlignment.Left, rect.Size.X - Ui(20f), UiFont(9), new Color(0.86f, 0.9f, 0.96f));
+		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), Ui(113f)), $"移速 {Mathf.RoundToInt(GetLeadHeroSpeed())}  搜索 x{GetLeadHeroSearchSpeedMultiplier():0.00}", HorizontalAlignment.Left, rect.Size.X - Ui(20f), UiFont(9), new Color(0.86f, 0.9f, 0.96f));
+		DrawString(ThemeDB.FallbackFont, rect.Position + new Vector2(Ui(10f), Ui(126f)), $"背包 {GetLeadHeroBackpackCells()}  士兵上限 {GetLeadHeroSoldierLimit()}", HorizontalAlignment.Left, rect.Size.X - Ui(20f), UiFont(9), new Color(0.86f, 0.9f, 0.96f));
+		Rect2 weaponRect = new(rect.Position + new Vector2(Ui(96f), Ui(144f)), new Vector2(Ui(46f), Ui(16f)));
+		DrawButton(weaponRect, "切换", new Color(0.28f, 0.38f, 0.54f));
+		_buttons.Add(new ButtonDef(weaponRect, "cycle_hero_weapon"));
+		DrawHeroAttributeControl(new Rect2(rect.Position + new Vector2(Ui(10f), Ui(144f)), new Vector2(Ui(64f), Ui(16f))), HeroAttribute.Strength, "hero_add_strength");
+		DrawHeroAttributeControl(new Rect2(rect.Position + new Vector2(Ui(78f), Ui(144f)), new Vector2(Ui(64f), Ui(16f))), HeroAttribute.Agility, "hero_add_agility");
+		DrawHeroAttributeControl(new Rect2(rect.Position + new Vector2(Ui(10f), Ui(158f)), new Vector2(Ui(64f), Ui(16f))), HeroAttribute.Intelligence, "hero_add_intelligence");
+		DrawHeroAttributeControl(new Rect2(rect.Position + new Vector2(Ui(78f), Ui(158f)), new Vector2(Ui(64f), Ui(16f))), HeroAttribute.Charm, "hero_add_charm");
 	}
 
 	private void DrawHeroAttributeControl(Rect2 rect, HeroAttribute attribute, string action)

@@ -200,6 +200,29 @@
 - Room clear now grants lead-hero experience.
 - Successful extraction now grants lead-hero experience.
 
+### Current first-pass weapon rule
+
+- The lead hero currently uses one weapon slot only.
+- The equipped weapon directly determines whether the lead hero fights as melee or ranged.
+- Weapon switching is currently available directly from the hideout hero panel.
+- The current first-pass test weapons are:
+- `Saber`,
+- `Hunter Bow`.
+- The current first-pass live distinction is:
+- `Saber`: melee profile.
+- `Hunter Bow`: ranged profile.
+- Weapon choice currently affects:
+- combat mode,
+- attack range,
+- attack pacing bias,
+- critical-hit profile bias.
+- The current first pass does not yet include:
+- loot-driven hero weapon replacement,
+- multiple weapon sets,
+- off-hand logic,
+- weapon-specific active skills.
+- The current goal is to validate weapon-driven combat identity before adding larger equipment structure such as separate hands or multiple weapon sets.
+
 ### Skill-tree direction
 
 - The lead hero skill tree is now scaffolded under the four attributes rather than as one flat list.

@@ -250,6 +250,7 @@ public partial class RaidMapDemo : Node2D
 		public int Agility = 1;
 		public int Intelligence = 1;
 		public int Charm = 1;
+		public HeroWeaponKind Weapon = HeroWeaponKind.Saber;
 		public bool LearnedStrengthSkill;
 		public bool LearnedAgilitySkill;
 		public bool LearnedIntelligenceSkill;
@@ -1663,6 +1664,9 @@ private sealed class RoomProjectileEffect
 				case "hero_add_charm":
 					SpendLeadHeroAttributePoint(HeroAttribute.Charm);
 					return;
+				case "cycle_hero_weapon":
+					CycleLeadHeroWeapon();
+					return;
 				case "learn_strength_skill":
 					LearnHeroSkill(HeroSkill.StrengthCore);
 					return;
@@ -2098,7 +2102,7 @@ private sealed class RoomProjectileEffect
 			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
 		}
 
-		Rect2 heroRect = new(new Vector2(panel.End.X - Ui(184f), panel.Position.Y + Ui(104f)), new Vector2(Ui(152f), Ui(158f)));
+		Rect2 heroRect = new(new Vector2(panel.End.X - Ui(184f), panel.Position.Y + Ui(104f)), new Vector2(Ui(152f), Ui(178f)));
 		DrawLeadHeroPanel(heroRect);
 		Rect2 heroSkillRect = new(new Vector2(panel.Position.X + Ui(336f), panel.Position.Y + Ui(104f)), new Vector2(Ui(272f), Ui(152f)));
 		DrawLeadHeroSkillPanel(heroSkillRect);
