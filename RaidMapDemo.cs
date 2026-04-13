@@ -239,6 +239,18 @@ public partial class RaidMapDemo : Node2D
 		public int Experience;
 	}
 
+	private sealed class HeroRecord
+	{
+		public string Name = "领队";
+		public int Level = 1;
+		public int Experience;
+		public int UnspentStatPoints;
+		public int Strength = 1;
+		public int Agility = 1;
+		public int Intelligence = 1;
+		public int Charm = 1;
+	}
+
 	private sealed class AiSquad
 	{
 		public string Name = "";
@@ -389,6 +401,7 @@ private sealed class RoomProjectileEffect
 	private readonly List<ShopEntry> _shopStock = new();
 	private readonly List<SoldierRecord> _soldierRoster = new();
 	private readonly List<SoldierRecord> _runSoldiers = new();
+	private readonly HeroRecord _leadHero = new();
 	private readonly List<RoomUnit> _roomUnits = new();
 	private readonly List<RoomProjectileEffect> _roomProjectileEffects = new();
 	private readonly List<RoomMeleeArcEffect> _roomMeleeArcEffects = new();
@@ -471,6 +484,7 @@ private sealed class RoomProjectileEffect
 	{
 		_rng.Randomize();
 		InitializeSfx();
+		InitializeLeadHero();
 		UpdateLayoutRects();
 		InitHideout();
 	}
@@ -769,8 +783,8 @@ private sealed class RoomProjectileEffect
 		_pendingHideoutDragIndex = -1;
 		_pendingHideoutGrabOffset = Vector2.Zero;
 
-		_playerMaxHp = 24;
-		_playerHp = 24;
+		_playerMaxHp = GetLeadHeroMaxHp();
+		_playerHp = _playerMaxHp;
 		_playerStrength = 11;
 		_timeSlotProgress = 0;
 		_lootValue = 0;
@@ -1239,12 +1253,7 @@ private sealed class RoomProjectileEffect
 		}
 
 		RoomUnit hero = CreateRoomUnit(true, true, false, false, true, "英雄", heroPos);
-		hero.Hp = _playerHp;
-		hero.MaxHp = _playerMaxHp;
-		hero.DamageMin = 2;
-		hero.DamageMax = 5;
-		hero.AttackRange = 164f;
-		hero.Speed = 165f;
+		ApplyLeadHeroStatsToRoomUnit(hero);
 		_roomUnits.Add(hero);
 
 		for (int i = 0; i < _runSoldiers.Count; i++)
@@ -1634,6 +1643,18 @@ private sealed class RoomProjectileEffect
 				case "recruit_soldier":
 					RecruitSoldier();
 					return;
+				case "hero_add_strength":
+					SpendLeadHeroAttributePoint(HeroAttribute.Strength);
+					return;
+				case "hero_add_agility":
+					SpendLeadHeroAttributePoint(HeroAttribute.Agility);
+					return;
+				case "hero_add_intelligence":
+					SpendLeadHeroAttributePoint(HeroAttribute.Intelligence);
+					return;
+				case "hero_add_charm":
+					SpendLeadHeroAttributePoint(HeroAttribute.Charm);
+					return;
 				case "soldier_page_prev":
 					_soldierRosterPage = Mathf.Max(0, _soldierRosterPage - 1);
 					return;
@@ -1829,6 +1850,7 @@ private sealed class RoomProjectileEffect
 		_runFailed = false;
 		_showSettlementTransfer = false;
 		_selectedSettlementIndex = -1;
+		GrantLeadHeroExperience(2, "成功撤离");
 		GrantRunSoldierExperience(1, "成功撤离");
 		CommitRunSoldierRoster();
 		_status = "撤离成功，等待结算转移。";
@@ -2048,17 +2070,21 @@ private sealed class RoomProjectileEffect
 		DrawButton(startRect, "入局", new Color(0.24f, 0.62f, 0.36f));
 		_buttons.Add(new ButtonDef(startRect, "start_run"));
 
+		int recruitCost = GetLeadHeroRecruitCost();
 		Rect2 recruitRect = new(new Vector2(panel.End.X - Ui(184f), panel.Position.Y + Ui(74f)), new Vector2(Ui(152f), Ui(34f)));
-		DrawButton(recruitRect, $"征募 {RecruitCost}", _money >= RecruitCost ? new Color(0.48f, 0.34f, 0.18f) : new Color(0.24f, 0.24f, 0.28f));
-		if (_money >= RecruitCost)
+		DrawButton(recruitRect, $"征募 {recruitCost}", _money >= recruitCost ? new Color(0.48f, 0.34f, 0.18f) : new Color(0.24f, 0.24f, 0.28f));
+		if (_money >= recruitCost && _soldierRoster.Count < GetLeadHeroSoldierLimit())
 		{
 			_buttons.Add(new ButtonDef(recruitRect, "recruit_soldier"));
 		}
 
+		Rect2 heroRect = new(new Vector2(panel.End.X - Ui(184f), panel.Position.Y + Ui(112f)), new Vector2(Ui(152f), Ui(152f)));
+		DrawLeadHeroPanel(heroRect);
+
 		Rect2 soldierRect = new(new Vector2(startRect.Position.X - Ui(304f), panel.Position.Y + Ui(28f)), new Vector2(Ui(288f), Ui(190f)));
 		DrawRect(soldierRect, new Color(0.09f, 0.1f, 0.12f), true);
 		DrawRect(soldierRect, new Color(0.28f, 0.31f, 0.36f), false, 1.5f);
-		DrawString(ThemeDB.FallbackFont, soldierRect.Position + new Vector2(Ui(12f), Ui(22f)), "士兵 roster", HorizontalAlignment.Left, -1f, UiFont(16), Colors.White);
+		DrawString(ThemeDB.FallbackFont, soldierRect.Position + new Vector2(Ui(12f), Ui(22f)), $"士兵 roster {_soldierRoster.Count}/{GetLeadHeroSoldierLimit()}", HorizontalAlignment.Left, -1f, UiFont(16), Colors.White);
 		const int SoldierPageSize = 4;
 		int soldierPageCount = Mathf.Max(1, (_soldierRoster.Count + SoldierPageSize - 1) / SoldierPageSize);
 		_soldierRosterPage = Mathf.Clamp(_soldierRosterPage, 0, soldierPageCount - 1);

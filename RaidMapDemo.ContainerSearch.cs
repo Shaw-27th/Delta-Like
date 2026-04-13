@@ -91,15 +91,20 @@ public partial class RaidMapDemo
 		return ItemRarity.White;
 	}
 
-	private float GetGridSearchTime(ItemRarity rarity) => rarity switch
+	private float GetGridSearchTime(ItemRarity rarity)
 	{
-		ItemRarity.White => 0.8f,
-		ItemRarity.Green => 1.15f,
-		ItemRarity.Blue => 1.6f,
-		ItemRarity.Purple => 2.15f,
-		ItemRarity.Gold => 2.9f,
-		_ => 1f,
-	};
+		float baseTime = rarity switch
+		{
+			ItemRarity.White => 0.8f,
+			ItemRarity.Green => 1.15f,
+			ItemRarity.Blue => 1.6f,
+			ItemRarity.Purple => 2.15f,
+			ItemRarity.Gold => 2.9f,
+			_ => 1f,
+		};
+
+		return baseTime / GetLeadHeroSearchSpeedMultiplier();
+	}
 
 	private int GetTimeSlotCost(ItemRarity rarity) => rarity switch
 	{

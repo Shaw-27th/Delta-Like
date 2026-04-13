@@ -960,6 +960,7 @@ public partial class RaidMapDemo
 
 		Vector2 dir = distance > 0.001f ? toTarget / distance : (attacker.IsPlayerSide ? Vector2.Right : Vector2.Left);
 		attacker.Facing = dir;
+		damage = ApplyLeadHeroCriticalStrike(attacker, damage, ref heavy);
 
 		if (pendingSkill == SoldierActiveSkill.PikeThrust)
 		{
@@ -1453,6 +1454,7 @@ public partial class RaidMapDemo
 				}
 
 				node.Threat = 0;
+				GrantLeadHeroExperience(1, "清空房间");
 				GrantRunSoldierExperience(1, "清空房间");
 			}
 		}

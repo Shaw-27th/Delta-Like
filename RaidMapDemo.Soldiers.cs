@@ -281,7 +281,7 @@ public partial class RaidMapDemo
 
 	private void RecalculatePlayerStrength()
 	{
-		int total = 3;
+		int total = GetLeadHeroStrengthValue();
 		for (int i = 0; i < _runSoldiers.Count; i++)
 		{
 			total += GetSoldierStrengthValue(_runSoldiers[i].Class);
@@ -569,6 +569,13 @@ public partial class RaidMapDemo
 				unit.Stamina = 72f;
 				break;
 		}
+
+		int hpBonus = GetLeadHeroSoldierHpBonus();
+		int damageBonus = GetLeadHeroSoldierDamageBonus();
+		unit.MaxHp += hpBonus;
+		unit.Hp += hpBonus;
+		unit.DamageMin += damageBonus;
+		unit.DamageMax += damageBonus;
 	}
 
 	private void RecruitSoldierInternal()
@@ -584,13 +591,20 @@ public partial class RaidMapDemo
 
 	private void RecruitSoldier()
 	{
-		if (_money < RecruitCost)
+		int recruitCost = GetLeadHeroRecruitCost();
+		if (_soldierRoster.Count >= GetLeadHeroSoldierLimit())
+		{
+			_status = "当前魅力允许带领的士兵数量已满。";
+			return;
+		}
+
+		if (_money < recruitCost)
 		{
 			_status = "资金不足，无法征募新兵。";
 			return;
 		}
 
-		_money -= RecruitCost;
+		_money -= recruitCost;
 		RecruitSoldierInternal();
 		_soldierRosterPage = Mathf.Max(0, (_soldierRoster.Count - 1) / SoldierPageSize);
 		_selectedSoldierIndex = _soldierRoster.Count - 1;

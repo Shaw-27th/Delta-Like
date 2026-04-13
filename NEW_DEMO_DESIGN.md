@@ -164,39 +164,41 @@
 
 ## Lead Hero Progression Snapshot
 
-### Confirmed attribute direction
+### Current live first pass
 
-- The lead hero should use a four-attribute structure aligned with the current Mount-and-Blade-style target:
+- The lead hero now uses a four-attribute structure aligned with the current Mount-and-Blade-style target:
 - `Strength`,
 - `Agility`,
 - `Intelligence`,
 - `Charm`.
-- The lead hero should persist:
+- The lead hero now persists:
 - level,
 - experience,
 - unspent stat points,
 - the four primary attributes above.
-- Leveling up should currently grant `2` unspent stat points per level.
-- Attribute points are intended to be assigned in the hideout before deployment.
+- Leveling up currently grants `2` unspent stat points per level.
+- Attribute points can now be assigned in the hideout before deployment.
 
 ### Current first-pass attribute roles
 
-- `Strength` should determine:
+- `Strength` currently determines:
 - max HP,
 - base damage,
 - lead-hero base backpack capacity,
 - critical-hit multiplier.
-- `Agility` should determine:
+- `Agility` currently determines:
 - move speed,
 - attack speed,
 - critical-hit chance,
 - search speed.
-- `Intelligence` is intentionally reserved for future systems and should currently have no direct stat effect.
-- `Charm` should determine:
+- `Intelligence` is intentionally reserved for future systems and currently has no direct stat effect.
+- `Charm` currently determines:
 - secondary-hero slot count,
 - soldier count limit,
 - soldier stat bonuses,
 - recruitment discount.
+- Room clear now grants lead-hero experience.
+- Successful extraction now grants lead-hero experience.
 
 ### Skill-tree direction
 

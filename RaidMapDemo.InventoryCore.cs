@@ -442,7 +442,7 @@ public partial class RaidMapDemo
 			BackpackCapacityBlock block = new()
 			{
 				SourceLabel = unit.Name,
-				Size = unit.IsHero ? new Vector2I(2, 2) : new Vector2I(1, 1),
+				Size = unit.IsHero ? GetLeadHeroBackpackBlockSize() : new Vector2I(1, 1),
 			};
 			blocks.Add(block);
 		}
@@ -458,7 +458,7 @@ public partial class RaidMapDemo
 			new BackpackCapacityBlock
 			{
 				SourceLabel = "Hero",
-				Size = new Vector2I(2, 2),
+				Size = GetLeadHeroBackpackBlockSize(),
 			}
 		};
 
