@@ -162,6 +162,54 @@
 - New-run starting money is currently boosted for testing.
 - Current test start money: `3000`
 
+## Lead Hero Progression Snapshot
+
+### Confirmed attribute direction
+
+- The lead hero should use a four-attribute structure aligned with the current Mount-and-Blade-style target:
+- `Strength`,
+- `Agility`,
+- `Intelligence`,
+- `Charm`.
+- The lead hero should persist:
+- level,
+- experience,
+- unspent stat points,
+- the four primary attributes above.
+- Leveling up should currently grant `2` unspent stat points per level.
+- Attribute points are intended to be assigned in the hideout before deployment.
+
+### Current first-pass attribute roles
+
+- `Strength` should determine:
+- max HP,
+- base damage,
+- lead-hero base backpack capacity,
+- critical-hit multiplier.
+- `Agility` should determine:
+- move speed,
+- attack speed,
+- critical-hit chance,
+- search speed.
+- `Intelligence` is intentionally reserved for future systems and should currently have no direct stat effect.
+- `Charm` should determine:
+- secondary-hero slot count,
+- soldier count limit,
+- soldier stat bonuses,
+- recruitment discount.
+
+### Skill-tree direction
+
+- The lead hero skill tree should be organized under the four attributes rather than as one flat list.
+- Each attribute should later own its own branch of hero skills.
+- `Intelligence` is expected to matter mainly through future non-combat and support skills rather than immediate raw stat scaling.
+
+### First implementation boundary
+
+- The first implementation should focus on the persistent stat scaffold and direct attribute effects only.
+- Secondary heroes should remain future work even though `Charm` already reserves design space for them.
+- Equipment-driven builds remain part of the long-term hero plan, but not the first implementation pass.
+
 ## Soldier Progression Snapshot
 
 ### Current live first wave
@@ -323,6 +371,14 @@
 - Logistics plan selection before deployment is not implemented.
 - Capacity bonuses from traits, equipment, and skills are not implemented.
 - Special logistics units such as transport mules are not implemented.
+
+### Hero progression depth
+
+- The lead hero attribute framework described above is a confirmed design target, but is not fully implemented yet.
+- Hero skill progression is not implemented yet.
+- Equipment-driven hero builds are not implemented yet.
+- Secondary heroes are still not implemented.
+- Lead hero and future secondary heroes do not yet share one unified hero-grade data framework in code and data.
 
 ### Presentation cleanup
 
